@@ -13,10 +13,10 @@ function rarityLabel(r: string) {
 }
 
 export function Achievements() {
-  const { data: achievements = [], isLoading: achLoading } = useQuery<Achievement[]>({
+  const { data: achievements = [] } = useQuery<Achievement[]>({
     queryKey: ['achievements'], queryFn: () => api.get('/achievements'),
   });
-  const { data: badges = [], isLoading: badgeLoading } = useQuery<Badge[]>({
+  const { data: badges = [] } = useQuery<Badge[]>({
     queryKey: ['badges'], queryFn: () => api.get('/badges'),
   });
 

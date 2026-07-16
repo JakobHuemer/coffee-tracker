@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
@@ -14,7 +14,6 @@ const RARITY_COLORS: Record<string, string> = {
 
 export function Profile() {
   const { user, setAuth, logout } = useAuthStore();
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const [editMode, setEditMode] = useState(false);
   const [newUsername, setNewUsername] = useState(user?.username || '');

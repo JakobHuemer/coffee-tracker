@@ -8,7 +8,6 @@ import type { Coffee, CoffeeEntry, Stats, UnlockNotification } from '../types';
 
 Chart.register(...registerables);
 
-function dateStr(ts: number) { return new Date(ts).toISOString().slice(0, 10); }
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 
 export function Dashboard() {

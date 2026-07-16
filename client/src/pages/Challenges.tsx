@@ -20,7 +20,7 @@ export function Challenges() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', description: '', metric: 'total_cups', target: 10, endDate: '' });
 
-  const { data: challenges = [], isLoading } = useQuery<Challenge[]>({
+  const { data: challenges = [] } = useQuery<Challenge[]>({
     queryKey: ['challenges'], queryFn: () => api.get('/challenges'), refetchInterval: 60000,
   });
 
