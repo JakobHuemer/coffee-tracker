@@ -17,6 +17,7 @@ export function BgCanvas({ level }: Props) {
     timers: [] as any[],
     anims: [] as any[],
     rafId: 0,
+    spawnFn: null as null | ((init?: boolean) => void),
   });
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export function BgCanvas({ level }: Props) {
       }
       s.particles.push(p);
     }
+    s.spawnFn = spawn;
 
     function loop() {
       s.frame++;
@@ -136,11 +138,12 @@ export function BgCanvas({ level }: Props) {
 
     const seeds = [12, 28, 45, 0, 55, 0, 80, 0, 80, 200];
     const canvas = canvasRef.current;
-    if (canvas) {
-      for (let i = 0; i < (seeds[level] || 0); i++) {
-        const p: any = { lv: level };
-        s.particles.push(p);
-      }
+    const spawnFn = s.spawnFn;
+    if (canvas && spawnFn) {
+      // Seed fully-initialized particles via spawn() (it reads the updated
+      // s.level). Pushing bare { lv } objects left x/y/r undefined, which
+      // crashed createRadialGradient ("not a finite floating-point value").
+      for (let i = 0; i < (seeds[level] || 0); i++) spawnFn(true);
     }
 
     // Heartbeat pulse rings for level 3
