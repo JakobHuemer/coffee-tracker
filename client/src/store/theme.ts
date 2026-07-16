@@ -13,27 +13,58 @@ const CAFFEINE_THEMES = [
   { threshold: 1000, label: '⬛ Gone',        vars: { '--bg':'#F3F3F3','--surface':'#FFFFFF','--surface2':'#E8E8E8','--border':'#CCCCCC','--text-primary':'#111111','--text-sec':'#555555','--text-muted':'#999999','--accent':'#444444','--accent-bg':'#DDDDDD','--chart-bar':'rgba(68,68,68,0.85)','--chart-hover':'rgba(36,36,36,1)','--grid':'#E0E0E0','--tooltip-bg':'#FFFFFF','--tooltip-bd':'#CCCCCC','--shadow':'0 1px 3px rgba(0,0,0,.07), 0 4px 12px rgba(0,0,0,.05)' } },
 ];
 
+// Dark variants for levels 0–3 (levels 4–9 are already dark, used as-is)
+const DARK_OVERRIDES = [
+  // 0 – Midnight Espresso
+  { '--bg':'#0F0905','--surface':'#1A1008','--surface2':'#241608','--border':'#3D2314','--text-primary':'#F0E0C8','--text-sec':'#C8A07A','--text-muted':'#8A6040','--accent':'#5EC4DC','--accent-bg':'#0A2830','--chart-bar':'rgba(94,196,220,0.85)','--chart-hover':'rgba(120,215,235,1)','--grid':'#241608','--tooltip-bg':'#1A1008','--tooltip-bd':'#3D2314','--shadow':'0 1px 3px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.35)' },
+  // 1 – Dark Roast
+  { '--bg':'#120A05','--surface':'#1C1208','--surface2':'#28180A','--border':'#4A2C14','--text-primary':'#ECDDC4','--text-sec':'#C49060','--text-muted':'#826040','--accent':'#C47C3C','--accent-bg':'#261606','--chart-bar':'rgba(196,124,60,0.85)','--chart-hover':'rgba(218,148,78,1)','--grid':'#28180A','--tooltip-bg':'#1C1208','--tooltip-bd':'#4A2C14','--shadow':'0 1px 3px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.32)' },
+  // 2 – Dark Amber
+  { '--bg':'#0E0900','--surface':'#181200','--surface2':'#221B00','--border':'#3C3000','--text-primary':'#F0E880','--text-sec':'#C4A000','--text-muted':'#786000','--accent':'#D4A000','--accent-bg':'#1E1900','--chart-bar':'rgba(212,160,0,0.85)','--chart-hover':'rgba(235,182,20,1)','--grid':'#221B00','--tooltip-bg':'#181200','--tooltip-bd':'#3C3000','--shadow':'0 1px 3px rgba(0,0,0,.5), 0 4px 12px rgba(60,48,0,.2)' },
+  // 3 – Dark Danger
+  { '--bg':'#120303','--surface':'#1C0505','--surface2':'#280808','--border':'#500E0E','--text-primary':'#FFD2C8','--text-sec':'#E07870','--text-muted':'#904040','--accent':'#F04040','--accent-bg':'#2C0808','--chart-bar':'rgba(240,64,64,0.85)','--chart-hover':'rgba(255,90,80,1)','--grid':'#280808','--tooltip-bg':'#1C0505','--tooltip-bd':'#500E0E','--shadow':'0 1px 3px rgba(0,0,0,.5), 0 4px 12px rgba(140,10,10,.18)' },
+];
+
 export { CAFFEINE_THEMES };
+
+// Apply data-dark attribute immediately on module load to avoid flash
+const _savedDark = localStorage.getItem('dark') === 'true';
+if (_savedDark) document.documentElement.setAttribute('data-dark', 'true');
 
 interface ThemeState {
   levelIndex: number;
   label: string;
+  isDark: boolean;
+  _caffeine: number;
+  toggleDark: () => void;
   applyTheme: (todayCaffeine: number) => void;
 }
 
-export const useThemeStore = create<ThemeState>((set) => ({
+export const useThemeStore = create<ThemeState>((set, get) => ({
   levelIndex: 0,
   label: 'Serene',
+  isDark: _savedDark,
+  _caffeine: 0,
+
+  toggleDark: () => {
+    const next = !get().isDark;
+    localStorage.setItem('dark', String(next));
+    document.documentElement.setAttribute('data-dark', String(next));
+    set({ isDark: next });
+    get().applyTheme(get()._caffeine);
+  },
+
   applyTheme: (todayCaffeine: number) => {
+    const { isDark } = get();
     let idx = 0;
     for (let i = 0; i < CAFFEINE_THEMES.length; i++) {
       if (todayCaffeine >= CAFFEINE_THEMES[i].threshold) idx = i;
     }
-    const theme = CAFFEINE_THEMES[idx];
+    const vars = isDark && idx < 4 ? DARK_OVERRIDES[idx] : CAFFEINE_THEMES[idx].vars;
     const root = document.documentElement;
-    for (const [k, v] of Object.entries(theme.vars)) {
+    for (const [k, v] of Object.entries(vars)) {
       root.style.setProperty(k, v);
     }
-    set({ levelIndex: idx, label: theme.label });
+    set({ levelIndex: idx, label: CAFFEINE_THEMES[idx].label, _caffeine: todayCaffeine });
   },
 }));

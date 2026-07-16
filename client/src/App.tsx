@@ -24,7 +24,7 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
 export function App() {
   const { token, user, setAuth } = useAuthStore();
-  const { levelIndex } = useThemeStore();
+  const { levelIndex, isDark, toggleDark } = useThemeStore();
   const location = useLocation();
 
   useQuery({
@@ -34,9 +34,22 @@ export function App() {
     retry: false,
   });
 
+  const isAuth = location.pathname === '/auth';
+  const isDashboard = location.pathname === '/';
+
   return (
     <>
       <BgCanvas level={levelIndex} />
+      {/* Fixed toggle shown on all pages except Dashboard (which puts it in its own header) and Auth */}
+      {!isAuth && !isDashboard && (
+        <button
+          className="dark-toggle"
+          onClick={toggleDark}
+          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {isDark ? '☀️' : '🌙'}
+        </button>
+      )}
       <div id="app-wrap">
         <Routes>
           <Route path="/auth" element={<Auth />} />
@@ -50,7 +63,7 @@ export function App() {
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        {token && location.pathname !== '/auth' && <BottomNav />}
+        {token && !isAuth && <BottomNav />}
       </div>
     </>
   );

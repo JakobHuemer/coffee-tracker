@@ -13,7 +13,7 @@ function todayStr() { return new Date().toISOString().slice(0, 10); }
 
 export function Dashboard() {
   const qc = useQueryClient();
-  const { applyTheme, levelIndex, label } = useThemeStore();
+  const { applyTheme, levelIndex, label, isDark, toggleDark } = useThemeStore();
   const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTime, setEditingTime] = useState('');
@@ -159,7 +159,16 @@ export function Dashboard() {
             <div className="date">{new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
           </div>
         </div>
-        <span className="theme-badge">{label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="theme-badge">{label}</span>
+          <button
+            className="dark-toggle-inline"
+            onClick={toggleDark}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDark ? '☀️' : '🌙'}
+          </button>
+        </div>
       </header>
 
       <main>
