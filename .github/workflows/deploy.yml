@@ -29,6 +29,11 @@ jobs:
           cache-dependency-path: client/package-lock.json
       - run: npm ci
       - run: npm run build
+        env:
+          # Set this in the repo: Settings → Secrets and variables → Actions →
+          # Variables → new variable VITE_API_URL, e.g.
+          # https://coffee-tracker-production.up.railway.app/api
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: client/dist

@@ -1,4 +1,7 @@
-const BASE = '/api';
+// In dev, Vite proxies '/api' to the local server. In production (e.g. GitHub
+// Pages) set VITE_API_URL to the deployed backend origin, e.g.
+// "https://coffee-tracker.up.railway.app/api".
+const BASE = import.meta.env.VITE_API_URL || '/api';
 
 function getToken(): string | null {
   return localStorage.getItem('token');
