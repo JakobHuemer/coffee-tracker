@@ -46,18 +46,20 @@ User's explicit priorities, in order:
 - [x] `server/src/index.js`: `require('./db')` + `require('./migrate')(db)` before mounting routes
 
 **Gate 1**
-- [ ] Subagent (`general-purpose`): reviews runner + migration data-safety. *(running)*
+- [x] Subagent (`general-purpose`): all 5 checks PASS, no data-loss bug found. Adopted its one non-blocking suggestion — sort migrations by numeric version, not filename string.
 - [x] Claude ran harness (`scratchpad/gate1.js`): 11/11 PASS — fresh schema (normalized SQL + every-table `table_info`) matches pre-change db.js, `schema_migrations`=[1,2,3], idempotent 2nd run, bootstrap w/o email marks [1,2,3] & preserves rows, bootstrap w/ email drops column + preserves user + child rows NOT cascade-deleted.
 - [x] Claude booted real server (deps installed): clean boot, health `{"ok":true}`, rows [1,2,3]; restart idempotent (still 3 rows, no re-apply).
-- [ ] Commit on subagent pass.
+- [x] Committed to main (53f5132).
 
 ## Phase 2 — DB persistence path
-- [ ] Confirm `DB_DIR` defaults to a path that will be volume-mounted (e.g. `/app/data`)
-- [ ] Confirm nothing else under `server/src/data/*.js` is written to at runtime (those are static seed modules, read-only)
+- [x] Confirmed `DB_DIR` defaults to `/app/data` in-container (db.js: `path.join(__dirname,'..','data')`, `__dirname=/app/src`). `.dockerignore` excludes `data`.
+- [x] Confirmed `server/src/data/*.js` are pure static seed exports — no DB access, no file writes at runtime.
+- Note: container ignores SIGTERM → docker SIGKILL after 10s (no graceful-shutdown handler). Not data-loss (WAL/committed). Candidate for Phase 5 stability polish.
 
 **Gate 2**
-- [ ] Subagent (`general-purpose`, Bash): builds backend image alone, runs it with a named volume at the DB path, writes data via API, stops/removes container (keeps volume), starts a fresh container on same volume, confirms data survived. Reports pass/fail with the exact commands used.
-- [ ] Claude confirms the subagent's persistence proof; commit on pass. (No user action — pure shell/docker.)
+- [x] Claude ran persistence proof: built `./server` image, registered user `persisto` (id `0334f269…`) on named volume, `docker rm -f` container A, fresh container B on SAME volume → login succeeded with identical user id. PASS.
+- [x] Subagent (`general-purpose`, docker): independent PASS — user id `d731803e…` identical across container A→B on the volume. Both proofs agree.
+- [x] Committed plan update (no source changed this phase).
 
 ## Phase 3 — Single-container build: backend serves frontend
 - [ ] `server/Dockerfile` becomes multi-stage:
