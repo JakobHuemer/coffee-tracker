@@ -36,18 +36,20 @@ User's explicit priorities, in order:
 - [x] Committed.
 
 ## Phase 1 — Migration system (server)
-- [ ] New table `schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`
-- [ ] New `server/src/migrations/001_init.js` — current full `CREATE TABLE IF NOT EXISTS` schema, as `up(db)`
-- [ ] New `server/src/migrations/002_add_featured_badges.js` — ports the `featured_badges` add-column migration
-- [ ] New `server/src/migrations/003_drop_email_column.js` — ports the email→username table rebuild
-- [ ] New `server/src/migrate.js` — runner: applies migrations with `version > MAX(schema_migrations.version)` in order, each in its own transaction, records success, **aborts process on any failure** (fail-fast, matches existing `JWT_SECRET` pattern in `server/src/index.js`)
-- [ ] Bootstrap compatibility: if `schema_migrations` table doesn't exist but `users` table does (pre-existing DB), mark 001-003 as already-applied without re-running them — must not re-run the destructive email-column rebuild against real data
-- [ ] `server/src/db.js`: strip inline migration blocks, keep only `CREATE TABLE IF NOT EXISTS` → actually keep schema creation in `001_init.js` only, `db.js` just opens the DB and sets pragmas
-- [ ] `server/src/index.js`: call `migrate(db)` before mounting routes
+- [x] New table `schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)`
+- [x] New `server/src/migrations/001_init.js` — full schema (historically without `featured_badges`), as `up(db)`
+- [x] New `server/src/migrations/002_add_featured_badges.js` — ports the `featured_badges` add-column migration (guarded/idempotent)
+- [x] New `server/src/migrations/003_drop_email_column.js` — ports the email→username table rebuild (`manualTransaction` — owns its own txn + FK-toggle; no-op when no email col)
+- [x] New `server/src/migrate.js` — runner: applies un-recorded migrations in ascending order, migration+record atomic in one txn (003 exempt), rejects duplicate versions, **aborts process on any failure** (process.exit(1))
+- [x] Bootstrap compatibility: no `schema_migrations` but `users` exists → mark 1-3 applied only where end-state already holds (1 always; 2 iff `featured_badges` col; 3 iff `email` gone). Legacy DB still carrying `email` correctly runs 003.
+- [x] `server/src/db.js`: stripped to open DB + pragmas only; schema now owned by `001_init.js`
+- [x] `server/src/index.js`: `require('./db')` + `require('./migrate')(db)` before mounting routes
 
 **Gate 1**
-- [ ] Subagent (`general-purpose`, Bash) reviews the migration files + runner logic: confirms transactional wrapping, confirms bootstrap path can't double-run migration 003 against existing data, confirms fail-fast on error, confirms `PRAGMA table_info` output after running matches the pre-change schema exactly.
-- [ ] Claude runs: backup any local `server/data`, run `bun src/index.js`, confirm clean boot + `schema_migrations` has rows 1-3; run again, confirm idempotent (no errors, no duplicate rows). Commit on pass.
+- [ ] Subagent (`general-purpose`): reviews runner + migration data-safety. *(running)*
+- [x] Claude ran harness (`scratchpad/gate1.js`): 11/11 PASS — fresh schema (normalized SQL + every-table `table_info`) matches pre-change db.js, `schema_migrations`=[1,2,3], idempotent 2nd run, bootstrap w/o email marks [1,2,3] & preserves rows, bootstrap w/ email drops column + preserves user + child rows NOT cascade-deleted.
+- [x] Claude booted real server (deps installed): clean boot, health `{"ok":true}`, rows [1,2,3]; restart idempotent (still 3 rows, no re-apply).
+- [ ] Commit on subagent pass.
 
 ## Phase 2 — DB persistence path
 - [ ] Confirm `DB_DIR` defaults to a path that will be volume-mounted (e.g. `/app/data`)

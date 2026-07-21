@@ -9,6 +9,12 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
   process.exit(1);
 }
 
+// Apply pending DB migrations before mounting anything. This opens the DB and
+// brings the schema up to date (or aborts the process on failure), so no route
+// ever runs against a stale/half-migrated schema.
+const db = require('./db');
+require('./migrate')(db);
+
 const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
