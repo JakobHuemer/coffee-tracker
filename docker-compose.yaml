@@ -1,0 +1,26 @@
+# Single-service deployment. One image serves both the frontend (/) and the
+# API (/api) on one port. TLS is handled by your own reverse proxy in front of
+# this — out of scope here.
+#
+#   cp .env.example .env   # then edit JWT_SECRET
+#   docker compose up -d --build
+services:
+  app:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    ports:
+      # Host PORT (default 8080) -> container 3001. This is the single public
+      # port; put your TLS-terminating reverse proxy in front of it.
+      - "${PORT:-8080}:3001"
+    environment:
+      # Fail loudly if JWT_SECRET is missing rather than starting insecure.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env (>= 16 chars)}
+    volumes:
+      # Persist the SQLite database (DB_DIR defaults to /app/data) across
+      # container restarts, rebuilds, and `compose down` (without -v).
+      - db-data:/app/data
+
+volumes:
+  db-data:

@@ -73,11 +73,11 @@ User's explicit priorities, in order:
 - [ ] **User (browser)**: open the running container's port, click around the actual app (log a coffee, refresh on a deep route), confirm it behaves like the current split deployment. Confirm back.
 
 ## Phase 4 — Compose + final wiring
-- [ ] `docker-compose.yaml` at repo root: single service `app`, builds `server/` (the multi-stage Dockerfile), named volume `db-data:/app/data` (or wherever `DB_DIR` resolves), env `JWT_SECRET` from `.env`, single published port, `restart: unless-stopped`
-- [ ] `.env.example` at root: `JWT_SECRET`, `PORT`
+- [x] `docker-compose.yaml` at repo root: single service `app` (context `.`, `dockerfile: server/Dockerfile`), named volume `db-data:/app/data`, `JWT_SECRET` from `.env` (fails loudly via `:?` if unset), host `${PORT:-8080}:3001`, `restart: unless-stopped`.
+- [x] `.env.example` at root: `JWT_SECRET`, `PORT`. Added `!.env.example` exception to `.gitignore` (was masked by `.env.*`).
 
 **Gate 4**
-- [ ] Subagent (`general-purpose`, Bash): `docker compose up -d` from clean state, confirms container healthy, single port reachable, `/health` + real `/api` call + `/` all work same-origin with no CORS involved; `docker compose restart` then re-checks DB data survived; `docker compose down` (no `-v`) then `up` again, re-checks again. Reports logs on any failure.
+- [x] Subagent (`general-purpose`, docker): PASS all stages — user id `d03814a9…` identical across register→me→restart→down/up; single port serves `/health`+`/`+`/api` same-origin (no CORS); volume destroyed only by `down -v`. (Host provider is podman-compose via `docker` alias — works.)
 - [ ] **User (browser + deploy)**: run `docker compose up -d`, log some coffees through the actual UI, `docker compose restart`, refresh the page, confirm your data is still there. Confirm back.
 
 ## Phase 5 — Full stability sign-off
