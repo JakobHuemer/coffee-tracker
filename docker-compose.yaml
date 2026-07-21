@@ -3,12 +3,12 @@
 # this — out of scope here.
 #
 #   cp .env.example .env   # then edit JWT_SECRET
-#   docker compose up -d --build
+#   docker compose pull && docker compose up -d
 services:
   app:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
+    # Pull the CI-built image (ghcr.io/<owner>/coffee-tracker). Override IMAGE
+    # in .env to pin a specific tag, e.g. sha-<commit>.
+    image: ${IMAGE:-ghcr.io/jakobhuemer/coffee-tracker:latest}
     restart: unless-stopped
     ports:
       # Host PORT (default 8080) -> container 3001. This is the single public
