@@ -7,8 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
-const USER_COLS = 'id, email, username, avatar, featured_badges, created_at';
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const USER_COLS = 'id, username, avatar, featured_badges, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 function parseUser(u) {
@@ -21,19 +20,17 @@ function makeToken(user) {
 }
 
 router.post('/register', (req, res) => {
-  const { email, username, password } = req.body;
-  if (!email || !username || !password) return res.status(400).json({ error: 'Missing fields' });
+  const { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
   if (typeof password !== 'string' || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   if (typeof username !== 'string' || !USERNAME_RE.test(username)) return res.status(400).json({ error: 'Username must be 2-20 alphanumeric characters' });
-  if (typeof email !== 'string' || !EMAIL_RE.test(email.trim())) return res.status(400).json({ error: 'Invalid email' });
 
-  const emailLower = email.toLowerCase().trim();
-  const existing = db.prepare('SELECT id FROM users WHERE email = ? OR username = ?').get(emailLower, username);
-  if (existing) return res.status(409).json({ error: 'Email or username already taken' });
+  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+  if (existing) return res.status(409).json({ error: 'Username already taken' });
 
   const password_hash = bcrypt.hashSync(password, 10);
   const id = randomUUID();
-  db.prepare('INSERT INTO users (id, email, username, password_hash, created_at) VALUES (?, ?, ?, ?, ?)').run(id, emailLower, username, password_hash, Date.now());
+  db.prepare('INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)').run(id, username, password_hash, Date.now());
   db.prepare('INSERT INTO user_streaks (user_id) VALUES (?)').run(id);
   db.prepare('INSERT INTO user_combos (user_id) VALUES (?)').run(id);
 
@@ -42,12 +39,12 @@ router.post('/register', (req, res) => {
 });
 
 router.post('/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password || typeof email !== 'string') return res.status(400).json({ error: 'Missing fields' });
+  const { username, password } = req.body;
+  if (!username || !password || typeof username !== 'string') return res.status(400).json({ error: 'Missing fields' });
 
-  const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase().trim());
+  const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
   const { password_hash, ...safe } = row;
   res.json({ token: makeToken(row), user: parseUser(safe) });

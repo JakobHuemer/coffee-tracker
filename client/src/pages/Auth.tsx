@@ -6,7 +6,6 @@ import type { User } from '../types';
 
 export function Auth() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -19,7 +18,7 @@ export function Auth() {
     setError('');
     setLoading(true);
     try {
-      const body = mode === 'register' ? { email, username, password } : { email, password };
+      const body = { username, password };
       const data = await api.post<{ token: string; user: User }>(`/auth/${mode}`, body);
       setAuth(data.user, data.token);
       navigate('/');
@@ -44,15 +43,9 @@ export function Auth() {
 
         <form onSubmit={submit} className="auth-form">
           <div className="field">
-            <label htmlFor="auth-email">Email</label>
-            <input id="auth-email" type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="you@example.com" />
+            <label htmlFor="auth-username">Username</label>
+            <input id="auth-username" value={username} onChange={e => setUsername(e.target.value)} required placeholder="coffeeaddict" minLength={2} maxLength={20} />
           </div>
-          {mode === 'register' && (
-            <div className="field">
-              <label htmlFor="auth-username">Username</label>
-              <input id="auth-username" value={username} onChange={e => setUsername(e.target.value)} required placeholder="coffeeaddict" minLength={2} maxLength={20} />
-            </div>
-          )}
           <div className="field">
             <label htmlFor="auth-password">Password</label>
             <input id="auth-password" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" minLength={6} />

@@ -14,7 +14,6 @@ db.exec('PRAGMA foreign_keys = ON');
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id          TEXT PRIMARY KEY,
-    email       TEXT UNIQUE NOT NULL,
     username    TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     avatar      TEXT DEFAULT '☕',
@@ -114,6 +113,35 @@ db.exec(`
 const userColumns = db.prepare('PRAGMA table_info(users)').all();
 if (!userColumns.some(c => c.name === 'featured_badges')) {
   db.exec("ALTER TABLE users ADD COLUMN featured_badges TEXT NOT NULL DEFAULT ''");
+}
+
+// Idempotent migration: login switched from email to username, so drop the
+// email column from existing databases. SQLite can't DROP a UNIQUE column
+// directly, so we rebuild the table without it (the documented safe procedure)
+// and carry every remaining row across. New databases never have the column
+// because the CREATE TABLE above already omits it.
+if (userColumns.some(c => c.name === 'email')) {
+  // Foreign keys must be toggled outside the transaction (the PRAGMA is a
+  // no-op inside one). OFF prevents the child ON DELETE CASCADEs from firing
+  // when we drop the old users table.
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec(`
+    BEGIN TRANSACTION;
+    CREATE TABLE users_new (
+      id          TEXT PRIMARY KEY,
+      username    TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      avatar      TEXT DEFAULT '☕',
+      created_at  INTEGER NOT NULL,
+      featured_badges TEXT NOT NULL DEFAULT ''
+    );
+    INSERT INTO users_new (id, username, password_hash, avatar, created_at, featured_badges)
+      SELECT id, username, password_hash, avatar, created_at, featured_badges FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+    COMMIT;
+  `);
+  db.exec('PRAGMA foreign_keys = ON');
 }
 
 module.exports = db;

@@ -127,7 +127,6 @@ export function Profile() {
           ) : (
             <>
               <div className="profile-username">{user?.username}</div>
-              <div className="profile-email">{user?.email}</div>
               <div className="profile-since">Member since {user ? new Date(user.created_at).toLocaleDateString() : '—'}</div>
               {displayedBadges.length > 0 && (
                 <div className="profile-featured-badges">

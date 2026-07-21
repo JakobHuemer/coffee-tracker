@@ -15,7 +15,6 @@ export interface CoffeeEntry {
 
 export interface User {
   id: string;
-  email: string;
   username: string;
   avatar: string;
   featured_badges: string[];
