@@ -152,3 +152,10 @@ side thing that happened during the main goal, not a ceremony.
 - Don't add cross-origin API calls / a hardcoded API base URL.
 - Don't let the process start with missing config or a failed migration.
 - Verify persistence + `integrity_check` after any change near the DB or Docker.
+- **Never push mutations to the internet.** Agents may commit locally and run
+  read-only network operations (fetch a URL, `gh repo list`, `gh pr view`,
+  `git fetch`, pulls), but must never perform an action that changes remote
+  state — no `git push`, no `gh pr create`/merge/close, no releases, no
+  registry pushes, no writes to any external service — unless the user
+  explicitly asks for that specific action in the current turn. When work is
+  ready to publish, stop and hand it to the user.
