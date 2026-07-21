@@ -70,7 +70,7 @@ User's explicit priorities, in order:
 **Gate 3**
 - [x] Claude built + ran the single image: `/`→index.html(200), deep route→same index.html (SPA OK), `/health`→`{"ok":true}`, `/api/nonsense`→JSON 404, asset `/assets/index-*.js`→200 js, no `/coffee-tracker/` base (earlier "FOUND" was a `|head` false-positive; verified clean).
 - [x] Subagent (`general-purpose`, docker): independent PASS on all 8 checks (build, `/`, deep SPA route byte-identical, `/api/nonsense` JSON 404, asset load, no `/coffee-tracker/`, cleanup).
-- [ ] **User (browser)**: open the running container's port, click around the actual app (log a coffee, refresh on a deep route), confirm it behaves like the current split deployment. Confirm back.
+- [x] **User (browser)**: confirmed working via the compose stack.
 
 ## Phase 4 — Compose + final wiring
 - [x] `docker-compose.yaml` at repo root: single service `app` (context `.`, `dockerfile: server/Dockerfile`), named volume `db-data:/app/data`, `JWT_SECRET` from `.env` (fails loudly via `:?` if unset), host `${PORT:-8080}:3001`, `restart: unless-stopped`.
@@ -78,7 +78,7 @@ User's explicit priorities, in order:
 
 **Gate 4**
 - [x] Subagent (`general-purpose`, docker): PASS all stages — user id `d03814a9…` identical across register→me→restart→down/up; single port serves `/health`+`/`+`/api` same-origin (no CORS); volume destroyed only by `down -v`. (Host provider is podman-compose via `docker` alias — works.)
-- [ ] **User (browser + deploy)**: run `docker compose up -d`, log some coffees through the actual UI, `docker compose restart`, refresh the page, confirm your data is still there. Confirm back.
+- [x] **User (browser + deploy)**: confirmed — "the docker compose stuff works excellent".
 
 ## Phase 5 — Full stability sign-off
 - [x] Added graceful SIGTERM/SIGINT shutdown to `server/src/index.js` (close server + db, 5s hard cap) — fixes the ~10s SIGKILL delay flagged by every gate.
@@ -87,7 +87,7 @@ User's explicit priorities, in order:
 
 **Gate 5**
 - [x] Subagent (`general-purpose`, docker): PASS all — every route group 200 (no 5xx), graceful shutdown stops in 0.48s (no SIGKILL), `PRAGMA integrity_check`="ok" after `docker kill -9`, coffee entries 8→8 (no committed rows lost), user survived.
-- [ ] **User (final sign-off)**: does the app feel done? Anything from the old split-deploy setup missing (env vars, behavior) that you relied on? Confirm back before calling this closed.
+- [x] **User (final sign-off)**: confirmed — compose deployment works. Rewrite closed.
 
 ---
 
