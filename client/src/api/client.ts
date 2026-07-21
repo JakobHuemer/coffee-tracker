@@ -1,6 +1,6 @@
-// In dev, Vite proxies '/api' to the local server. In production (e.g. GitHub
-// Pages) set VITE_API_URL to the deployed backend origin, e.g.
-// "https://coffee-tracker.up.railway.app/api".
+// The backend serves this frontend, so '/api' is same-origin in production.
+// In dev, Vite proxies '/api' to the local server. VITE_API_URL is an optional
+// override for pointing at a backend on a different origin.
 const BASE = import.meta.env.VITE_API_URL || '/api';
 
 function getToken(): string | null {

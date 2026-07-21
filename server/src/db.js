@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 // DB_DIR lets the host point the SQLite file at a persistent volume
-// (e.g. a Railway volume mounted at /app/data). Defaults to ../data locally.
+// (e.g. a Docker volume mounted at /app/data). Defaults to ../data locally.
 const DB_DIR = process.env.DB_DIR || path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
 
