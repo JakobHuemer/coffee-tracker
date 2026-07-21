@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { UnlockToast } from '../components/UnlockToast';
-import type { CompareUserProfile, UnlockNotification } from '../types';
+import type { CompareUserProfile, CompareUserStats, UnlockNotification } from '../types';
 
 interface CompareResponse {
   me: CompareUserProfile;
@@ -11,16 +11,37 @@ interface CompareResponse {
   unlocked: UnlockNotification[];
 }
 
-function StatRow({ label, mine, theirs }: { label: string; mine: number | string; theirs: number | string }) {
-  const mNum = typeof mine === 'number' ? mine : parseFloat(mine);
-  const tNum = typeof theirs === 'number' ? theirs : parseFloat(theirs);
-  const winning = mNum > tNum;
-  const losing  = mNum < tNum;
+const STAT_DEFS: { key: keyof CompareUserStats; label: string; suffix?: string }[] = [
+  { key: 'total_cups', label: 'Total Cups' },
+  { key: 'total_caffeine', label: 'Total Caffeine', suffix: ' mg' },
+  { key: 'today_cups', label: "Today's Cups" },
+  { key: 'today_caffeine', label: "Today's Caffeine", suffix: ' mg' },
+  { key: 'seven_day_avg', label: '7-Day Avg / Day' },
+  { key: 'unique_types', label: 'Types Tried' },
+  { key: 'current_streak', label: 'Current Streak' },
+  { key: 'longest_streak', label: 'Best Streak' },
+  { key: 'achievements_count', label: 'Achievements' },
+  { key: 'badges_count', label: 'Badges' },
+];
+
+const fmt = (n: number, suffix = '') =>
+  `${Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1)}${suffix}`;
+
+function StatBar({ label, mine, theirs, suffix }: { label: string; mine: number; theirs: number; suffix?: string }) {
+  const total = mine + theirs;
+  const minePct = total > 0 ? (mine / total) * 100 : 50;
+  const state = mine > theirs ? 'me' : theirs > mine ? 'them' : 'tie';
   return (
-    <div className="stat-row">
-      <div className={`stat-val ${winning ? 'winning' : losing ? 'losing' : ''}`}>{mine}</div>
-      <div className="stat-label">{label}</div>
-      <div className={`stat-val right ${losing ? 'winning' : winning ? 'losing' : ''}`}>{theirs}</div>
+    <div className="vs-stat">
+      <div className="vs-stat-top">
+        <div className={`vs-stat-val ${state === 'me' ? 'win' : ''}`}>{fmt(mine, suffix)}</div>
+        <div className="vs-stat-label">{label}</div>
+        <div className={`vs-stat-val right ${state === 'them' ? 'win' : ''}`}>{fmt(theirs, suffix)}</div>
+      </div>
+      <div className="vs-track">
+        <div className={`vs-fill-me ${state}`} style={{ width: `${minePct}%` }} />
+        <div className={`vs-fill-them ${state}`} style={{ width: `${100 - minePct}%` }} />
+      </div>
     </div>
   );
 }
@@ -45,6 +66,28 @@ export function Compare() {
     if (searchInput.trim()) navigate(`/compare/${searchInput.trim()}`);
   }
 
+  const tally = data
+    ? STAT_DEFS.reduce(
+        (acc, d) => {
+          const mine = Number(data.me.stats[d.key]);
+          const theirs = Number(data.them.stats[d.key]);
+          if (mine > theirs) acc.me++;
+          else if (theirs > mine) acc.them++;
+          else acc.tie++;
+          return acc;
+        },
+        { me: 0, them: 0, tie: 0 },
+      )
+    : null;
+
+  const verdict = tally
+    ? tally.me > tally.them
+      ? { text: 'You’re on top ☕', cls: 'win' }
+      : tally.them > tally.me
+        ? { text: 'They’ve got the edge', cls: 'lose' }
+        : { text: 'Neck and neck', cls: 'tie' }
+    : null;
+
   return (
     <div className="page">
       <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
@@ -64,54 +107,60 @@ export function Compare() {
               placeholder="Enter username…"
               className="search-input"
             />
-            <button type="submit" className="btn-primary" style={{ flexShrink: 0 }}>Compare</button>
+            <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }}>Compare</button>
           </form>
         </div>
 
         {isLoading && <div className="page-loading">Comparing…</div>}
         {error && <div className="card error-card">User not found or error: {(error as Error).message}</div>}
 
-        {data && (
+        {data && tally && verdict && (
           <div className="card compare-card">
-            <div className="compare-header">
-              <div className="compare-user">
-                <div className="cu-avatar">{data.me.avatar}</div>
-                <div className="cu-name">{data.me.username}</div>
-                <div className="cu-label">You</div>
+            <div className="vs-header">
+              <div className="vs-player me">
+                <div className="vs-avatar">{data.me.avatar}</div>
+                <div className="vs-name">{data.me.username}</div>
+                <div className="vs-tag">You</div>
               </div>
-              <div className="compare-vs">VS</div>
-              <div className="compare-user">
-                <div className="cu-avatar">{data.them.avatar}</div>
-                <div className="cu-name">{data.them.username}</div>
-                <div className="cu-label">Them</div>
+              <div className="vs-badge">VS</div>
+              <div className="vs-player them">
+                <div className="vs-avatar">{data.them.avatar}</div>
+                <div className="vs-name">{data.them.username}</div>
+                <div className="vs-tag">Them</div>
               </div>
             </div>
 
-            <div className="stat-table">
-              <StatRow label="Total Cups" mine={data.me.stats.total_cups} theirs={data.them.stats.total_cups} />
-              <StatRow label="Total Caffeine (mg)" mine={data.me.stats.total_caffeine} theirs={data.them.stats.total_caffeine} />
-              <StatRow label="Today's Cups" mine={data.me.stats.today_cups} theirs={data.them.stats.today_cups} />
-              <StatRow label="Today's Caffeine" mine={data.me.stats.today_caffeine} theirs={data.them.stats.today_caffeine} />
-              <StatRow label="7-day avg/day" mine={data.me.stats.seven_day_avg} theirs={data.them.stats.seven_day_avg} />
-              <StatRow label="Unique Types Tried" mine={data.me.stats.unique_types} theirs={data.them.stats.unique_types} />
-              <StatRow label="Current Streak" mine={data.me.stats.current_streak} theirs={data.them.stats.current_streak} />
-              <StatRow label="Best Streak" mine={data.me.stats.longest_streak} theirs={data.them.stats.longest_streak} />
-              <StatRow label="Achievements" mine={data.me.stats.achievements_count} theirs={data.them.stats.achievements_count} />
-              <StatRow label="Badges" mine={data.me.stats.badges_count} theirs={data.them.stats.badges_count} />
+            <div className="vs-score">
+              <span className={`vs-score-num me ${tally.me >= tally.them ? '' : 'dim'}`}>{tally.me}</span>
+              <span className="vs-score-dash">–</span>
+              <span className={`vs-score-num them ${tally.them >= tally.me ? '' : 'dim'}`}>{tally.them}</span>
+            </div>
+            <div className={`vs-verdict ${verdict.cls}`}>{verdict.text}</div>
+
+            <div className="vs-stats">
+              {STAT_DEFS.map(d => (
+                <StatBar
+                  key={d.key}
+                  label={d.label}
+                  suffix={d.suffix}
+                  mine={Number(data.me.stats[d.key])}
+                  theirs={Number(data.them.stats[d.key])}
+                />
+              ))}
             </div>
 
-            <div className="favourites-row">
-              <div className="fav-item">
-                <div className="fav-label">Your Fav</div>
-                <div className="fav-coffee">
+            <div className="vs-favs">
+              <div className="vs-fav">
+                <div className="vs-fav-label">Your Favourite</div>
+                <div className="vs-fav-coffee">
                   {data.me.stats.favourite_coffee
                     ? `${data.me.stats.favourite_coffee.icon} ${data.me.stats.favourite_coffee.name}`
                     : '—'}
                 </div>
               </div>
-              <div className="fav-item">
-                <div className="fav-label">Their Fav</div>
-                <div className="fav-coffee">
+              <div className="vs-fav">
+                <div className="vs-fav-label">Their Favourite</div>
+                <div className="vs-fav-coffee">
                   {data.them.stats.favourite_coffee
                     ? `${data.them.stats.favourite_coffee.icon} ${data.them.stats.favourite_coffee.name}`
                     : '—'}
