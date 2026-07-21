@@ -9,37 +9,61 @@
     <ellipse cx="30.5" cy="8.5" fill="#000" rx="2.2" ry="6" transform="rotate(14 30.5 8.5)"/>
   </mask>
   <g mask="url(#cup)">
-    <rect width="48" height="46" fill="#3a2317"/>
+    <rect width="48" height="46" fill="#2b1810"/>
     <g filter="url(#f1)">
-      <ellipse cx="14" cy="34" fill="#8a4a26" rx="16" ry="18"/>
+      <path fill="#8a4a26" d="M30.74 36.95C29.51 41.36 25.09 43.57 20.67 46.24C16.24 48.92 10.53 53.03 6.60 51.54C2.68 50.06 0.90 43.51 -0.73 38.14C-2.36 32.78 -4.86 25.70 -2.29 22.29C0.28 18.88 7.84 19.59 13.28 19.57C18.72 19.55 24.18 19.00 27.38 22.19C30.58 25.38 31.97 32.54 30.74 36.95Z"/>
     </g>
     <g filter="url(#f2)">
-      <ellipse cx="34" cy="12" fill="#e8a659" rx="14" ry="15"/>
+      <path fill="#e8a659" d="M48.46 18.74C46.37 22.59 39.90 23.99 35.07 24.28C30.25 24.57 25.21 23.92 22.12 20.32C19.03 16.72 16.26 8.50 18.23 4.65C20.20 0.79 27.71 -0.46 32.89 -0.71C38.07 -0.96 43.62 -0.30 46.47 3.27C49.33 6.83 50.55 14.89 48.46 18.74Z"/>
     </g>
     <g filter="url(#f3)">
-      <ellipse cx="36" cy="38" fill="#c97a37" rx="12" ry="13"/>
+      <path fill="#c97a37" d="M43.23 46.62C40.14 49.27 36.21 52.78 33.15 52.09C30.09 51.40 28.32 46.47 26.55 42.85C24.77 39.23 22.30 35.45 23.47 32.34C24.63 29.24 29.34 26.53 32.92 25.89C36.49 25.24 39.81 26.68 42.94 28.83C46.08 30.99 49.94 34.39 50.00 37.65C50.05 40.91 46.32 43.97 43.23 46.62Z"/>
     </g>
     <g filter="url(#f4)">
-      <ellipse cx="10" cy="6" fill="#f4d9ad" rx="9" ry="9"/>
+      <path fill="#f4d9ad" d="M19.00 6.00C19.12 9.22 17.71 14.21 15.40 15.35C13.09 16.50 9.21 13.95 6.40 12.24C3.60 10.52 0.14 8.36 0.10 6.00C0.06 3.64 3.49 0.88 6.17 -0.63C8.86 -2.13 12.37 -3.40 14.73 -2.18C17.08 -0.97 18.88 2.78 19.00 6.00Z"/>
+    </g>
+    <g filter="url(#f5)">
+      <path fill="#e0512b" d="M36.76 31.81C36.25 34.33 32.66 38.70 30.46 38.74C28.26 38.77 25.78 34.76 24.77 32.01C23.76 29.26 23.38 25.03 24.93 23.74C26.49 22.46 31.07 23.53 33.24 25.01C35.41 26.49 37.27 29.29 36.76 31.81Z"/>
+    </g>
+    <g filter="url(#f6)" opacity="0.55">
+      <path fill="#3fae7a" d="M15.30 21.93C14.65 22.79 12.48 23.72 11.65 23.34C10.82 22.96 10.65 21.04 10.76 19.84C10.86 18.64 11.39 17.02 12.20 16.80C13.01 16.58 14.59 17.71 15.16 18.65C15.73 19.59 15.94 21.07 15.30 21.93Z"/>
+    </g>
+    <g filter="url(#f7)">
+      <path fill="#160b07" d="M23.75 42.76C22.09 43.81 19.01 44.59 17.70 43.72C16.39 42.84 16.57 40.05 16.60 38.00C16.63 35.95 16.60 33.26 17.84 32.52C19.07 31.78 21.70 32.95 23.34 33.95C24.98 34.96 26.70 36.38 26.77 38.00C26.85 39.62 25.41 41.72 23.75 42.76Z"/>
     </g>
   </g>
   <defs>
-    <filter id="f1" width="72" height="76" x="-22" y="-4" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+    <filter id="f1" width="70.4" height="69.4" x="-21" y="0.9" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
       <feFlood flood-opacity="0" result="BackgroundImageFix"/>
       <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
-      <feGaussianBlur result="effect1" stdDeviation="7"/>
+      <feGaussianBlur result="effect1" stdDeviation="8.5"/>
     </filter>
-    <filter id="f2" width="68" height="70" x="0" y="-23" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+    <filter id="f2" width="52.2" height="47" x="7.2" y="-11.7" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
       <feFlood flood-opacity="0" result="BackgroundImageFix"/>
       <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
-      <feGaussianBlur result="effect1" stdDeviation="7"/>
+      <feGaussianBlur result="effect1" stdDeviation="5"/>
     </filter>
-    <filter id="f3" width="64" height="66" x="4" y="5" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+    <filter id="f3" width="55.1" height="54.8" x="9.2" y="11.6" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
       <feFlood flood-opacity="0" result="BackgroundImageFix"/>
       <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
-      <feGaussianBlur result="effect1" stdDeviation="7"/>
+      <feGaussianBlur result="effect1" stdDeviation="6.5"/>
     </filter>
-    <filter id="f4" width="46" height="46" x="-13" y="-17" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+    <filter id="f4" width="34.3" height="32.9" x="-7.6" y="-9.9" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur result="effect1" stdDeviation="3.5"/>
+    </filter>
+    <filter id="f5" width="25.2" height="28.2" x="18.2" y="17.1" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur result="effect1" stdDeviation="3"/>
+    </filter>
+    <filter id="f6" width="22.1" height="24.1" x="2" y="8" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+      <feGaussianBlur result="effect1" stdDeviation="4"/>
+    </filter>
+    <filter id="f7" width="36.6" height="37.6" x="3.4" y="19.3" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
       <feFlood flood-opacity="0" result="BackgroundImageFix"/>
       <feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
       <feGaussianBlur result="effect1" stdDeviation="6"/>
