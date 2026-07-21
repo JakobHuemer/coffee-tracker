@@ -2,7 +2,6 @@ require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
-const cors = require('cors');
 
 // Fail fast rather than signing/verifying tokens with an undefined or weak
 // secret. Tokens are only as trustworthy as this value, so it must be provided.
@@ -18,8 +17,29 @@ const db = require('./db');
 require('./migrate')(db);
 
 const app = express();
-app.use(cors({ origin: '*' }));
-app.use(express.json());
+
+// Same-origin by design (AGENTS.md #6): the API is only called from the
+// frontend served by this same process, so no CORS middleware — browsers'
+// same-origin policy then blocks other sites from reading API responses.
+app.disable('x-powered-by');
+
+// A TLS-terminating reverse proxy sits in front of this container, so trust
+// exactly one proxy hop for req.ip (used by the auth rate limiter). Set
+// TRUST_PROXY=0 if the container port is exposed directly.
+app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+
+// Largest legitimate request body is a small JSON object; anything bigger is
+// junk or abuse.
+app.use(express.json({ limit: '10kb' }));
+
+// Baseline security headers (kept manual and minimal rather than pulling in a
+// framework — nothing here can break the SPA).
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
 
 // Lightweight liveness probe for the platform health check. Must not touch the
 // DB or auth so a green check means "the process is up and serving".

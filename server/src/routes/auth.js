@@ -1,6 +1,7 @@
 const express  = require('express');
 const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
+const { rateLimit } = require('express-rate-limit');
 const { randomUUID } = require('crypto');
 const db       = require('../db');
 const { requireAuth } = require('../middleware/auth');
@@ -9,6 +10,17 @@ const router = express.Router();
 
 const USER_COLS = 'id, username, avatar, featured_badges, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
+
+// Throttle credential guessing and mass account creation. Per-IP: generous
+// enough that a shared NAT of real users never hits it, far too slow for
+// brute force (30 attempts / 15 min).
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many attempts — try again later' },
+});
 
 function parseUser(u) {
   if (!u) return u;
@@ -19,13 +31,14 @@ function makeToken(user) {
   return jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, { expiresIn: '30d' });
 }
 
-router.post('/register', (req, res) => {
+router.post('/register', authLimiter, (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
-  // No complexity/length rule by design — this is a for-fun site, passwords
+  // No complexity/minimum rule by design — this is a for-fun site, passwords
   // are treated as public (see the register-page warning). Any non-empty
-  // string is fine.
-  if (typeof password !== 'string') return res.status(400).json({ error: 'Password must be a string' });
+  // string is fine. The upper bound only exists because bcrypt ignores
+  // everything past 72 bytes anyway.
+  if (typeof password !== 'string' || password.length > 72) return res.status(400).json({ error: 'Password must be a string of at most 72 characters' });
   if (typeof username !== 'string' || !USERNAME_RE.test(username)) return res.status(400).json({ error: 'Username must be 2-20 alphanumeric characters' });
 
   const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
@@ -41,9 +54,9 @@ router.post('/register', (req, res) => {
   res.json({ token: makeToken(user), user });
 });
 
-router.post('/login', (req, res) => {
+router.post('/login', authLimiter, (req, res) => {
   const { username, password } = req.body;
-  if (!username || !password || typeof username !== 'string') return res.status(400).json({ error: 'Missing fields' });
+  if (!username || !password || typeof username !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'Missing fields' });
 
   const row = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
@@ -63,6 +76,11 @@ router.patch('/me', requireAuth, (req, res) => {
   const { username, avatar, featured_badges } = req.body;
   if (username && !USERNAME_RE.test(username)) {
     return res.status(400).json({ error: 'Invalid username' });
+  }
+  // Avatars are single emoji picked in the client; 16 chars covers any
+  // multi-codepoint emoji while rejecting arbitrary blobs.
+  if (avatar && (typeof avatar !== 'string' || avatar.length > 16)) {
+    return res.status(400).json({ error: 'Invalid avatar' });
   }
   if (featured_badges !== undefined) {
     if (!Array.isArray(featured_badges) || featured_badges.length > 3 ||
