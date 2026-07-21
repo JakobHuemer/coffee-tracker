@@ -70,4 +70,18 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Coffee Tracker API running on :${PORT}`));
+const server = app.listen(PORT, () => console.log(`Coffee Tracker API running on :${PORT}`));
+
+// Graceful shutdown: stop accepting connections, close the DB, exit. Without
+// this the container ignores SIGTERM and the runtime SIGKILLs it after ~10s on
+// every `docker stop` / `compose restart`. A hard 5s cap guarantees we still
+// exit even if a connection hangs.
+function shutdown(signal) {
+  console.log(`${signal} received — shutting down.`);
+  server.close(() => {
+    try { db.close(); } catch (_) { /* already closed */ }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+['SIGTERM', 'SIGINT'].forEach((sig) => process.on(sig, () => shutdown(sig)));

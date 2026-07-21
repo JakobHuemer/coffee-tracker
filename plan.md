@@ -81,12 +81,12 @@ User's explicit priorities, in order:
 - [ ] **User (browser + deploy)**: run `docker compose up -d`, log some coffees through the actual UI, `docker compose restart`, refresh the page, confirm your data is still there. Confirm back.
 
 ## Phase 5 — Full stability sign-off
-- [ ] Smoke-test every route group through the single port: `auth`, `coffees`, `goals`, `achievements`, `badges`, `streaks`, `challenges`, `rankings`, `compare`, `casualties`
-- [ ] Confirm WAL mode (`server/src/db.js`) protects against corruption if the process is killed mid-write
-- [ ] Add `client/.dockerignore` if a client build context still needs one (likely folded into `server/`'s build context / `.dockerignore` instead, since client is now just a build stage input)
+- [x] Added graceful SIGTERM/SIGINT shutdown to `server/src/index.js` (close server + db, 5s hard cap) — fixes the ~10s SIGKILL delay flagged by every gate.
+- [x] `client/.dockerignore` not needed — root `.dockerignore` already excludes `**/node_modules` + `**/dist`, so the client build stage copies clean source.
+- [x] Smoke-test every route group + WAL kill-9 integrity — Gate 5 subagent PASS.
 
 **Gate 5**
-- [ ] Subagent (`general-purpose`, Bash): runs the full smoke script above, force-kills the container mid-write (`docker kill`), restarts via compose, runs `PRAGMA integrity_check` against the DB file, confirms no corruption and no silently-lost committed rows. Reports pass/fail with specifics — this is the final sign-off.
+- [x] Subagent (`general-purpose`, docker): PASS all — every route group 200 (no 5xx), graceful shutdown stops in 0.48s (no SIGKILL), `PRAGMA integrity_check`="ok" after `docker kill -9`, coffee entries 8→8 (no committed rows lost), user survived.
 - [ ] **User (final sign-off)**: does the app feel done? Anything from the old split-deploy setup missing (env vars, behavior) that you relied on? Confirm back before calling this closed.
 
 ---
