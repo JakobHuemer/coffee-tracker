@@ -1,4 +1,6 @@
 require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 
@@ -35,7 +37,25 @@ app.use('/api/rankings',    require('./routes/rankings'));
 app.use('/api/compare',     require('./routes/compare'));
 app.use('/api/casualties',  require('./routes/casualties'));
 
-// Unknown routes -> JSON 404 (keeps the API consistent instead of Express' HTML default)
+// Unknown /api/* paths must always be a JSON 404 — never fall through to the
+// SPA fallback below. Mounted before the static handler so the API contract
+// stays consistent (no HTML served for a mistyped endpoint).
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Serve the built frontend. In the Docker image the client build is copied to
+// ../public (see server/Dockerfile). When it's absent (API-only dev run) these
+// handlers are simply skipped and unmatched routes fall to the JSON 404 below.
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+if (fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))) {
+  app.use(express.static(PUBLIC_DIR));
+  // SPA fallback: any other GET returns index.html so client-side (React
+  // Router) routes resolve on a hard refresh / deep link.
+  app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+}
+
+// Final catch-all: no built frontend, or a non-GET to an unknown non-API path.
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });

@@ -62,15 +62,14 @@ User's explicit priorities, in order:
 - [x] Committed plan update (no source changed this phase).
 
 ## Phase 3 — Single-container build: backend serves frontend
-- [ ] `server/Dockerfile` becomes multi-stage:
-  - Stage `client-build` (`oven/bun:1`): copy `client/`, `bun install`, `bun run build` → `client/dist`
-  - Stage `runtime` (`oven/bun:1`): server deps via `bun install`, copy server source, `COPY --from=client-build /client/dist ./public`
-- [ ] `server/src/index.js`: serve `./public` via static middleware, mounted **after** all `/api/*` routes; add SPA fallback for non-`/api` unmatched routes (serves `index.html` for client-side React Router paths) placed before the existing JSON 404 catch-all, which now only applies to `/api/*`
-- [ ] `client/src/api/client.ts`: drop Railway comment (Phase 0), keep `BASE = import.meta.env.VITE_API_URL || '/api'` — relative default is now correct for prod (same origin), `VITE_API_URL` becomes dev-only/optional
-- [ ] Delete `client/package-lock.json` (Bun-only now, build happens inside the Docker build stage)
+- [x] `server/Dockerfile` multi-stage (repo-root context, `-f server/Dockerfile`): stage `client-build` builds client → `/client/dist`; stage `runtime` installs server deps, copies server source, `COPY --from=client-build /client/dist ./public`. Added root `.dockerignore`.
+- [x] `server/src/index.js`: unknown `/api/*` → JSON 404 (mounted first); `express.static(./public)` when present; `app.get('*')` SPA fallback → index.html; final JSON 404 catch-all for non-GET/no-frontend. Guarded by `fs.existsSync(public/index.html)` so API-only dev runs still work.
+- [x] `client/src/api/client.ts`: relative `/api` default confirmed correct (same-origin). (Railway comment already dropped in Phase 0.)
+- [x] `client/package-lock.json` deleted (Phase 0). Also removed dead GH Pages SPA hack (`client/public/404.html` + redirect script in `client/index.html`) — server-side SPA fallback makes it obsolete.
 
 **Gate 3**
-- [ ] Subagent (`general-purpose`, Bash): builds the single image, runs it, curls `/` (expect built `index.html`), curls a deep SPA route like `/some/route` (expect `index.html` fallback, not 404), curls `/api/health` (expect JSON), curls `/api/nonsense` (expect JSON 404 — ordering check), confirms no asset references the old `/coffee-tracker/` base.
+- [x] Claude built + ran the single image: `/`→index.html(200), deep route→same index.html (SPA OK), `/health`→`{"ok":true}`, `/api/nonsense`→JSON 404, asset `/assets/index-*.js`→200 js, no `/coffee-tracker/` base (earlier "FOUND" was a `|head` false-positive; verified clean).
+- [x] Subagent (`general-purpose`, docker): independent PASS on all 8 checks (build, `/`, deep SPA route byte-identical, `/api/nonsense` JSON 404, asset load, no `/coffee-tracker/`, cleanup).
 - [ ] **User (browser)**: open the running container's port, click around the actual app (log a coffee, refresh on a deep route), confirm it behaves like the current split deployment. Confirm back.
 
 ## Phase 4 — Compose + final wiring

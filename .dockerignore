@@ -1,0 +1,13 @@
+# Build context is the repo root (see server/Dockerfile, multi-stage).
+# Keep host-side artifacts out of the image; deps are installed inside the build.
+**/node_modules
+**/dist
+server/data
+**/*.log
+.env
+.env.*
+.git
+.github
+graphify-out
+plan.md
+README.md
