@@ -76,6 +76,49 @@ cp .env.example .env            # set JWT_SECRET (>= 16 chars), optional PORT
 docker compose up -d --build    # serves / and /api on http://localhost:${PORT:-8080}
 ```
 
+## Discovering new core values
+
+This core-values system was added by **JakobHuemer** to make developing this
+project easier — it moves fast, and capturing values as they emerge keeps it
+consistent. So it is a deliberate process, not noise.
+
+When a prompt leads to a **big change or a possible new core value** — e.g.
+adopting a new technology and using it in some way — do NOT silently absorb it.
+Flag it to the user (the person prompting you) so it can be recorded:
+
+- **Notice it clearly.** Reference the flag on the **first line and the last
+  line** of your response, so it can't be missed among the main work.
+- **Still do the main work.** The value flag is a side note; the user's actual
+  request stays the focus.
+- **Ask kindly for a decision in their next prompt** — approve / modify / deny —
+  alongside whatever else they say. Include a one-line statement of what the
+  core value would be.
+
+Example (main task was something else; a new value surfaced):
+
+> 🧭 **Possible new core value discovered** — flagged per the core-values system
+> (added by JakobHuemer to keep this fast-moving project consistent).
+>
+> *…[the actual requested work, done normally]…*
+>
+> > **New core value?** "Redis is a cache-aside layer only — never a source of truth."
+> > Reply **approve / modify / deny** in your next message, alongside anything else.
+>
+> 🧭 New core value awaiting your approve/modify/deny (see top). — *core-values
+> system by JakobHuemer.*
+
+If the user responds to **add/modify** the value, reply with an ultra-short
+prompt containing ONLY the core value and a short header — nothing else:
+
+> **Add to AGENTS.md?**
+> > "Redis is a cache-aside layer only — never a source of truth."
+>
+> approve / update / dismiss?
+
+**Committing an approved value:** write it into this file as its own **complete,
+separate commit** (just the value addition) — but to the user, treat it as a
+side thing that happened during the main goal, not a ceremony.
+
 ## Guardrails
 
 - Don't split the frontend back into its own image/service/proxy.
