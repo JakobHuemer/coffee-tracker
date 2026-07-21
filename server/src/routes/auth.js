@@ -22,7 +22,10 @@ function makeToken(user) {
 router.post('/register', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
-  if (typeof password !== 'string' || password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  // No complexity/length rule by design — this is a for-fun site, passwords
+  // are treated as public (see the register-page warning). Any non-empty
+  // string is fine.
+  if (typeof password !== 'string') return res.status(400).json({ error: 'Password must be a string' });
   if (typeof username !== 'string' || !USERNAME_RE.test(username)) return res.status(400).json({ error: 'Username must be 2-20 alphanumeric characters' });
 
   const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);

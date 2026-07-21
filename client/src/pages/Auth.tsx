@@ -41,6 +41,14 @@ export function Auth() {
           <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Register</button>
         </div>
 
+        {mode === 'register' && (
+          <div className="auth-warn" role="alert">
+            <strong>☕ Just for fun — use a throwaway password.</strong>
+            <span>Never reuse a password from anywhere else. Treat whatever you type
+            here as public. A break-in does zero real damage, so keep it simple.</span>
+          </div>
+        )}
+
         <form onSubmit={submit} className="auth-form">
           <div className="field">
             <label htmlFor="auth-username">Username</label>
@@ -48,7 +56,7 @@ export function Auth() {
           </div>
           <div className="field">
             <label htmlFor="auth-password">Password</label>
-            <input id="auth-password" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" minLength={6} />
+            <input id="auth-password" type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="••••••••" />
           </div>
           {error && <div className="auth-error">{error}</div>}
           <button type="submit" className="auth-submit" disabled={loading}>

@@ -217,6 +217,8 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
 }
 .field input:focus, .field select:focus, .search-input:focus { border-color: var(--accent); }
 .auth-error { background: #FEE; border: 1px solid #F0BCBC; border-radius: 8px; padding: 10px; font-size: 0.8rem; color: #C0392B; text-align: center; }
+.auth-warn { display: flex; flex-direction: column; gap: 4px; background: #FFF6E5; border: 1px solid #F0D9A8; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.78rem; line-height: 1.4; color: #8A6D1B; text-align: left; }
+.auth-warn strong { font-size: 0.82rem; color: #7A5E12; }
 .auth-submit {
   width: 100%; padding: 12px; background: var(--accent); color: white;
   border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: opacity 0.15s;
