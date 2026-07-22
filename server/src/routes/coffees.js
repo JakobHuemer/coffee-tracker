@@ -8,6 +8,15 @@ const { dateStr, dayBounds, DATE_RE } = require('./_helpers');
 
 const router = express.Router();
 
+// Timestamps must stay in a range Date can represent, otherwise a single
+// poisoned value (e.g. 1e300) makes every later toISOString() throw and
+// permanently breaks /stats, /compare and achievement checks for that user.
+// Allow backdating to 2000-01-01 and up to one day of clock skew ahead.
+const MIN_TS = Date.UTC(2000, 0, 1);
+function validTimestamp(ts) {
+  return typeof ts === 'number' && Number.isFinite(ts) && ts >= MIN_TS && ts <= Date.now() + 86400000;
+}
+
 router.get('/', (req, res) => {
   res.json(COFFEES);
 });
@@ -40,7 +49,7 @@ router.post('/entries', requireAuth, (req, res) => {
   const { coffeeId, timestamp } = req.body;
   const coffee = COFFEES.find(c => c.id === coffeeId);
   if (!coffee) return res.status(400).json({ error: 'Unknown coffee type' });
-  if (timestamp !== undefined && (typeof timestamp !== 'number' || !Number.isFinite(timestamp))) {
+  if (timestamp !== undefined && !validTimestamp(timestamp)) {
     return res.status(400).json({ error: 'Invalid timestamp' });
   }
 
@@ -58,7 +67,7 @@ router.post('/entries', requireAuth, (req, res) => {
 
 router.patch('/entries/:id', requireAuth, (req, res) => {
   const { timestamp } = req.body;
-  if (!timestamp || typeof timestamp !== 'number') return res.status(400).json({ error: 'timestamp required' });
+  if (!validTimestamp(timestamp)) return res.status(400).json({ error: 'timestamp required' });
   const entry = db.prepare('SELECT * FROM coffee_entries WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!entry) return res.status(404).json({ error: 'Entry not found' });
   db.prepare('UPDATE coffee_entries SET logged_at = ? WHERE id = ?').run(timestamp, req.params.id);

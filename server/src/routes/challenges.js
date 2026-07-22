@@ -104,6 +104,9 @@ router.post('/', requireAuth, (req, res) => {
   const { name, description, metric, target, endDate } = req.body;
   if (!name || !metric || !target || !endDate) return res.status(400).json({ error: 'Missing fields' });
   if (typeof name !== 'string' || name.length > 100) return res.status(400).json({ error: 'Invalid name' });
+  if (description !== undefined && (typeof description !== 'string' || description.length > 500)) {
+    return res.status(400).json({ error: 'Invalid description' });
+  }
   if (!VALID_METRICS.includes(metric)) return res.status(400).json({ error: 'Invalid metric' });
 
   const targetNum = Number(target);
