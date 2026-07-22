@@ -11,7 +11,9 @@ const COFFEES = [
   { id: 'affogato',        name: 'Affogato',        caffeine: 63,  icon: '🍨' },
   { id: 'frappuccino',     name: 'Frappuccino',     caffeine: 95,  icon: '🧋' },
   { id: 'chocochino',      name: 'Chocochino',      caffeine: 30,  icon: '🍫' },
-  { id: 'hot_chocolate',   name: 'Hot Chocolate',   caffeine: 25,  icon: '🍫' },
+  { id: 'hot_chocolate',   name: 'Hot Chocolate',   caffeine: 0,   icon: '🍫' },
+  { id: 'tea',             name: 'Tea',             caffeine: 0,   icon: '🍵' },
+  { id: 'monster_white',   name: 'Monster White',   caffeine: 150, icon: '🥤' },
 ];
 
 module.exports = { COFFEES };
