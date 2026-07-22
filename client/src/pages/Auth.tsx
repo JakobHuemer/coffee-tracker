@@ -32,7 +32,7 @@ export function Auth() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo">☕</div>
+        <img className="auth-logo" src="/favicon.svg" alt="Coffee Tracker" />
         <h1 className="auth-title">Coffee Tracker</h1>
         <p className="auth-sub">{mode === 'login' ? 'Sign in to continue' : 'Create your account'}</p>
 

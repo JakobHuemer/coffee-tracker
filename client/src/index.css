@@ -83,7 +83,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
   transition: background-color 0.5s ease, border-color 0.5s ease;
 }
 .header-brand { display: flex; align-items: center; gap: 10px; }
-.header-brand .logo { font-size: 1.4rem; }
+.header-brand .logo { width: 1.6rem; height: 1.6rem; }
 .header-brand h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; }
 .header-brand .date { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
 .theme-badge {
@@ -190,6 +190,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
 }
 .bn-item.active { color: var(--accent); }
 .bn-icon { font-size: 1.2rem; line-height: 1; }
+.bn-icon-img { width: 1.2rem; height: 1.2rem; vertical-align: -0.15em; }
 .bn-label { font-size: 0.6rem; }
 
 /* ── Auth page ───────────────────────────────────────────────────────────── */
@@ -198,7 +199,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   padding: 32px 28px; width: 100%; max-width: 380px; box-shadow: var(--shadow); text-align: center;
 }
-.auth-logo { font-size: 2.5rem; margin-bottom: 8px; }
+.auth-logo { width: 3rem; height: 3rem; margin-bottom: 8px; }
 .auth-title { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.03em; }
 .auth-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; margin-bottom: 20px; }
 .auth-tabs { display: flex; gap: 6px; background: var(--surface2); border-radius: 8px; padding: 3px; margin-bottom: 20px; }

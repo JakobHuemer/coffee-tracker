@@ -161,7 +161,7 @@ export function Dashboard() {
 
       <header className="app-header">
         <div className="header-brand">
-          <span className="logo">☕</span>
+          <img className="logo" src="/favicon.svg" alt="Coffee Tracker" />
           <div>
             <h1>Coffee Tracker</h1>
             <div className="date">{new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
