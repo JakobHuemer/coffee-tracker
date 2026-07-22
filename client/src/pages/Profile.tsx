@@ -5,7 +5,7 @@ import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import type { User, Stats, Badge } from '../types';
 
-const AVATARS = ['☕', '🥛', '🧋', '🍫', '🍨', '⚡', '🔥', '💀', '🏆', '🎯', '👑', '🤖'];
+const AVATARS = ['☕', '🥛', '🧋', '🍫', '🍨', '🍵', '⚡', '🔥', '💀', '🏆', '🎯', '👑', '🤖', '👍', '😎', '🐸', '🦊', '🐼', '🚀', '🌟'];
 
 const RARITY_COLORS: Record<string, string> = {
   common: '#9E9E9E', uncommon: '#4CAF50', rare: '#2196F3',
