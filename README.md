@@ -4,6 +4,11 @@ Track your coffees and caffeine, with goals, streaks, achievements, badges,
 challenges, rankings, and head-to-head comparisons. Bun + Express + SQLite API
 that also serves a React (Vite) frontend — **one Docker container, one port**.
 
+## Getting Started
+
+To start tracking coffee right now, just create an account at [coffee.fistel.dev](http://coffee.fistel.dev).
+
+
 ## Quickstart
 
 ```bash
