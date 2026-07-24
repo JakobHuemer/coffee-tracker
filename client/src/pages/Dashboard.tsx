@@ -26,15 +26,19 @@ export function Dashboard() {
     queryFn: () => api.get(`/coffees/entries?date=${todayStr()}`),
   });
 
+  const [logError, setLogError] = useState<string | null>(null);
+
   const logMutation = useMutation({
     mutationFn: (coffeeId: string) => api.post<{ entry: CoffeeEntry; unlocked: UnlockNotification[] }>('/coffees/entries', { coffeeId }),
     onSuccess: (data) => {
+      setLogError(null);
       qc.invalidateQueries({ queryKey: ['entries'] });
       qc.invalidateQueries({ queryKey: ['stats'] });
       qc.invalidateQueries({ queryKey: ['streaks'] });
       qc.invalidateQueries({ queryKey: ['casualties'] });
       if (data.unlocked?.length) setNotifications(data.unlocked);
     },
+    onError: (err: Error) => setLogError(err.message),
   });
 
   const deleteMutation = useMutation({
@@ -222,6 +226,7 @@ export function Dashboard() {
               </button>
             ))}
           </div>
+          {logError && <div className="auth-error" style={{ marginTop: 8 }}>{logError}</div>}
         </div>
 
         <div className="card">

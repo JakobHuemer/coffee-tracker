@@ -64,7 +64,7 @@ function StatBar({ label, mine, theirs, suffix }: { label: string; mine: number;
   );
 }
 
-export function CompareContent({ initialUsername = '' }: { initialUsername?: string }) {
+export function CompareContent({ initialUsername = '', standalone = false }: { initialUsername?: string; standalone?: boolean }) {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
   const [searchInput, setSearchInput] = useState(initialUsername);
@@ -84,7 +84,7 @@ export function CompareContent({ initialUsername = '' }: { initialUsername?: str
     const q = searchInput.trim();
     if (q) {
       setActiveUsername(q);
-      navigate(`/compare/${q}`, { replace: true });
+      if (standalone) navigate(`/compare/${q}`, { replace: true });
     }
   }
 
@@ -204,7 +204,7 @@ export function Compare() {
         <p className="page-sub">How do you stack up?</p>
       </div>
       <main>
-        <CompareContent initialUsername={username || ''} />
+        <CompareContent initialUsername={username || ''} standalone />
       </main>
     </div>
   );

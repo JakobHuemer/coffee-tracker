@@ -13,9 +13,17 @@ const UPLOAD_DIR = process.env.DB_DIR
   ? path.join(process.env.DB_DIR, 'uploads')
   : path.join(__dirname, '..', '..', 'data', 'uploads');
 
+const MIME_EXT = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+  'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heif',
+};
+
 const profilePhotoStorage = multer.diskStorage({
   destination: UPLOAD_DIR,
-  filename: (_req, _file, cb) => cb(null, `pfp_${randomUUID()}.jpg`),
+  filename: (_req, file, cb) => {
+    const ext = MIME_EXT[file.mimetype] || 'jpg';
+    cb(null, `pfp_${randomUUID()}.${ext}`);
+  },
 });
 const profilePhotoUpload = multer({
   storage: profilePhotoStorage,
