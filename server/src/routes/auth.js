@@ -3,12 +3,32 @@ const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const { rateLimit } = require('express-rate-limit');
 const { randomUUID } = require('crypto');
+const path     = require('path');
+const fs       = require('fs');
+const multer   = require('multer');
 const db       = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
+const UPLOAD_DIR = process.env.DB_DIR
+  ? path.join(process.env.DB_DIR, 'uploads')
+  : path.join(__dirname, '..', '..', 'data', 'uploads');
+
+const profilePhotoStorage = multer.diskStorage({
+  destination: UPLOAD_DIR,
+  filename: (_req, _file, cb) => cb(null, `pfp_${randomUUID()}.jpg`),
+});
+const profilePhotoUpload = multer({
+  storage: profilePhotoStorage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
+
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, featured_badges, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous
@@ -24,7 +44,11 @@ const authLimiter = rateLimit({
 
 function parseUser(u) {
   if (!u) return u;
-  return { ...u, featured_badges: u.featured_badges ? u.featured_badges.split(',').filter(Boolean) : [] };
+  return {
+    ...u,
+    featured_badges: u.featured_badges ? u.featured_badges.split(',').filter(Boolean) : [],
+    profile_photo_url: u.profile_photo ? `/uploads/${u.profile_photo}` : null,
+  };
 }
 
 function makeToken(user) {
@@ -73,9 +97,16 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.patch('/me', requireAuth, (req, res) => {
-  const { username, avatar, featured_badges } = req.body;
+  const { username, avatar, featured_badges, password } = req.body;
   if (username && !USERNAME_RE.test(username)) {
     return res.status(400).json({ error: 'Invalid username' });
+  }
+  if (password !== undefined) {
+    if (typeof password !== 'string' || password.length === 0 || password.length > 72) {
+      return res.status(400).json({ error: 'Password must be 1–72 characters' });
+    }
+    const hash = bcrypt.hashSync(password, 10);
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, req.user.id);
   }
   // Avatars are single emoji picked in the client; 16 chars covers any
   // multi-codepoint emoji while rejecting arbitrary blobs.
@@ -99,6 +130,40 @@ router.patch('/me', requireAuth, (req, res) => {
   }
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
   res.json(user);
+});
+
+router.patch('/me/photo', requireAuth, profilePhotoUpload.single('photo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No photo provided' });
+  const existing = db.prepare('SELECT profile_photo FROM users WHERE id = ?').get(req.user.id);
+  if (existing?.profile_photo) {
+    try { fs.unlinkSync(path.join(UPLOAD_DIR, existing.profile_photo)); } catch { /* ignore */ }
+  }
+  db.prepare('UPDATE users SET profile_photo = ? WHERE id = ?').run(req.file.filename, req.user.id);
+  const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
+  res.json(user);
+});
+
+router.delete('/me/photo', requireAuth, (req, res) => {
+  const existing = db.prepare('SELECT profile_photo FROM users WHERE id = ?').get(req.user.id);
+  if (existing?.profile_photo) {
+    try { fs.unlinkSync(path.join(UPLOAD_DIR, existing.profile_photo)); } catch { /* ignore */ }
+    db.prepare('UPDATE users SET profile_photo = NULL WHERE id = ?').run(req.user.id);
+  }
+  const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
+  res.json(user);
+});
+
+router.delete('/me', requireAuth, (req, res) => {
+  const coffeePhotos = db.prepare('SELECT photo_path FROM coffee_entries WHERE user_id = ? AND photo_path IS NOT NULL').all(req.user.id);
+  const { profile_photo } = db.prepare('SELECT profile_photo FROM users WHERE id = ?').get(req.user.id) ?? {};
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+  for (const { photo_path } of coffeePhotos) {
+    try { fs.unlinkSync(path.join(UPLOAD_DIR, photo_path)); } catch { /* ignore */ }
+  }
+  if (profile_photo) {
+    try { fs.unlinkSync(path.join(UPLOAD_DIR, profile_photo)); } catch { /* ignore */ }
+  }
+  res.status(204).end();
 });
 
 module.exports = router;

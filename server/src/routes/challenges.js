@@ -78,9 +78,10 @@ function seedCommunityChallenges() {
 seedCommunityChallenges();
 
 router.get('/', requireAuth, (req, res) => {
+  // Personal challenges are private — only the creator sees their own.
   const challenges = db.prepare(
-    "SELECT * FROM challenges WHERE status = 'active' ORDER BY type, end_date"
-  ).all();
+    "SELECT * FROM challenges WHERE status = 'active' AND (type = 'community' OR creator_id = ?) ORDER BY type, end_date"
+  ).all(req.user.id);
 
   const result = challenges.map(c => {
     const participants = db.prepare(
@@ -88,12 +89,18 @@ router.get('/', requireAuth, (req, res) => {
     ).all(c.id);
     const joined = participants.some(p => p.user_id === req.user.id);
 
+    // For personal challenges the creator is always the sole participant; compute
+    // my_progress unconditionally so it never appears stuck at 0.
+    const myProgress = (c.type === 'personal' && c.creator_id === req.user.id)
+      ? userProgressFor(c, req.user.id)
+      : joined ? userProgressFor(c, req.user.id) : null;
+
     return {
       ...c,
       participants_count: participants.length,
       community_progress: communityProgressFor(c, participants),
-      my_progress: joined ? userProgressFor(c, req.user.id) : null,
-      joined,
+      my_progress: myProgress,
+      joined: joined || (c.type === 'personal' && c.creator_id === req.user.id),
     };
   });
 

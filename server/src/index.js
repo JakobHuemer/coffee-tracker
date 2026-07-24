@@ -3,6 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 
+// Photo uploads live on the same volume as the DB so they survive restarts.
+const UPLOAD_DIR = process.env.DB_DIR
+  ? path.join(process.env.DB_DIR, 'uploads')
+  : path.join(__dirname, '..', 'data', 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
 // Fail fast rather than signing/verifying tokens with an undefined or weak
 // secret. Tokens are only as trustworthy as this value, so it must be provided.
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
@@ -45,9 +51,13 @@ app.use((req, res, next) => {
 // DB or auth so a green check means "the process is up and serving".
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+// Serve uploaded photos before API fallback so /uploads/* never hits the 404.
+app.use('/uploads', express.static(UPLOAD_DIR));
+
 // Routes
 app.use('/api/auth',        require('./routes/auth'));
 app.use('/api/coffees',     require('./routes/coffees'));
+app.use('/api/feed',        require('./routes/feed'));
 app.use('/api/goals',       require('./routes/goals'));
 app.use('/api/achievements',require('./routes/achievements'));
 app.use('/api/badges',      require('./routes/badges'));

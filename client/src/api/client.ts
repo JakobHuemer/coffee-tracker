@@ -33,11 +33,29 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+async function requestForm<T>(path: string, body: FormData, method: string): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE}${path}`, { method, body, headers });
+  const data: unknown = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const message =
+      typeof data === 'object' && data !== null &&
+      typeof (data as { error?: unknown }).error === 'string'
+        ? (data as { error: string }).error
+        : `HTTP ${res.status}`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  patchForm: <T>(path: string, body: FormData) => requestForm<T>(path, body, 'PATCH'),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
