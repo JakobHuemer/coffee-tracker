@@ -17,9 +17,17 @@ const UPLOAD_DIR = process.env.DB_DIR
   : path.join(__dirname, '..', '..', 'data', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+const MIME_EXT = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+  'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heif',
+};
+
 const storage = multer.diskStorage({
   destination: UPLOAD_DIR,
-  filename: (_req, _file, cb) => cb(null, `${randomUUID()}.jpg`),
+  filename: (_req, file, cb) => {
+    const ext = MIME_EXT[file.mimetype] || 'jpg';
+    cb(null, `${randomUUID()}.${ext}`);
+  },
 });
 const upload = multer({
   storage,
@@ -93,23 +101,26 @@ router.post('/entries', requireAuth, upload.single('photo'), (req, res) => {
     }
   }
 
+  // Cooldown uses created_at (wall-clock insert time) so a backdated user-supplied
+  // timestamp cannot be used to bypass the 5-minute limit.
   const recent = db.prepare(
-    'SELECT logged_at FROM coffee_entries WHERE user_id = ? ORDER BY logged_at DESC LIMIT 1'
+    'SELECT created_at FROM coffee_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
   ).get(req.user.id);
-  if (recent && Date.now() - recent.logged_at < 5 * 60 * 1000) {
+  if (recent && Date.now() - recent.created_at < 5 * 60 * 1000) {
     if (req.file) fs.unlink(req.file.path, () => {});
     return res.status(409).json({ error: 'Too soon — last coffee was less than 5 minutes ago.' });
   }
 
   const id = randomUUID();
-  const logged_at = ts || Date.now();
+  const now = Date.now();
+  const logged_at = ts || now;
   const photo_path = req.file ? req.file.filename : null;
   const is_public = rawPublic === '0' || rawPublic === 'false' ? 0 : 1;
   const desc = description?.trim() || null;
 
   db.prepare(
-    'INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at, photo_path, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, req.user.id, coffeeId, coffee.caffeine, logged_at, photo_path, desc, is_public);
+    'INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at, created_at, photo_path, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, req.user.id, coffeeId, coffee.caffeine, logged_at, now, photo_path, desc, is_public);
 
   const unlocked = checkAfterCoffeeLog(req.user.id);
 

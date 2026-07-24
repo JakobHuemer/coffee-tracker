@@ -19,7 +19,7 @@ function timeAgo(ms: number): string {
   return `${d}d ago`;
 }
 
-function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id: string, liked: boolean) => void; currentUserId: string }) {
+function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id: string, liked: boolean, count: number) => void; currentUserId: string }) {
   const navigate = useNavigate();
   const liked = post.liked_by_me;
 
@@ -60,7 +60,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id
       <div className="feed-post-actions">
         <button
           className={`feed-like-btn${liked ? ' liked' : ''}`}
-          onClick={() => onLike(post.id, liked)}
+          onClick={() => onLike(post.id, liked, post.likes_count)}
           aria-label={liked ? 'Unlike' : 'Like'}
         >
           {liked ? '❤️' : '🤍'} <span className="feed-like-count">{post.likes_count}</span>
@@ -95,8 +95,8 @@ export function Feed() {
     },
   });
 
-  const handleLike = useCallback((id: string, currentlyLiked: boolean) => {
-    const current = optimistic[id] ?? { liked: currentlyLiked, count: 0 };
+  const handleLike = useCallback((id: string, currentlyLiked: boolean, currentCount: number) => {
+    const current = optimistic[id] ?? { liked: currentlyLiked, count: currentCount };
     setOptimistic(prev => ({
       ...prev,
       [id]: { liked: !current.liked, count: current.count + (current.liked ? -1 : 1) },
