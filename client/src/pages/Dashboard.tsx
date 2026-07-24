@@ -14,6 +14,7 @@ export function Dashboard() {
   const qc = useQueryClient();
   const { applyTheme, levelIndex, label, isDark, toggleDark } = useThemeStore();
   const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
+  const [now, setNow] = useState(() => Date.now());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTime, setEditingTime] = useState('');
   const chartsRef = useRef<Record<string, Chart>>({});
@@ -25,15 +26,19 @@ export function Dashboard() {
     queryFn: () => api.get(`/coffees/entries?date=${todayStr()}`),
   });
 
+  const [logError, setLogError] = useState<string | null>(null);
+
   const logMutation = useMutation({
     mutationFn: (coffeeId: string) => api.post<{ entry: CoffeeEntry; unlocked: UnlockNotification[] }>('/coffees/entries', { coffeeId }),
     onSuccess: (data) => {
+      setLogError(null);
       qc.invalidateQueries({ queryKey: ['entries'] });
       qc.invalidateQueries({ queryKey: ['stats'] });
       qc.invalidateQueries({ queryKey: ['streaks'] });
       qc.invalidateQueries({ queryKey: ['casualties'] });
       if (data.unlocked?.length) setNotifications(data.unlocked);
     },
+    onError: (err: Error) => setLogError(err.message),
   });
 
   const deleteMutation = useMutation({
@@ -68,6 +73,12 @@ export function Dashboard() {
     d.setHours(h, m, 0, 0);
     patchTimeMutation.mutate({ id: entry.id, timestamp: d.getTime() });
   }
+
+  // Tick every 10 s so canLog re-evaluates as time passes without user interaction.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 10_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (stats) applyTheme(stats.today_caffeine);
@@ -150,6 +161,9 @@ export function Dashboard() {
     } as any);
   }
 
+  const lastLoggedAt = entries.reduce((max, e) => Math.max(max, e.logged_at), 0);
+  const canLog = now - lastLoggedAt >= 5 * 60 * 1000;
+
   const todayCaf = stats?.today_caffeine || 0;
   const pct = todayCaf / 400;
   const safeText = !todayCaf ? '' : pct < 0.75 ? `✓ ${Math.round(pct * 100)}% of daily limit` : pct < 1 ? `⚠ ${Math.round(pct * 100)}% of daily limit` : '✕ Over 400mg limit';
@@ -204,7 +218,7 @@ export function Dashboard() {
                 key={c.id}
                 className="coffee-btn"
                 onClick={() => logMutation.mutate(c.id)}
-                disabled={logMutation.isPending}
+                disabled={logMutation.isPending || !canLog}
               >
                 <span className="cb-icon">{c.icon}</span>
                 <span className="cb-name">{c.name}</span>
@@ -212,6 +226,7 @@ export function Dashboard() {
               </button>
             ))}
           </div>
+          {logError && <div className="auth-error" style={{ marginTop: 8 }}>{logError}</div>}
         </div>
 
         <div className="card">

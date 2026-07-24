@@ -19,8 +19,9 @@ out-tsc/
 .DS_Store
 Thumbs.db
 
-# SQLite database
+# SQLite database and runtime uploads
 server/data/
+server/src/data/uploads/
 
 # Env / local overrides
 *.local
