@@ -1,7 +1,7 @@
-See [AGENTS.md](./AGENTS.md) for this project's values, architecture, and
-workflows. It is the source of truth — read it before making changes.
+See [VALUES.md](./VALUES.md) for core values and [AGENTS.md](./AGENTS.md) for
+architecture and workflows. Read both before making changes.
 
-Quick reminder of the non-negotiables (full detail in AGENTS.md):
+Quick reminder of the non-negotiables (full detail in VALUES.md):
 
 1. Stability & consistency above all.
 2. Never lose committed data (WAL + graceful shutdown; verify `integrity_check`).

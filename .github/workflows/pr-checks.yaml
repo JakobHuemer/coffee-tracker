@@ -1,0 +1,54 @@
+name: PR Checks
+
+on:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        working-directory: server
+        run: bun install --frozen-lockfile
+      - name: Run tests
+        working-directory: server
+        run: bun test
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - name: Install dependencies
+        working-directory: client
+        run: bun install --frozen-lockfile
+      - name: Lint
+        working-directory: client
+        run: bun run lint
+      - name: Build (typecheck + bundle)
+        working-directory: client
+        run: bun run build
+
+  # Aggregator: this is the single required status check for branch protection.
+  # `if: always()` ensures it runs even when a dependency fails, so GitHub can
+  # report a definitive pass/fail rather than "expected" forever.
+  pr-checks:
+    name: pr-checks
+    needs: [backend, frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect results
+        env:
+          BACKEND: ${{ needs.backend.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+        run: |
+          echo "backend=$BACKEND"
+          echo "frontend=$FRONTEND"
+          if [ "$BACKEND" != "success" ] || [ "$FRONTEND" != "success" ]; then
+            echo "One or more required checks failed."
+            exit 1
+          fi
+          echo "All required checks passed."
