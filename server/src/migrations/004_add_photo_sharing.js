@@ -4,6 +4,9 @@ exports.up = function (db) {
     db.prepare('ALTER TABLE coffee_entries ADD COLUMN photo_path TEXT').run();
   if (!cols.includes('description'))
     db.prepare('ALTER TABLE coffee_entries ADD COLUMN description TEXT').run();
+  // Default 0: pre-existing entries were logged before sharing existed, so they
+  // must stay private rather than be auto-published to the feed on migrate.
+  // New entries set is_public explicitly from the log flow.
   if (!cols.includes('is_public'))
-    db.prepare('ALTER TABLE coffee_entries ADD COLUMN is_public INTEGER NOT NULL DEFAULT 1').run();
+    db.prepare('ALTER TABLE coffee_entries ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0').run();
 };

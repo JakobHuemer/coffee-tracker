@@ -1,7 +1,7 @@
-﻿﻿import { useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, uploadUrl } from '../api/client';
 import { UnlockToast } from '../components/UnlockToast';
 import type { CompareUserProfile, CompareUserStats, FeaturedBadge, UnlockNotification } from '../types';
 
@@ -135,7 +135,7 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
           <div className="vs-header">
             <div className="vs-player me">
               {data.me.profile_photo_url
-                ? <img src={data.me.profile_photo_url} alt={data.me.username} className="vs-avatar-img" />
+                ? <img src={uploadUrl(data.me.profile_photo_url)} alt={data.me.username} className="vs-avatar-img" />
                 : <div className="vs-avatar">{data.me.avatar}</div>}
               <div className="vs-name">{data.me.username}</div>
               <div className="vs-tag">You</div>
@@ -144,7 +144,7 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
             <div className="vs-badge">VS</div>
             <div className="vs-player them">
               {data.them.profile_photo_url
-                ? <img src={data.them.profile_photo_url} alt={data.them.username} className="vs-avatar-img" />
+                ? <img src={uploadUrl(data.them.profile_photo_url)} alt={data.them.username} className="vs-avatar-img" />
                 : <div className="vs-avatar">{data.them.avatar}</div>}
               <div className="vs-name">{data.them.username}</div>
               <div className="vs-tag">Them</div>

@@ -34,6 +34,15 @@ const profilePhotoUpload = multer({
   },
 });
 
+// Convert multer upload failures (too large, wrong type) into a 400 with the
+// real message instead of letting them fall through to the global 500 handler.
+function handleUpload(mw) {
+  return (req, res, next) => mw(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Upload failed' });
+    next();
+  });
+}
+
 const router = express.Router();
 
 const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, created_at';
@@ -113,6 +122,14 @@ router.patch('/me', requireAuth, (req, res) => {
     if (typeof password !== 'string' || password.length === 0 || password.length > 72) {
       return res.status(400).json({ error: 'Password must be 1–72 characters' });
     }
+    // Require the current password to rotate the hash. A valid JWT alone is not
+    // enough: a stolen token could otherwise lock the real owner out by changing
+    // the password. Re-authenticating proves possession of the secret itself.
+    const { currentPassword } = req.body;
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
+    if (!row || typeof currentPassword !== 'string' || !bcrypt.compareSync(currentPassword, row.password_hash)) {
+      return res.status(403).json({ error: 'Current password is incorrect' });
+    }
     const hash = bcrypt.hashSync(password, 10);
     db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hash, req.user.id);
   }
@@ -140,7 +157,7 @@ router.patch('/me', requireAuth, (req, res) => {
   res.json(user);
 });
 
-router.patch('/me/photo', requireAuth, profilePhotoUpload.single('photo'), (req, res) => {
+router.patch('/me/photo', requireAuth, handleUpload(profilePhotoUpload.single('photo')), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No photo provided' });
   const existing = db.prepare('SELECT profile_photo FROM users WHERE id = ?').get(req.user.id);
   if (existing?.profile_photo) {

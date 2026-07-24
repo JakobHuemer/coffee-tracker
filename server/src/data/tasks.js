@@ -34,13 +34,21 @@ function hasConflict(idA, idB) {
   return CONFLICT_PAIRS.has(conflictsKey(idA, idB));
 }
 
+// FNV-1a over the full (date + user + task id) string. Every task gets a
+// distinct high-entropy key, so ordering is deterministic per day/user without
+// the near-ties the old id-length-only seed produced.
+function hashStr(s) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
 function getDailyTasks(dateStr, userId) {
-  const seed = [...(dateStr + userId)].reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const shuffled = [...TASK_POOL].sort((a, b) => {
-    const ha = Math.sin(seed + a.id.length) * 10000;
-    const hb = Math.sin(seed + b.id.length) * 10000;
-    return (ha - Math.floor(ha)) - (hb - Math.floor(hb));
-  });
+  const base = dateStr + '|' + userId + '|';
+  const shuffled = [...TASK_POOL].sort((a, b) => hashStr(base + a.id) - hashStr(base + b.id));
 
   // Pick the first TASKS_PER_DAY tasks that don't conflict with already-chosen ones.
   const chosen = [];

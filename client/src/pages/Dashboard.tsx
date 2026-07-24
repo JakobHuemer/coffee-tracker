@@ -161,8 +161,11 @@ export function Dashboard() {
     } as any);
   }
 
-  const lastLoggedAt = entries.reduce((max, e) => Math.max(max, e.logged_at), 0);
-  const canLog = now - lastLoggedAt >= 5 * 60 * 1000;
+  // Cooldown mirrors the server, which measures from created_at (wall-clock
+  // insert time), not the user-editable logged_at — otherwise a backdated entry
+  // would leave the button enabled while the server rejects the log with 409.
+  const lastCreatedAt = entries.reduce((max, e) => Math.max(max, e.created_at ?? e.logged_at), 0);
+  const canLog = now - lastCreatedAt >= 5 * 60 * 1000;
 
   const todayCaf = stats?.today_caffeine || 0;
   const pct = todayCaf / 400;

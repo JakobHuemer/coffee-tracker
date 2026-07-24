@@ -50,6 +50,17 @@ async function requestForm<T>(path: string, body: FormData, method: string): Pro
   return data as T;
 }
 
+// Upload URLs (/uploads/...) are served through an auth-gated route. <img> tags
+// can't set an Authorization header, so append the token as a query param. Pass
+// through absolute/external URLs and empty values untouched.
+export function uploadUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  const token = getToken();
+  if (!token || !url.startsWith('/uploads/')) return url;
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}token=${encodeURIComponent(token)}`;
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>

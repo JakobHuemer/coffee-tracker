@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { useThemeStore } from '../store/theme';
 import type { FeedPost } from '../types';
@@ -35,7 +35,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id
     <article className="feed-post">
       <div className="feed-post-header feed-post-header-clickable" onClick={handleUserClick} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && handleUserClick()}>
         {post.profile_photo_url
-          ? <img src={post.profile_photo_url} alt={post.username} className="feed-avatar-img" />
+          ? <img src={uploadUrl(post.profile_photo_url)} alt={post.username} className="feed-avatar-img" />
           : <span className="feed-avatar">{post.avatar}</span>}
         <div className="feed-post-meta">
           <span className="feed-username">{post.username}</span>
@@ -45,7 +45,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id
 
       {post.photo_url && (
         <div className="feed-photo-wrap">
-          <img className="feed-photo" src={post.photo_url} alt={post.coffee_id} loading="lazy" />
+          <img className="feed-photo" src={uploadUrl(post.photo_url)} alt={post.coffee_id} loading="lazy" />
         </div>
       )}
 

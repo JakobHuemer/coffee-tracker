@@ -43,8 +43,11 @@ router.post('/:entryId/like', requireAuth, (req, res) => {
     db.prepare(
       'INSERT INTO post_likes (id, entry_id, user_id, created_at) VALUES (?, ?, ?, ?)'
     ).run(randomUUID(), req.params.entryId, req.user.id, Date.now());
-  } catch (_) {
-    // Already liked — UNIQUE constraint; just return current count.
+  } catch (err) {
+    // Only a duplicate like (UNIQUE(entry_id, user_id)) is expected here — treat
+    // it as idempotent and return the current count. Any other DB error (FK,
+    // I/O) is real and must not be silently reported as success.
+    if (!String(err.code).startsWith('SQLITE_CONSTRAINT')) throw err;
   }
 
   const { count } = db.prepare(

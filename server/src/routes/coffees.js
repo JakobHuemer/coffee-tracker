@@ -38,6 +38,16 @@ const upload = multer({
   },
 });
 
+// Multer surfaces upload failures (too large, wrong type) as errors that would
+// otherwise hit the global handler as a 500. They are client errors, so turn
+// them into a 400 with the actual message the user can act on.
+function handleUpload(mw) {
+  return (req, res, next) => mw(req, res, (err) => {
+    if (err) return res.status(400).json({ error: err.message || 'Upload failed' });
+    next();
+  });
+}
+
 // Timestamps must stay in a range Date can represent, otherwise a single
 // poisoned value (e.g. 1e300) makes every later toISOString() throw and
 // permanently breaks /stats, /compare and achievement checks for that user.
@@ -84,7 +94,7 @@ router.get('/photos', requireAuth, (req, res) => {
 
 // Accepts multipart/form-data (photo optional) or falls back to JSON-parsed
 // body when no file part is present. The photo field must be named "photo".
-router.post('/entries', requireAuth, upload.single('photo'), (req, res) => {
+router.post('/entries', requireAuth, handleUpload(upload.single('photo')), (req, res) => {
   const { coffeeId, timestamp: rawTs, is_public: rawPublic, description } = req.body;
   const coffee = COFFEES.find(c => c.id === coffeeId);
   if (!coffee) {
@@ -115,7 +125,11 @@ router.post('/entries', requireAuth, upload.single('photo'), (req, res) => {
   const now = Date.now();
   const logged_at = ts || now;
   const photo_path = req.file ? req.file.filename : null;
-  const is_public = rawPublic === '0' || rawPublic === 'false' ? 0 : 1;
+  // Public only when explicitly opted in. Accepts the multipart string '1'/'true'
+  // and the JSON boolean true / number 1; anything else (including an absent
+  // field, e.g. the Dashboard quick-log) stays private.
+  const is_public =
+    rawPublic === true || rawPublic === 1 || rawPublic === '1' || rawPublic === 'true' ? 1 : 0;
   const desc = description?.trim() || null;
 
   db.prepare(

@@ -11,6 +11,7 @@ export interface CoffeeEntry {
   coffee_id: string;
   caffeine_mg: number;
   logged_at: number;
+  created_at?: number;
   photo_path: string | null;
   photo_url?: string | null;
   description: string | null;

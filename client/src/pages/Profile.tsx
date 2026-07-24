@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import type { User, Badge } from '../types';
 
@@ -32,7 +32,7 @@ function GalleryCard() {
           <div className="gallery-grid">
             {photos.map(p => (
               <button key={p.id} className="gallery-thumb" onClick={() => setLightbox(p)} aria-label={p.coffee_id}>
-                <img src={p.photo_url} alt={p.coffee_id} loading="lazy" />
+                <img src={uploadUrl(p.photo_url)} alt={p.coffee_id} loading="lazy" />
               </button>
             ))}
           </div>
@@ -42,7 +42,7 @@ function GalleryCard() {
       {lightbox && (
         <div className="gallery-lightbox" onClick={() => setLightbox(null)}>
           <div className="gallery-lightbox-inner" onClick={e => e.stopPropagation()}>
-            <img src={lightbox.photo_url} alt={lightbox.coffee_id} className="gallery-lightbox-img" />
+            <img src={uploadUrl(lightbox.photo_url)} alt={lightbox.coffee_id} className="gallery-lightbox-img" />
             <div className="gallery-lightbox-meta">
               <span className="gallery-lightbox-coffee">{lightbox.coffee_id.replace(/_/g, ' ')}</span>
               <span className="gallery-lightbox-date">{new Date(lightbox.logged_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })}</span>
@@ -57,15 +57,17 @@ function GalleryCard() {
 }
 
 function ChangePasswordCard() {
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
   const mutation = useMutation({
-    mutationFn: (password: string) => api.patch('/auth/me', { password }),
+    mutationFn: (body: { currentPassword: string; password: string }) => api.patch('/auth/me', body),
     onSuccess: () => {
       setSuccess(true);
+      setCurrentPassword('');
       setNewPassword('');
       setConfirm('');
       setTimeout(() => setSuccess(false), 3000);
@@ -77,15 +79,26 @@ function ChangePasswordCard() {
     e.preventDefault();
     setError('');
     setSuccess(false);
+    if (currentPassword.length === 0) { setError('Enter your current password.'); return; }
     if (newPassword.length === 0) { setError('Password cannot be empty.'); return; }
     if (newPassword !== confirm) { setError('Passwords do not match.'); return; }
-    mutation.mutate(newPassword);
+    mutation.mutate({ currentPassword, password: newPassword });
   }
 
   return (
     <div className="card">
       <div className="section-label">Change Password</div>
       <form onSubmit={handleSubmit} className="create-form">
+        <div className="field">
+          <label>Current password</label>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={e => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+            placeholder="Current password"
+          />
+        </div>
         <div className="field">
           <label>New password</label>
           <input
@@ -241,7 +254,7 @@ export function Profile() {
           <div className="profile-photo-area">
             <div className="profile-avatar-wrap">
               {user?.profile_photo_url
-                ? <img src={user.profile_photo_url} alt="Profile" className="profile-avatar-img" />
+                ? <img src={uploadUrl(user.profile_photo_url)} alt="Profile" className="profile-avatar-img" />
                 : <div className="profile-avatar">{user?.avatar}</div>}
               <button
                 className="profile-avatar-upload-btn"
