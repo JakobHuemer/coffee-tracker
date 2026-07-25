@@ -16,7 +16,10 @@ const VALID_METRICS = ['total_cups', 'caffeine', 'espresso_cups', 'unique_types'
 // Pass a single-element array for an individual participant's progress.
 function computeProgress(metric, startDate, userIds) {
   if (!userIds || userIds.length === 0) return 0;
-  const start = new Date(startDate + 'T00:00:00').getTime();
+  // Challenges are shared across users, so their start/end are challenge-global
+  // civil dates anchored to UTC (not any single participant's zone). Parse with
+  // an explicit Z so the boundary never depends on the server's local zone.
+  const start = Date.parse(`${startDate}T00:00:00Z`);
   const placeholders = userIds.map(() => '?').join(',');
   const scope = `user_id IN (${placeholders}) AND`;
 
@@ -78,9 +81,10 @@ function seedCommunityChallenges() {
 seedCommunityChallenges();
 
 router.get('/', requireAuth, (req, res) => {
+  // Personal challenges are private — only the creator sees their own.
   const challenges = db.prepare(
-    "SELECT * FROM challenges WHERE status = 'active' ORDER BY type, end_date"
-  ).all();
+    "SELECT * FROM challenges WHERE status = 'active' AND (type = 'community' OR creator_id = ?) ORDER BY type, end_date"
+  ).all(req.user.id);
 
   const result = challenges.map(c => {
     const participants = db.prepare(
@@ -88,12 +92,18 @@ router.get('/', requireAuth, (req, res) => {
     ).all(c.id);
     const joined = participants.some(p => p.user_id === req.user.id);
 
+    // For personal challenges the creator is always the sole participant; compute
+    // my_progress unconditionally so it never appears stuck at 0.
+    const myProgress = (c.type === 'personal' && c.creator_id === req.user.id)
+      ? userProgressFor(c, req.user.id)
+      : joined ? userProgressFor(c, req.user.id) : null;
+
     return {
       ...c,
       participants_count: participants.length,
       community_progress: communityProgressFor(c, participants),
-      my_progress: joined ? userProgressFor(c, req.user.id) : null,
-      joined,
+      my_progress: myProgress,
+      joined: joined || (c.type === 'personal' && c.creator_id === req.user.id),
     };
   });
 
@@ -151,8 +161,8 @@ router.get('/:id', requireAuth, (req, res) => {
   ).all(challenge.id);
   const communityProgress = communityProgressFor(challenge, participants);
 
-  const now = new Date();
-  const endDate = new Date(challenge.end_date + 'T23:59:59');
+  const now = Date.now();
+  const endDate = Date.parse(`${challenge.end_date}T23:59:59Z`);
 
   if (challenge.type === 'community' && communityProgress >= challenge.target && challenge.status === 'active') {
     db.prepare("UPDATE challenges SET status = 'completed' WHERE id = ?").run(challenge.id);

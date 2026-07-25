@@ -3,9 +3,13 @@ const db = require('./db');
 const { ACHIEVEMENTS } = require('./data/achievements');
 const { BADGES } = require('./data/badges');
 const { COFFEES } = require('./data/coffees');
+const { getUserTz, localDateStr, localTodayStr, localParts } = require('./time');
 
-function dateStr(ts) { return new Date(ts).toISOString().slice(0, 10); }
-function todayStr()   { return new Date().toISOString().slice(0, 10); }
+// Civil day/hour for streaks and time-of-day achievements are evaluated in the
+// user's own timezone. See docs/time-and-timezones.md.
+function yesterdayOf(dateStr) {
+  return new Date(Date.parse(`${dateStr}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+}
 
 function unlockAchievement(userId, achievementId) {
   const already = db.prepare(
@@ -67,18 +71,20 @@ function checkBadgeForRanking(userId) {
 
 function checkAfterCoffeeLog(userId) {
   const unlocked = [];
+  const tz = getUserTz(db, userId);
 
   const allEntries = db.prepare(
     'SELECT coffee_id, caffeine_mg, logged_at FROM coffee_entries WHERE user_id = ? ORDER BY logged_at'
   ).all(userId);
 
+  const today         = localTodayStr(tz);
   const totalCups     = allEntries.length;
   const totalCaffeine = allEntries.reduce((s, e) => s + e.caffeine_mg, 0);
-  const todayEntries  = allEntries.filter(e => dateStr(e.logged_at) === todayStr());
+  const todayEntries  = allEntries.filter(e => localDateStr(e.logged_at, tz) === today);
   const todayCaffeine = todayEntries.reduce((s, e) => s + e.caffeine_mg, 0);
   const seenTypes     = new Set(allEntries.map(e => e.coffee_id));
   const latestTs      = allEntries[allEntries.length - 1]?.logged_at;
-  const latestHour    = latestTs ? new Date(latestTs).getHours() : -1;
+  const latestHour    = latestTs !== undefined ? localParts(latestTs, tz).hour : -1;
 
   // Volume
   if (totalCups >= 1)   unlocked.push(..._try(userId, 'first_sip'));
@@ -105,7 +111,7 @@ function checkAfterCoffeeLog(userId) {
   if (latestHour >= 22)                   unlocked.push(..._try(userId, 'night_owl'));
 
   // Morning ritual
-  unlocked.push(...checkMorningRitual(userId, allEntries));
+  unlocked.push(...checkMorningRitual(userId, allEntries, tz));
 
   // Combo
   unlocked.push(...checkCombo(userId, todayEntries));
@@ -122,7 +128,7 @@ function checkAfterCoffeeLog(userId) {
   }
 
   // Secret: coffee_loop
-  unlocked.push(...checkCoffeeLoop(userId, allEntries));
+  unlocked.push(...checkCoffeeLoop(userId, allEntries, tz));
 
   // Increment casualties if user just crossed 400mg today
   const lastEntry = allEntries[allEntries.length - 1];
@@ -159,27 +165,27 @@ function checkCombo(userId, todayEntries) {
   return unlocked;
 }
 
-function checkMorningRitual(userId, allEntries) {
+function checkMorningRitual(userId, allEntries, tz) {
   if (allEntries.length < 5) return [];
   const byDay = {};
   for (const e of allEntries) {
-    const d = dateStr(e.logged_at);
+    const d = localDateStr(e.logged_at, tz);
     if (!byDay[d]) byDay[d] = e.logged_at;
   }
   const days = Object.keys(byDay).sort();
   if (days.length < 5) return [];
   const last5 = days.slice(-5);
-  const hours = last5.map(d => new Date(byDay[d]).getHours() * 60 + new Date(byDay[d]).getMinutes());
+  const hours = last5.map(d => { const p = localParts(byDay[d], tz); return p.hour * 60 + p.minute; });
   const baseMin = hours[0];
   if (hours.every(m => Math.abs(m - baseMin) <= 30)) return _try(userId, 'morning_ritual');
   return [];
 }
 
-function checkCoffeeLoop(userId, allEntries) {
+function checkCoffeeLoop(userId, allEntries, tz) {
   if (allEntries.length < 9) return [];
   const byDay = {};
   for (const e of allEntries) {
-    const d = dateStr(e.logged_at);
+    const d = localDateStr(e.logged_at, tz);
     if (!byDay[d]) byDay[d] = [];
     byDay[d].push(e.coffee_id);
   }
@@ -192,23 +198,24 @@ function checkCoffeeLoop(userId, allEntries) {
 
 function checkAfterGoalsComplete(userId) {
   const unlocked = [];
+  const tz = getUserTz(db, userId);
+  const today = localTodayStr(tz);
   const streak = db.prepare('SELECT * FROM user_streaks WHERE user_id = ?').get(userId);
   const total = streak?.goals_completed || 0;
 
   if (!streak) {
     db.prepare(
       'INSERT INTO user_streaks (user_id, current_streak, longest_streak, last_goal_date, goals_completed) VALUES (?, 1, 1, ?, 1)'
-    ).run(userId, todayStr());
+    ).run(userId, today);
   } else {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
-    const isConsecutive = streak.last_goal_date === yesterdayStr;
+    // Consecutive = last completion was the user's local yesterday. Comparing
+    // calendar-date strings makes this DST-proof.
+    const isConsecutive = streak.last_goal_date === yesterdayOf(today);
     const newStreak = isConsecutive ? streak.current_streak + 1 : 1;
     const longest   = Math.max(streak.longest_streak, newStreak);
     db.prepare(
       'UPDATE user_streaks SET current_streak = ?, longest_streak = ?, last_goal_date = ?, goals_completed = ? WHERE user_id = ?'
-    ).run(newStreak, longest, todayStr(), total + 1, userId);
+    ).run(newStreak, longest, today, total + 1, userId);
 
     if (newStreak >= 3)  unlocked.push(..._try(userId, 'streak_3'));
     if (newStreak >= 7)  unlocked.push(..._try(userId, 'streak_7'));

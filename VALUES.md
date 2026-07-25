@@ -3,6 +3,44 @@
 Priority order. Read before making changes. This file is the source of truth
 for project values; AGENTS.md covers architecture and workflows.
 
+0. **Never reference symbols that do not exist. (Hard gate — outranks
+   everything below.)** Code that references something that isn't defined — a
+   CSS variable / design token, a function, a variable, an import or export —
+   is **rejected outright in review, with zero consideration of any other code
+   in the change.** No exceptions. Examples of what gets a change thrown out:
+   `var(--text)` when only `--text-primary` exists; calling a helper that was
+   never defined; importing a module or symbol that isn't exported. This is the
+   single most unacceptable class of error — it means the code was never run or
+   checked. Before committing, prove every referenced symbol resolves:
+   typecheck **and** build must pass, and grep for the exact token/function/
+   import you introduced to confirm it exists. If you cannot confirm it exists,
+   do not reference it.
+
+0.4. **A refactor is not done until every dependent is updated to match — no
+   stale logic left alive anywhere.** When behavior/a rule changes anywhere
+   (a backend endpoint, a shared function, a constant, a type), every other
+   place that assumed the old behavior must be found and updated in the same
+   change: UI labels and copy ("optional", disabled-state hints, validation
+   messages, placeholders), other call sites, duplicated/parallel logic
+   elsewhere in the same layer, docs, tests. This is not only a backend→
+   frontend concern — a rule can drift within a single file or across several
+   frontend components with no backend involved at all. A disabled control
+   with no explanation of why, or copy that contradicts actual behavior, is a
+   bug, not a minor gap. Do not ship a change that leaves the codebase telling
+   two different stories. This costs more tokens per change — pay it. Grep for
+   the old wording/constant/behavior across the whole affected surface before
+   calling a refactor finished.
+
+0.5. **No emojis in the UI — use real icons.** Every glyph in the interface is a
+   proper icon from a single library (`react-icons`, Font Awesome set), never an
+   emoji. This keeps rendering consistent across platforms/fonts (emoji look
+   different on every OS) and the visual language uniform. The **only** exception
+   is the user's profile "image": the avatar picker (`Profile.tsx` `AVATARS`) is
+   deliberately an emoji chooser, and that emoji is rendered as the user's avatar
+   wherever their identity appears (feed headers, compare, profile). No other
+   emoji — not in buttons, labels, empty states, toasts, tabs, status text, or
+   coffee-type icons. When you need a glyph, import an icon; do not paste an emoji.
+
 1. **Stability & consistency above all.** This app should just run, for a long
    time, without surprises. Prefer boring, proven approaches over clever ones.
    "Code quality" polish is not a goal in itself — a stable, predictable system

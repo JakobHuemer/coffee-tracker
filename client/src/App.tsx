@@ -1,17 +1,16 @@
-import type { JSX } from 'react';
+import { useEffect, type JSX } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api/client';
 import { useAuthStore } from './store/auth';
-import { useThemeStore } from './store/theme';
-import { BgCanvas } from './components/BgCanvas';
+// Animated caffeine background disabled for now — kept in the tree for later.
+// import { BgCanvas } from './components/BgCanvas';
 import { BottomNav } from './components/BottomNav';
 import { Auth } from './pages/Auth';
-import { Dashboard } from './pages/Dashboard';
-import { Goals } from './pages/Goals';
-import { Achievements } from './pages/Achievements';
-import { Rankings } from './pages/Rankings';
-import { Challenges } from './pages/Challenges';
+import { Feed } from './pages/Feed';
+import { Saved } from './pages/Saved';
+import { LogCoffee } from './pages/LogCoffee';
+import { Stats } from './pages/Stats';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
 import type { User } from './types';
@@ -26,45 +25,57 @@ export function App() {
   const token = useAuthStore(s => s.token);
   const user = useAuthStore(s => s.user);
   const setAuth = useAuthStore(s => s.setAuth);
-  const levelIndex = useThemeStore(s => s.levelIndex);
-  const isDark = useThemeStore(s => s.isDark);
-  const toggleDark = useThemeStore(s => s.toggleDark);
+  const logout = useAuthStore(s => s.logout);
+  const qc = useQueryClient();
   const location = useLocation();
 
-  useQuery({
+  const { data: meData, isError: meError } = useQuery({
     queryKey: ['me'],
-    queryFn: () => api.get<User>('/auth/me').then(u => { setAuth(u, token!); return u; }),
+    queryFn: () => api.get<User>('/auth/me'),
     enabled: !!token && !user,
     retry: false,
   });
 
+  // Adopt the fetched user; on any failure (invalid/expired token, deleted user)
+  // clear the session so the app can't render half-logged-in. RequireAuth then
+  // redirects to /auth.
+  useEffect(() => {
+    if (meData && token) setAuth(meData, token);
+  }, [meData, token, setAuth]);
+  useEffect(() => {
+    if (meError) { logout(); qc.clear(); }
+  }, [meError, logout, qc]);
+
+  // Keep the stored IANA timezone in sync with the current browser zone (the
+  // user may have travelled). Fire-and-forget on the next interaction; the
+  // server evaluates civil-time logic in this zone. See docs/time-and-timezones.md.
+  useEffect(() => {
+    if (!user || !token) return;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && user.timezone && user.timezone !== tz) {
+      api.patch<User>('/auth/me', { timezone: tz }).then(u => setAuth(u, token)).catch(() => {});
+    }
+  }, [user, token, setAuth]);
+
   const isAuth = location.pathname === '/auth';
-  const isDashboard = location.pathname === '/';
 
   return (
     <>
-      <BgCanvas level={levelIndex} />
-      {/* Fixed toggle shown on all pages except Dashboard (which puts it in its own header) and Auth */}
-      {!isAuth && !isDashboard && (
-        <button
-          className="dark-toggle"
-          onClick={toggleDark}
-          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-        >
-          {isDark ? '☀️' : '🌙'}
-        </button>
-      )}
+      {/* Animated caffeine background disabled for now — see BgCanvas. */}
       <div id="app-wrap">
         <Routes>
           <Route path="/auth" element={<Auth />} />
-          <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
-          <Route path="/goals" element={<RequireAuth><Goals /></RequireAuth>} />
-          <Route path="/achievements" element={<RequireAuth><Achievements /></RequireAuth>} />
-          <Route path="/rankings" element={<RequireAuth><Rankings /></RequireAuth>} />
-          <Route path="/challenges" element={<RequireAuth><Challenges /></RequireAuth>} />
+          <Route path="/" element={<RequireAuth><Feed /></RequireAuth>} />
+          <Route path="/saved" element={<RequireAuth><Saved /></RequireAuth>} />
+          <Route path="/log" element={<RequireAuth><LogCoffee /></RequireAuth>} />
+          <Route path="/stats" element={<RequireAuth><Stats /></RequireAuth>} />
           <Route path="/compare" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/compare/:username" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+          <Route path="/goals" element={<Navigate to="/stats" replace />} />
+          <Route path="/achievements" element={<Navigate to="/stats" replace />} />
+          <Route path="/rankings" element={<Navigate to="/stats" replace />} />
+          <Route path="/challenges" element={<Navigate to="/stats" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         {token && !isAuth && <BottomNav />}

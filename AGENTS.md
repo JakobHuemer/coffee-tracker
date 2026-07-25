@@ -54,6 +54,28 @@ later. **If `CONCEPT.md` does not exist yet, add a one-line nudge at the start o
 a new session** asking whether we can start `CONCEPT.md` soon via some
 back-and-forth while working in the code. Keep it to one line; don't block work.
 
+## Session log
+
+Every session **must** maintain one file in `sessions/` — one file per session,
+e.g. `sessions/YYYY-MM-DD-<short-slug>.md`. Hard cap: **100 lines, never
+exceed.** If you approach the limit, tighten existing lines; don't spill.
+
+What goes in it: only high-value context **not recorded anywhere else** — bug
+catches, gotchas, non-obvious findings, dead ends, decisions that will help a
+future agent. Not a diary. Skip anything derivable from code, git history, or
+other docs. Underuse over overuse — most lines are noise; keep the signal.
+
+Each file starts with frontmatter listing the **topics** it covers. A session
+usually spans many topics, so this is the index: a new agent reads only the
+frontmatter across `sessions/*.md` to decide which file is relevant, instead of
+guessing from filenames.
+
+```markdown
+---
+topics: [theme-switch, docker-volume, jwt-expiry-bug, migration-0007]
+---
+```
+
 ## Discovering new core values
 
 This core-values system was added by **JakobHuemer** to keep a fast-moving
@@ -65,9 +87,24 @@ loop. Never write values into AGENTS.md.
 
 ## Guardrails
 
+- **Never reference a symbol that doesn't exist** — a CSS variable / design
+  token, function, variable, import, or export. This is VALUES.md rule 0, the
+  top-priority hard gate: such a change is **rejected outright in review**,
+  regardless of everything else in it. Before committing, run typecheck **and**
+  build, and grep for the exact token/function/import you introduced to confirm
+  it resolves. Unverified references are unacceptable.
 - Don't split the frontend back into its own image/service/proxy.
 - Don't add schema changes outside `server/src/migrations/`.
 - Don't introduce npm/yarn/pnpm or a second lockfile.
 - Don't add cross-origin API calls / a hardcoded API base URL.
 - Don't let the process start with missing config or a failed migration.
 - Verify persistence + `integrity_check` after any change near the DB or Docker.
+- **Prefer fetching over recall. Assume you know ~1% of any topic and that the
+  rest of your "knowledge" is wrong.** Before designing, reviewing, or changing
+  anything non-trivial (timezones, security, protocols, library behaviour,
+  APIs), **look it up** — WebFetch/WebSearch the primary source, read the actual
+  docs, or grep this repo — instead of answering from memory. State plainly when
+  something is unverified recall vs. checked. Confident-sounding guesses are the
+  failure mode here; a fetched citation beats a remembered "fact" every time.
+- **Time / timezones:** follow [docs/time-and-timezones.md](./docs/time-and-timezones.md)
+  and fetch its linked sources before touching time code.

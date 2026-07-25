@@ -3,6 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 
+// Photo uploads live on the same volume as the DB so they survive restarts.
+const UPLOAD_DIR = process.env.DB_DIR
+  ? path.join(process.env.DB_DIR, 'uploads')
+  : path.join(__dirname, '..', 'data', 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
 // Fail fast rather than signing/verifying tokens with an undefined or weak
 // secret. Tokens are only as trustworthy as this value, so it must be provided.
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
@@ -45,9 +51,49 @@ app.use((req, res, next) => {
 // DB or auth so a green check means "the process is up and serving".
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+// Serve uploaded photos through an auth gate rather than a bare static handler,
+// so private coffee photos (is_public = 0) are not readable by anyone who
+// guesses the (random) filename. Profile photos and public coffee photos are
+// visible to any authenticated user; private coffee photos only to their owner.
+// <img> tags can't send an Authorization header, so a `token` query param is
+// accepted in addition to the header.
+const jwt = require('jsonwebtoken');
+app.get('/uploads/:filename', (req, res) => {
+  const { filename } = req.params;
+  // Bare-filename guard: no slashes, dots-only segments, etc. — blocks traversal.
+  if (!/^[A-Za-z0-9._-]+$/.test(filename) || filename.includes('..')) {
+    return res.status(400).json({ error: 'Bad request' });
+  }
+
+  const header = req.headers.authorization;
+  const raw = header && header.startsWith('Bearer ')
+    ? header.slice(7).trim()
+    : (typeof req.query.token === 'string' ? req.query.token : '');
+  let userId;
+  try {
+    userId = jwt.verify(raw, process.env.JWT_SECRET, { algorithms: ['HS256'] }).id;
+  } catch {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // Profile photos (pfp_ prefix) appear in the public feed/compare, so any
+  // authenticated user may view them. Everything else must be a coffee photo
+  // that is either public or owned by the requester.
+  if (!filename.startsWith('pfp_')) {
+    const entry = db.prepare('SELECT user_id, is_public FROM coffee_entries WHERE photo_path = ?').get(filename);
+    if (!entry) return res.status(404).json({ error: 'Not found' });
+    if (entry.is_public !== 1 && entry.user_id !== userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
+
+  res.sendFile(path.join(UPLOAD_DIR, filename));
+});
+
 // Routes
 app.use('/api/auth',        require('./routes/auth'));
 app.use('/api/coffees',     require('./routes/coffees'));
+app.use('/api/feed',        require('./routes/feed'));
 app.use('/api/goals',       require('./routes/goals'));
 app.use('/api/achievements',require('./routes/achievements'));
 app.use('/api/badges',      require('./routes/badges'));

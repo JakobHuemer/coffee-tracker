@@ -3,7 +3,8 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { checkAfterCompare } = require('../achievements');
 const { COFFEES } = require('../data/coffees');
-const { dateStr } = require('./_helpers');
+const { BADGES } = require('../data/badges');
+const { getUserTz, localTodayStr, localDateStr } = require('../time');
 
 const router = express.Router();
 
@@ -12,8 +13,10 @@ function buildUserStats(userId) {
     'SELECT coffee_id, caffeine_mg, logged_at FROM coffee_entries WHERE user_id = ? ORDER BY logged_at'
   ).all(userId);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayEntries = allEntries.filter(e => dateStr(e.logged_at) === today);
+  // Each user's "today" is evaluated in that user's own timezone.
+  const tz = getUserTz(db, userId);
+  const today = localTodayStr(tz);
+  const todayEntries = allEntries.filter(e => localDateStr(e.logged_at, tz) === today);
   const sevenDayTotal = allEntries.filter(e => Date.now() - e.logged_at <= 7 * 86400000).length;
 
   const byType = {};
@@ -40,9 +43,25 @@ function buildUserStats(userId) {
   };
 }
 
+function resolvedFeaturedBadges(userId) {
+  const row = db.prepare('SELECT featured_badges FROM users WHERE id = ?').get(userId);
+  const ids = row?.featured_badges ? row.featured_badges.split(',').filter(Boolean) : [];
+  if (ids.length === 0) return [];
+  const unlockedSet = new Set(
+    db.prepare(`SELECT badge_id FROM user_badges WHERE user_id = ? AND badge_id IN (${ids.map(() => '?').join(',')})`).all(userId, ...ids).map(r => r.badge_id)
+  );
+  return ids
+    .filter(id => unlockedSet.has(id))
+    .map(id => {
+      const b = BADGES.find(b => b.id === id);
+      return b ? { id: b.id, name: b.name, icon: b.icon, rarity: b.rarity } : null;
+    })
+    .filter(Boolean);
+}
+
 router.get('/:username', requireAuth, (req, res) => {
   const target = db.prepare(
-    'SELECT id, username, avatar, created_at FROM users WHERE username = ?'
+    'SELECT id, username, avatar, profile_photo FROM users WHERE username = ?'
   ).get(req.params.username);
 
   if (!target) return res.status(404).json({ error: 'User not found' });
@@ -51,9 +70,17 @@ router.get('/:username', requireAuth, (req, res) => {
   const myStats = buildUserStats(req.user.id);
   const theirStats = buildUserStats(target.id);
   const unlocked = checkAfterCompare(req.user.id, target.id);
-  const me = db.prepare('SELECT id, username, avatar FROM users WHERE id = ?').get(req.user.id);
+  const me = db.prepare('SELECT id, username, avatar, profile_photo FROM users WHERE id = ?').get(req.user.id);
 
-  res.json({ me: { ...me, stats: myStats }, them: { ...target, stats: theirStats }, unlocked });
+  function withPhotoUrl(u) {
+    return { ...u, profile_photo_url: u.profile_photo ? `/uploads/${u.profile_photo}` : null };
+  }
+
+  res.json({
+    me: { ...withPhotoUrl(me), featured_badges: resolvedFeaturedBadges(req.user.id), stats: myStats },
+    them: { ...withPhotoUrl(target), featured_badges: resolvedFeaturedBadges(target.id), stats: theirStats },
+    unlocked,
+  });
 });
 
 module.exports = router;

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { Icon } from '../components/Icon';
 import type { Achievement, Badge } from '../types';
 
 const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'secret'];
@@ -40,7 +41,7 @@ export function Achievements() {
               .sort((a, b) => (b.unlocked ? 1 : 0) - (a.unlocked ? 1 : 0) || RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity))
               .map(b => (
                 <div key={b.id} className={`badge-card ${b.unlocked ? 'unlocked' : 'locked'}`} title={b.description}>
-                  <div className="badge-icon">{b.icon}</div>
+                  <div className="badge-icon"><Icon name={b.icon} size={28} /></div>
                   <div className="badge-name">{b.name}</div>
                   <div className="badge-rarity" style={{ color: RARITY_COLORS[b.rarity] || '#999' }}>
                     {rarityLabel(b.rarity)}
@@ -61,7 +62,7 @@ export function Achievements() {
               <div className="ach-list">
                 {catAchs.map(a => (
                   <div key={a.id} className={`ach-item ${a.unlocked ? 'unlocked' : 'locked'}`}>
-                    <div className="ach-icon">{a.icon}</div>
+                    <div className="ach-icon"><Icon name={a.icon} size={24} /></div>
                     <div className="ach-body">
                       <div className="ach-name">{a.name}</div>
                       <div className="ach-desc">{a.description}</div>
@@ -69,7 +70,7 @@ export function Achievements() {
                         <div className="ach-date">Unlocked {new Date(a.unlocked_at).toLocaleDateString()}</div>
                       )}
                     </div>
-                    {a.unlocked && <div className="ach-check">✅</div>}
+                    {a.unlocked && <div className="ach-check"><Icon name="check-circle" /></div>}
                   </div>
                 ))}
               </div>

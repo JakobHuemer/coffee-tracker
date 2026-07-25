@@ -11,13 +11,38 @@ export interface CoffeeEntry {
   coffee_id: string;
   caffeine_mg: number;
   logged_at: number;
+  created_at?: number;
+  photo_path: string | null;
+  photo_url?: string | null;
+  description: string | null;
+  is_public: 0 | 1;
+}
+
+export interface FeedPost {
+  id: string;
+  user_id: string;
+  coffee_id: string;
+  caffeine_mg: number;
+  logged_at: number;
+  photo_path: string | null;
+  photo_url: string | null;
+  description: string | null;
+  is_public: 0 | 1;
+  username: string;
+  avatar: string;
+  profile_photo_url: string | null;
+  likes_count: number;
+  liked_by_me: boolean;
+  bookmarked_by_me: boolean;
 }
 
 export interface User {
   id: string;
   username: string;
   avatar: string;
+  profile_photo_url?: string | null;
   featured_badges: string[];
+  timezone?: string;
   created_at: number;
 }
 
@@ -136,10 +161,19 @@ export interface CompareUserStats {
   badges_count: number;
 }
 
+export interface FeaturedBadge {
+  id: string;
+  name: string;
+  icon: string;
+  rarity: string;
+}
+
 export interface CompareUserProfile {
   id: string;
   username: string;
   avatar: string;
+  profile_photo_url?: string | null;
+  featured_badges: FeaturedBadge[];
   stats: CompareUserStats;
 }
 
