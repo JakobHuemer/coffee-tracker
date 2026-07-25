@@ -10,9 +10,10 @@ animation/transition inconsistency. Checkboxes track the fixing pass.
   `.log-item`, `.bd-item`, `.app-header`, `.bottom-nav`, …) transitions on
   theme change; everything else hard-switches. Timings are mixed (0.4s / 0.5s).
   Result: switching theme fades some elements and snaps others.
-  Fix: one global rule transitioning `background-color`/`border-color`/`color`/
-  `fill` at **0.15s** for all elements; delete the ad-hoc 0.4/0.5s theme
-  transitions.
+  Fixed: theme switch is now **instant/hard** — all ad-hoc 0.4/0.5s theme
+  transitions removed and no global transition added. (A global transition
+  would need every element to animate its colors and would drift out of sync
+  as soon as any new element is added, so we deliberately don't animate it.)
 - [x] **A2 — `.theme-badge { transition: all 0.5s }`** animates layout props too
   (and the element is now dead). Remove.
 - [x] **A3 — Theme-blind hardcoded colors** that stay light in dark mode:

@@ -57,15 +57,10 @@
 /* ── Reset ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* Global theme switch: every element eases only its themeable colors over
-   0.15s, so toggling light/dark changes the whole UI at one uniform speed
-   instead of a subset fading (0.4–0.5s) while everything else snaps. Elements
-   that need their own interaction transitions (transform/opacity) set those
-   explicitly and are unaffected. */
-*, *::before, *::after {
-  transition: background-color 0.15s ease, border-color 0.15s ease,
-              color 0.15s ease, fill 0.15s ease;
-}
+/* Theme switch is intentionally instant (no transition). Animating it would
+   require every element to transition its colors, which drifts out of sync the
+   moment any new element is added — a maintenance trap. Interaction states
+   (hover/press) keep their own scoped transitions. */
 
 body {
   background: var(--bg);
