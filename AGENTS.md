@@ -85,6 +85,54 @@ directly into `VALUES.md` in its own separate commit. Note it in one inline
 sentence so the user sees it happened; don't block work or ask for an approval
 loop. Never write values into AGENTS.md.
 
+## Issues & labels
+
+Every issue carries **one `priority:`**, **one `type:`**, and optionally
+`effort:`, `status:`, and `agent`. Labels are the source of truth for what to
+work on and whether it is safe to start.
+
+**Priority** (importance — pick the highest that fits):
+
+- `priority:show-stopper` — breaks a core flow or risks data loss. Drop everything.
+- `priority:high` — important, do soon.
+- `priority:standard` — normal backlog.
+- `priority:minor` — nice-to-have, low urgency.
+
+**Type** (classification): `type:bug`, `type:feature`, `type:enhancement`,
+`type:infra`, `type:testing`, `type:docs`, `type:chore`.
+
+**Effort** (rough size): `effort:trivial` (<1h) · `effort:small` (half a
+session) · `effort:medium` (one session) · `effort:large` (multi-session, needs
+a plan first).
+
+**Status / claim**: `status:claimed`, `status:in-progress`, `status:blocked`,
+`status:needs-discussion`. `agent` marks an issue safe for an autonomous agent.
+
+### Claim protocol (so parallel agents don't collide)
+
+Before touching any issue an agent **must**:
+
+1. `gh issue view <N> --json labels,assignees,title` and check for a claim.
+2. **If `status:claimed` or `status:in-progress` is present (or it is assigned
+   to someone else): STOP. Do not start.** Report to the user that the issue is
+   already claimed and pick something else or wait.
+3. Otherwise **claim it before writing any code**:
+   `gh issue edit <N> --add-label status:in-progress` and
+   `gh issue comment <N> --body "Claimed by <agent-id> at <UTC time>."`
+4. On finish, the closing PR clears it (the merge removes the issue). If you
+   **abandon** the work: `gh issue edit <N> --remove-label status:in-progress`
+   and comment why, so the next agent can take it.
+
+The label claim is best-effort, not a lock — re-check labels right before you
+start committing.
+
+### PRs must reference their issue
+
+If a PR resolves an existing issue, it **must** reference it with a closing
+keyword in the PR body: `Fixes #<N>` / `Closes #<N>` (one per issue if it spans
+several). Issue-less PRs are fine — a PR does **not** need an issue created for
+it; only reference an issue if one already exists.
+
 ## Guardrails
 
 - **Never reference a symbol that doesn't exist** — a CSS variable / design
