@@ -42,8 +42,8 @@ Decided — K per mode (classic single-match Elo uses `K=32` as reference):
 
 | mode      | K  | scope window |
 |-----------|----|--------------|
-| daily     | 8  | fixed recurring UTC day |
-| weekly    | 20 | fixed recurring UTC week |
+| daily     | 8  | recurring day, per timezone shard |
+| weekly    | 20 | recurring week, per timezone shard |
 | 1v1       | 32 | set at match creation, not recurring |
 | ondemand (FFA) | 32 | set at match creation, not recurring |
 | team      | 24 | set at match creation, not recurring |
@@ -61,19 +61,47 @@ split step), not because the match itself is less deliberate.
 made (e.g. "settle at end of today", "run for the next 3 days"). Only daily
 and weekly are on a fixed recurring window.
 
-**Daily/weekly windows are UTC, not per-user civil days — deliberate
-exception to `docs/time-and-timezones.md`.** That doc's convention (civil
-day/week boundaries evaluated per-user IANA timezone) exists for single-user
-constructs like streaks and goals. A match pools multiple participants who
-must all be scored over the *identical* window — if each participant's "day"
-were their own civil day, two participants in different zones would be
-scored over windows offset by up to ~23 hours, handing one of them extra
-time to accumulate score before settlement. A single shared clock (UTC)
-removes that unfairness entirely, so it also removes the need for a
-timezone-based join restriction: participants in any timezone can compete
-in the same daily/weekly match, since the window is an absolute instant
-range, not evaluated relative to anyone's locale. No cross-timezone block
-needed — the shared clock *is* the simpler solution.
+### Timezones
+
+Two cases.
+
+**Automatic matches (daily, weekly)** run one match per timezone shard, so the
+reset lands on each player's own midnight.
+
+Shard key comes from the user's zone evaluated at one fixed reference instant
+(`2026-01-15T12:00:00Z`). DST is deliberately ignored — the offset at that
+instant is the offset used all year.
+
+```
+offsetHours = offsetMs(REFERENCE_INSTANT, userTz) / 3600000
+shard       = ((round(offsetHours) % 24) + 24) % 24        // 0..23
+```
+
+Rounding to whole hours folds :30/:45 zones (India, Nepal, Chatham) into the
+nearest hour. The `% 24` wrap merges +14 with -10 and +13 with -11 — those
+share a wall clock, so they belong in the same match. Exactly 24 shards.
+
+Window for shard `s` on civil date `D`:
+
+```
+start = Date.parse(`${D}T00:00:00Z`) - s * 3600000
+end   = start + 86400000 - 1
+```
+
+Weekly is the same, anchored to Monday, running 7 days.
+
+Accepted cost: a DST-observing region is off by an hour for half the year
+(Vienna resets 00:00 in winter, 01:00 in summer). Chosen so shard membership
+never churns and nobody switches match mid-season.
+
+**User-created matches (1v1, ondemand, team)** are global — no shard. Their
+timeframe is fixed at creation as absolute UTC instants and applies to every
+participant regardless of location. The frontend renders those instants in the
+viewer's local time; the server never re-anchors them.
+
+`scope_start`/`scope_end` are UTC epoch ms in both cases. Every participant in
+a match shares one identical window, so the zero-sum/fairness argument is
+unchanged.
 
 `actual` is rank, not magnitude: for scores `S_i`, `S_j`,
 `A_ij = 1 if S_i>S_j, 0.5 if equal, 0 if S_i<S_j`. Only ordering matters —
@@ -161,6 +189,7 @@ Combined with `P_A=-P_B`, the whole match nets to zero.
 ```
 matches
   id, mode ('daily'|'weekly'|'ondemand'|'1v1'|'team'),
+  shard (0..23, NULL for user-created modes),
   scope_start, scope_end, state ('pending'|'settled'), k_factor, settled_at
 
 match_participants
