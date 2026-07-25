@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
+import { useCallback } from 'react';
+import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
@@ -19,7 +19,18 @@ function timeAgo(ms: number): string {
   return `${d}d ago`;
 }
 
-function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id: string, liked: boolean, count: number) => void; currentUserId: string }) {
+// Apply fn to the one post matching id across every infinite-query page,
+// returning a new InfiniteData so React Query treats it as changed.
+function patchFeed(
+  old: InfiniteData<FeedPost[]> | undefined,
+  id: string,
+  fn: (p: FeedPost) => FeedPost,
+): InfiniteData<FeedPost[]> | undefined {
+  if (!old) return old;
+  return { ...old, pages: old.pages.map(page => page.map(p => (p.id === id ? fn(p) : p))) };
+}
+
+function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id: string, liked: boolean) => void; currentUserId: string }) {
   const navigate = useNavigate();
   const liked = post.liked_by_me;
 
@@ -60,7 +71,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id
       <div className="feed-post-actions">
         <button
           className={`feed-like-btn${liked ? ' liked' : ''}`}
-          onClick={() => onLike(post.id, liked, post.likes_count)}
+          onClick={() => onLike(post.id, liked)}
           aria-label={liked ? 'Unlike' : 'Like'}
         >
           {liked ? '❤️' : '🤍'} <span className="feed-like-count">{post.likes_count}</span>
@@ -72,9 +83,9 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id
 
 export function Feed() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const { isDark, toggleDark } = useThemeStore();
   const currentUserId = useAuthStore(s => s.user?.id ?? '');
-  const [optimistic, setOptimistic] = useState<Record<string, { liked: boolean; count: number }>>({});
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
     queryKey: ['feed'],
@@ -85,24 +96,34 @@ export function Feed() {
     initialPageParam: 0,
   });
 
+  // Likes are written straight into the ['feed'] cache — the single source of
+  // truth — so the state survives navigation/unmount. onMutate applies the
+  // optimistic flip, onError rolls back, onSuccess reconciles to the server's
+  // authoritative count.
   const likeMutation = useMutation({
     mutationFn: ({ id, liked }: { id: string; liked: boolean }) =>
       liked
         ? api.delete<{ likes_count: number; liked_by_me: boolean }>(`/feed/${id}/like`)
         : api.post<{ likes_count: number; liked_by_me: boolean }>(`/feed/${id}/like`, {}),
+    onMutate: async ({ id, liked }) => {
+      await qc.cancelQueries({ queryKey: ['feed'] });
+      const prev = qc.getQueryData<InfiniteData<FeedPost[]>>(['feed']);
+      qc.setQueryData<InfiniteData<FeedPost[]>>(['feed'], old =>
+        patchFeed(old, id, p => ({ ...p, liked_by_me: !liked, likes_count: p.likes_count + (liked ? -1 : 1) })));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['feed'], ctx.prev);
+    },
     onSuccess: (result, { id }) => {
-      setOptimistic(prev => ({ ...prev, [id]: { liked: result.liked_by_me, count: result.likes_count } }));
+      qc.setQueryData<InfiniteData<FeedPost[]>>(['feed'], old =>
+        patchFeed(old, id, p => ({ ...p, liked_by_me: result.liked_by_me, likes_count: result.likes_count })));
     },
   });
 
-  const handleLike = useCallback((id: string, currentlyLiked: boolean, currentCount: number) => {
-    const current = optimistic[id] ?? { liked: currentlyLiked, count: currentCount };
-    setOptimistic(prev => ({
-      ...prev,
-      [id]: { liked: !current.liked, count: current.count + (current.liked ? -1 : 1) },
-    }));
-    likeMutation.mutate({ id, liked: current.liked });
-  }, [optimistic, likeMutation]);
+  const handleLike = useCallback((id: string, liked: boolean) => {
+    likeMutation.mutate({ id, liked });
+  }, [likeMutation]);
 
   const posts = data?.pages.flat() ?? [];
 
@@ -141,13 +162,9 @@ export function Feed() {
         )}
 
         <div className="feed-list">
-          {posts.map(post => {
-            const opt = optimistic[post.id];
-            const resolved: FeedPost = opt
-              ? { ...post, liked_by_me: opt.liked, likes_count: opt.count }
-              : post;
-            return <PostCard key={post.id} post={resolved} onLike={handleLike} currentUserId={currentUserId} />;
-          })}
+          {posts.map(post => (
+            <PostCard key={post.id} post={post} onLike={handleLike} currentUserId={currentUserId} />
+          ))}
         </div>
 
         {hasNextPage && (

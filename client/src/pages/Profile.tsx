@@ -232,6 +232,17 @@ export function Profile() {
     updateMutation.mutate(body);
   }
 
+  // Seed the edit form from the live user each time editing opens, so the form
+  // never shows stale values — an async-loaded user, or an edit abandoned via
+  // Cancel, would otherwise leave the fields diverged from the displayed data.
+  function startEdit() {
+    setNewUsername(user?.username ?? '');
+    setSelectedAvatar(user?.avatar ?? '☕');
+    setFeaturedBadges(user?.featured_badges ?? []);
+    setError('');
+    setEditMode(true);
+  }
+
   function toggleBadge(id: string) {
     setFeaturedBadges(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : prev.length < 3 ? [...prev, id] : prev
@@ -335,7 +346,7 @@ export function Profile() {
                   ))}
                 </div>
               )}
-              <button className="btn-secondary" style={{ marginTop: 12 }} onClick={() => setEditMode(true)}>
+              <button className="btn-secondary" style={{ marginTop: 12 }} onClick={startEdit}>
                 Edit Profile
               </button>
             </>

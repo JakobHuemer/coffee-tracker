@@ -46,7 +46,11 @@ function GoalsTab({ setNotifications }: { setNotifications: (n: UnlockNotificati
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['goals'] });
       qc.invalidateQueries({ queryKey: ['streaks'] });
-      if (result.unlocked?.length) setNotifications(result.unlocked);
+      if (result.unlocked?.length) {
+        setNotifications(result.unlocked);
+        qc.invalidateQueries({ queryKey: ['badges'] });
+        qc.invalidateQueries({ queryKey: ['achievements'] });
+      }
     },
   });
 
@@ -286,7 +290,14 @@ function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotif
 
   const joinMutation = useMutation({
     mutationFn: (id: string) => api.post<{ ok: boolean; unlocked: UnlockNotification[] }>(`/challenges/${id}/join`),
-    onSuccess: (data) => { qc.invalidateQueries({ queryKey: ['challenges'] }); if (data.unlocked?.length) setNotifications(data.unlocked); },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['challenges'] });
+      if (data.unlocked?.length) {
+        setNotifications(data.unlocked);
+        qc.invalidateQueries({ queryKey: ['badges'] });
+        qc.invalidateQueries({ queryKey: ['achievements'] });
+      }
+    },
   });
   const createMutation = useMutation({
     mutationFn: (body: typeof form) => api.post('/challenges', body),

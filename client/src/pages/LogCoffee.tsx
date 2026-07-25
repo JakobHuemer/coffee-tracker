@@ -85,10 +85,13 @@ export function LogCoffee() {
         setSubmitting(false);
         return;
       }
-      qc.invalidateQueries({ queryKey: ['feed'] });
-      qc.invalidateQueries({ queryKey: ['entries'] });
-      qc.invalidateQueries({ queryKey: ['stats'] });
-      qc.invalidateQueries({ queryKey: ['streaks'] });
+      // A new coffee can move every derived surface (unlocks, tasks, streaks,
+      // casualties, rankings), so invalidate all of them — not just the feed —
+      // to keep every page consistent with the just-logged entry.
+      for (const key of ['feed', 'entries', 'stats', 'streaks', 'goals',
+        'badges', 'achievements', 'casualties', 'challenges', 'rankings']) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
       if (data.unlocked?.length) {
         setNotifications(data.unlocked);
         // Brief pause so the toast is visible before navigating.
