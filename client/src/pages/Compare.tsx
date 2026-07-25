@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
 import { UnlockToast } from '../components/UnlockToast';
+import { AppHeader } from '../components/AppHeader';
 import type { CompareUserProfile, CompareUserStats, FeaturedBadge, UnlockNotification } from '../types';
 
 interface CompareResponse {
@@ -199,6 +200,7 @@ export function Compare() {
   const { username } = useParams<{ username: string }>();
   return (
     <div className="page">
+      <AppHeader />
       <div className="page-header">
         <h2>Coffee Comparison</h2>
         <p className="page-sub">How do you stack up?</p>

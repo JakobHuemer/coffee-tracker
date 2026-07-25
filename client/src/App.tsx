@@ -1,9 +1,8 @@
 import type { JSX } from 'react';
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api/client';
 import { useAuthStore } from './store/auth';
-import { useThemeStore } from './store/theme';
 // Animated caffeine background disabled for now — kept in the tree for later.
 // import { BgCanvas } from './components/BgCanvas';
 import { BottomNav } from './components/BottomNav';
@@ -25,10 +24,7 @@ export function App() {
   const token = useAuthStore(s => s.token);
   const user = useAuthStore(s => s.user);
   const setAuth = useAuthStore(s => s.setAuth);
-  const isDark = useThemeStore(s => s.isDark);
-  const toggleDark = useThemeStore(s => s.toggleDark);
   const location = useLocation();
-  const navigate = useNavigate();
 
   useQuery({
     queryKey: ['me'],
@@ -38,34 +34,10 @@ export function App() {
   });
 
   const isAuth = location.pathname === '/auth';
-  // Feed (/) and Log (/log) manage their own top-right area.
-  const hasOwnTopRight = location.pathname === '/' || location.pathname === '/log';
 
   return (
     <>
-      {/* <BgCanvas level={levelIndex} /> */}
-      {!isAuth && !hasOwnTopRight && (
-        <div className="top-right-actions">
-          <button
-            className="dark-toggle-inline"
-            onClick={toggleDark}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {isDark ? '☀️' : '🌙'}
-          </button>
-          <button
-            className="profile-icon-btn"
-            onClick={() => navigate('/profile')}
-            title="Profile"
-            aria-label="Go to profile"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
-            </svg>
-          </button>
-        </div>
-      )}
+      {/* Animated caffeine background disabled for now — see BgCanvas. */}
       <div id="app-wrap">
         <Routes>
           <Route path="/auth" element={<Auth />} />

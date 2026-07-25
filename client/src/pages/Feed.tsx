@@ -3,7 +3,7 @@ import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from
 import { useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
-import { useThemeStore } from '../store/theme';
+import { AppHeader } from '../components/AppHeader';
 import type { FeedPost } from '../types';
 
 const PAGE_SIZE = 20;
@@ -82,9 +82,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id
 }
 
 export function Feed() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
-  const { isDark, toggleDark } = useThemeStore();
   const currentUserId = useAuthStore(s => s.user?.id ?? '');
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery({
@@ -129,26 +127,7 @@ export function Feed() {
 
   return (
     <div className="page feed-page">
-      <header className="app-header">
-        <div className="header-brand">
-          <img className="logo" src="/favicon.svg" alt="Coffee Tracker" />
-          <div>
-            <h1>Coffee Tracker</h1>
-            <div className="date">{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button className="dark-toggle-inline" onClick={toggleDark} title={isDark ? 'Light mode' : 'Dark mode'}>
-            {isDark ? '☀️' : '🌙'}
-          </button>
-          <button className="profile-icon-btn-inline" onClick={() => navigate('/profile')} title="Profile" aria-label="Go to profile">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <circle cx="12" cy="8" r="4" />
-              <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
-            </svg>
-          </button>
-        </div>
-      </header>
+      <AppHeader />
 
       <main className="feed-main">
         {isLoading && <div className="page-loading">Loading feed…</div>}

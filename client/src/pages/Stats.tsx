@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { UnlockToast } from '../components/UnlockToast';
+import { AppHeader } from '../components/AppHeader';
 import { CompareContent } from './Compare';
 import type {
   Achievement, Badge, Challenge, GoalsResponse,
@@ -451,6 +452,7 @@ export function Stats() {
 
   return (
     <div className="page">
+      <AppHeader />
       <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
 
       <div className="page-header">

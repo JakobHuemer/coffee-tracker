@@ -658,37 +658,17 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
 .ut-desc { font-size: 0.72rem; color: var(--text-sec); margin-top: 2px; }
 
 /* ── Top-right action cluster (dark toggle + profile icon) ───────────────── */
-.top-right-actions {
-  position: fixed; top: 14px; right: 16px; z-index: 20;
-  display: flex; align-items: center; gap: 6px;
-}
-
-/* Used inside headers (Feed) and inside .top-right-actions */
-.dark-toggle-inline {
-  width: 30px; height: 30px; border-radius: 50%;
+/* Shared header action buttons (theme + profile) — one size everywhere. */
+.header-actions { display: flex; align-items: center; gap: 10px; }
+.header-btn {
+  width: 40px; height: 40px; border-radius: 50%;
   background: var(--surface2); border: 1.5px solid var(--border);
-  font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--text-sec); font-size: 1.15rem; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; transition: all 0.15s;
 }
-.dark-toggle-inline:hover { border-color: var(--accent); transform: scale(1.1); }
-
-/* Profile icon — fixed (inside .top-right-actions) */
-.profile-icon-btn {
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--surface2); border: 1.5px solid var(--border);
-  font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; transition: all 0.15s; line-height: 1;
-}
-.profile-icon-btn:hover { border-color: var(--accent); transform: scale(1.1); }
-
-/* Profile icon — inline inside sticky headers (Feed) */
-.profile-icon-btn-inline {
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--surface2); border: 1.5px solid var(--border);
-  font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; transition: all 0.15s; line-height: 1;
-}
-.profile-icon-btn-inline:hover { border-color: var(--accent); transform: scale(1.1); }
+.header-btn:hover { border-color: var(--accent); color: var(--accent); transform: scale(1.08); }
+.header-btn:active { transform: scale(0.95); }
 
 /* ── Profile page placeholders ───────────────────────────────────────────── */
 .profile-section-placeholder .profile-placeholder-body {

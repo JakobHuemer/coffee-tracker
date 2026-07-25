@@ -3,6 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
+import { AppHeader } from '../components/AppHeader';
 import type { User, Badge } from '../types';
 
 interface PhotoEntry {
@@ -255,6 +256,7 @@ export function Profile() {
 
   return (
     <div className="page">
+      <AppHeader />
       <div className="page-header">
         <h2>Profile</h2>
         <p className="page-sub">Your account</p>
