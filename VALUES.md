@@ -3,6 +3,19 @@
 Priority order. Read before making changes. This file is the source of truth
 for project values; AGENTS.md covers architecture and workflows.
 
+0. **Never reference symbols that do not exist. (Hard gate — outranks
+   everything below.)** Code that references something that isn't defined — a
+   CSS variable / design token, a function, a variable, an import or export —
+   is **rejected outright in review, with zero consideration of any other code
+   in the change.** No exceptions. Examples of what gets a change thrown out:
+   `var(--text)` when only `--text-primary` exists; calling a helper that was
+   never defined; importing a module or symbol that isn't exported. This is the
+   single most unacceptable class of error — it means the code was never run or
+   checked. Before committing, prove every referenced symbol resolves:
+   typecheck **and** build must pass, and grep for the exact token/function/
+   import you introduced to confirm it exists. If you cannot confirm it exists,
+   do not reference it.
+
 1. **Stability & consistency above all.** This app should just run, for a long
    time, without surprises. Prefer boring, proven approaches over clever ones.
    "Code quality" polish is not a goal in itself — a stable, predictable system

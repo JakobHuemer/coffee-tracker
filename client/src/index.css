@@ -15,6 +15,18 @@
   --tooltip-bg:   #FFFFFF;
   --tooltip-bd:   #B8D4E8;
   --shadow:       0 1px 3px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.04);
+
+  /* Semantic feedback + tag colors (theme-aware so they adapt in dark mode). */
+  --danger-bg:    #FDECEC; --danger-bd:  #F0BCBC; --danger-fg:  #C0392B;
+  --warn-bg:      #FFF6E5; --warn-bd:    #F0D9A8; --warn-fg:    #8A6D1B;
+  --success-bg:   #E8F5E9; --success-bd: #A5D6A7; --success-fg: #2E7D32;
+  --tag-community-bg: #E3F2FD; --tag-community-fg: #1565C0;
+  --tag-personal-bg:  #F3E5F5; --tag-personal-fg:  #7B1FA2;
+
+  /* Single content width for every page's body, so pages line up instead of
+     each choosing its own (was 640 / 960 / unbounded). Cards carry the 16px
+     side gutter; page bodies carry no horizontal padding. */
+  --content-max: 640px;
 }
 
 /* ── Dark mode base (Midnight Espresso — overrides :root when no caffeine theme is active) */
@@ -34,16 +46,25 @@
   --tooltip-bg:   #1A1008;
   --tooltip-bd:   #3D2314;
   --shadow:       0 1px 3px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.35);
+
+  --danger-bg:    #3A1414; --danger-bd:  #5E2222; --danger-fg:  #FF9A90;
+  --warn-bg:      #3A2E12; --warn-bd:    #5A4620; --warn-fg:    #F0C674;
+  --success-bg:   #14301B; --success-bd: #245A32; --success-fg: #8FD69C;
+  --tag-community-bg: #0D2A45; --tag-community-fg: #8AC4FF;
+  --tag-personal-bg:  #2A1140; --tag-personal-fg:  #D9A0FF;
 }
 
 /* ── Reset ───────────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-body,
-.hero-tile, .card, .chart-card, .log-item, .bd-item,
-.log-count-pill, .hero-value, .theme-badge, .dark-toggle {
-  transition: background-color 0.5s ease, border-color 0.5s ease,
-              color 0.4s ease, box-shadow 0.5s ease;
+/* Global theme switch: every element eases only its themeable colors over
+   0.15s, so toggling light/dark changes the whole UI at one uniform speed
+   instead of a subset fading (0.4–0.5s) while everything else snaps. Elements
+   that need their own interaction transitions (transform/opacity) set those
+   explicitly and are unaffected. */
+*, *::before, *::after {
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, fill 0.15s ease;
 }
 
 body {
@@ -70,27 +91,26 @@ body {
 }
 
 .page-header { padding: 20px 16px 8px; }
+/* Keep every page's body content within one width, centered — Stats builds its
+   layout directly in .page (no <main>), so its sections are centered here too. */
+.page-header, .stats-hero, .stats-tabs, .stats-tab-body {
+  max-width: var(--content-max); margin-left: auto; margin-right: auto;
+}
 .page-header h2 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.03em; color: var(--text-primary); }
 .page-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; }
 
-main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex; flex-direction: column; gap: 20px; }
+main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; display: flex; flex-direction: column; gap: 20px; }
 
 /* ── App Header ──────────────────────────────────────────────────────────── */
 .app-header {
   background: var(--surface); border-bottom: 1px solid var(--border);
   padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
   position: sticky; top: 0; z-index: 10;
-  transition: background-color 0.5s ease, border-color 0.5s ease;
 }
 .header-brand { display: flex; align-items: center; gap: 10px; }
 .header-brand .logo { width: 1.6rem; height: 1.6rem; }
 .header-brand h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; }
 .header-brand .date { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
-.theme-badge {
-  background: var(--accent-bg); color: var(--accent); border: 1px solid var(--border);
-  border-radius: 20px; padding: 5px 13px; font-size: 0.75rem; font-weight: 600;
-  letter-spacing: 0.01em; white-space: nowrap; transition: all 0.5s ease;
-}
 
 /* ── Card ────────────────────────────────────────────────────────────────── */
 .card {
@@ -117,7 +137,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
   display: flex; flex-direction: column; align-items: center; gap: 5px;
   padding: 14px 6px 12px; background: var(--surface2); border: 1.5px solid var(--border);
   border-radius: 10px; cursor: pointer; color: var(--text-primary);
-  transition: transform 0.12s, background 0.12s, border-color 0.12s;
+  transition: transform 0.15s, background 0.15s, border-color 0.15s;
 }
 .coffee-btn:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--accent); transform: translateY(-2px); }
 .coffee-btn.selected { background: var(--accent-bg); border-color: var(--accent); }
@@ -153,10 +173,10 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
 .li-del  {
   background: none; border: none; cursor: pointer; color: var(--text-muted);
   font-size: 0.75rem; padding: 3px 5px; border-radius: 4px;
-  opacity: 0; transition: opacity 0.12s, color 0.12s; line-height: 1;
+  opacity: 0; transition: opacity 0.15s, color 0.15s; line-height: 1;
 }
 .log-item:hover .li-del { opacity: 1; }
-.li-del:hover { color: #C0392B !important; }
+.li-del:hover { color: var(--danger-fg); }
 
 /* ── Charts ──────────────────────────────────────────────────────────────── */
 .charts-grid { display: grid; gap: 16px; padding: 0 16px; }
@@ -182,7 +202,6 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
   position: fixed; bottom: 0; left: 0; right: 0; height: 64px;
   background: var(--surface); border-top: 1px solid var(--border);
   display: flex; align-items: center; z-index: 20;
-  transition: background-color 0.5s, border-color 0.5s;
 }
 .bn-item {
   flex: 1; display: flex; flex-direction: column; align-items: center;
@@ -210,7 +229,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
 
 /* ── Feed page ───────────────────────────────────────────────────────────── */
 .feed-page { background: var(--bg); }
-.feed-main { max-width: 640px; margin: 0 auto; padding: 16px 0 40px; display: flex; flex-direction: column; gap: 0; }
+.feed-main { max-width: var(--content-max); margin: 0 auto; padding: 16px 0 40px; display: flex; flex-direction: column; gap: 0; }
 .feed-list { display: flex; flex-direction: column; gap: 12px; padding: 0 12px; }
 .feed-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -401,9 +420,9 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
   outline: none; transition: border-color 0.15s;
 }
 .field input:focus, .field select:focus, .search-input:focus { border-color: var(--accent); }
-.auth-error { background: #FEE; border: 1px solid #F0BCBC; border-radius: 8px; padding: 10px; font-size: 0.8rem; color: #C0392B; text-align: center; }
-.auth-warn { display: flex; flex-direction: column; gap: 4px; background: #FFF6E5; border: 1px solid #F0D9A8; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.78rem; line-height: 1.4; color: #8A6D1B; text-align: left; }
-.auth-warn strong { font-size: 0.82rem; color: #7A5E12; }
+.auth-error { background: var(--danger-bg); border: 1px solid var(--danger-bd); border-radius: 8px; padding: 10px; font-size: 0.8rem; color: var(--danger-fg); text-align: center; }
+.auth-warn { display: flex; flex-direction: column; gap: 4px; background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.78rem; line-height: 1.4; color: var(--warn-fg); text-align: left; }
+.auth-warn strong { font-size: 0.82rem; color: var(--warn-fg); }
 .auth-submit {
   width: 100%; padding: 12px; background: var(--accent); color: white;
   border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 600; transition: opacity 0.15s;
@@ -516,8 +535,8 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
 .ch-name { font-size: 0.95rem; font-weight: 700; }
 .ch-desc { font-size: 0.78rem; color: var(--text-sec); margin-top: 3px; }
 .ch-badge { font-size: 0.62rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; margin-left: 8px; }
-.ch-badge.community { background: #E3F2FD; color: #1565C0; }
-.ch-badge.personal  { background: #F3E5F5; color: #7B1FA2; }
+.ch-badge.community { background: var(--tag-community-bg); color: var(--tag-community-fg); }
+.ch-badge.personal  { background: var(--tag-personal-bg); color: var(--tag-personal-fg); }
 .ch-progress-label { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 6px; }
 .ch-progress-wrap { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
 .ch-progress-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.4s ease; }
@@ -528,7 +547,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
 .milestone-item { }
 .milestone-item.done .milestone-label { opacity: 0.55; }
 .milestone-label-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
-.milestone-label { font-size: 0.82rem; color: var(--text); }
+.milestone-label { font-size: 0.82rem; color: var(--text-primary); }
 .milestone-count { font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; margin-left: 8px; }
 .ch-meta { display: flex; gap: 12px; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 12px; }
 .ch-joined { font-size: 0.78rem; color: var(--accent); font-weight: 600; }
@@ -540,7 +559,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
 /* Shared input styling lives with `.field input` (Auth page); only the layout
    differs here. */
 .search-input { flex: 1; }
-.error-card { color: #C0392B; font-size: 0.82rem; }
+.error-card { color: var(--danger-fg); font-size: 0.82rem; }
 
 /* Versus header — two players flanking a VS badge */
 .compare-card { padding-top: 24px; }
@@ -697,7 +716,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
   width: 100%; height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.2s ease;
+  transition: transform 0.15s ease;
 }
 .gallery-thumb:hover img { transform: scale(1.05); }
 
@@ -738,8 +757,8 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
   display: flex; align-items: center; justify-content: center;
 }
 .pw-success {
-  background: #E8F5E9; border: 1px solid #A5D6A7; border-radius: 8px;
-  padding: 10px; font-size: 0.8rem; color: #2E7D32; text-align: center;
+  background: var(--success-bg); border: 1px solid var(--success-bd); border-radius: 8px;
+  padding: 10px; font-size: 0.8rem; color: var(--success-fg); text-align: center;
 }
 
 /* ── Profile photo ───────────────────────────────────────────────────────── */
@@ -781,7 +800,7 @@ main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; display: flex;
   cursor: pointer; text-decoration: underline;
   padding: 0; margin-top: 2px;
 }
-.profile-remove-photo:hover { color: var(--text); }
+.profile-remove-photo:hover { color: var(--text-primary); }
 
 /* ── Feed profile photo ──────────────────────────────────────────────────── */
 .feed-avatar-img {

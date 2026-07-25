@@ -65,6 +65,12 @@ loop. Never write values into AGENTS.md.
 
 ## Guardrails
 
+- **Never reference a symbol that doesn't exist** — a CSS variable / design
+  token, function, variable, import, or export. This is VALUES.md rule 0, the
+  top-priority hard gate: such a change is **rejected outright in review**,
+  regardless of everything else in it. Before committing, run typecheck **and**
+  build, and grep for the exact token/function/import you introduced to confirm
+  it resolves. Unverified references are unacceptable.
 - Don't split the frontend back into its own image/service/proxy.
 - Don't add schema changes outside `server/src/migrations/`.
 - Don't introduce npm/yarn/pnpm or a second lockfile.
