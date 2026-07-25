@@ -204,7 +204,9 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   font-size: 0.62rem; font-weight: 500; transition: color 0.15s; padding: 4px 2px;
 }
 .bn-item.active { color: var(--accent); }
-.bn-icon { font-size: 1.2rem; line-height: 1; }
+/* Inert placeholder slot — reset the button chrome, dim it, no pointer. */
+.bn-placeholder { background: none; border: none; opacity: 0.4; cursor: default; }
+.bn-icon { font-size: 1.2rem; line-height: 1; display: flex; align-items: center; justify-content: center; }
 .bn-icon-img { width: 1.2rem; height: 1.2rem; vertical-align: -0.15em; }
 .bn-label { font-size: 0.6rem; }
 

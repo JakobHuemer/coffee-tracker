@@ -1,10 +1,9 @@
-import { useNavigate } from 'react-router-dom';
 import { useThemeStore } from '../store/theme';
 
 // Single app header shared by every main page so the top bar looks identical
-// everywhere: brand on the left, theme + profile actions on the right.
+// everywhere: brand on the left, theme toggle on the right. Profile lives in the
+// bottom nav.
 export function AppHeader() {
-  const navigate = useNavigate();
   const { isDark, toggleDark } = useThemeStore();
 
   return (
@@ -24,17 +23,6 @@ export function AppHeader() {
           aria-label="Toggle theme"
         >
           {isDark ? '☀️' : '🌙'}
-        </button>
-        <button
-          className="header-btn"
-          onClick={() => navigate('/profile')}
-          title="Profile"
-          aria-label="Go to profile"
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <circle cx="12" cy="8" r="4" />
-            <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
-          </svg>
         </button>
       </div>
     </header>
