@@ -884,3 +884,48 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   object-fit: cover;
   border: 2px solid var(--border);
 }
+
+/* ── Buzz widget (caffeine battery) ──────────────────────────────────────── */
+.buzz-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.buzz-head .section-label { margin: 0; }
+.buzz-range { display: flex; gap: 4px; }
+.buzz-range-btn {
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text-sec);
+  border-radius: 6px; padding: 3px 9px; font-size: 0.7rem; font-weight: 600; cursor: pointer;
+}
+.buzz-range-btn.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+
+.buzz-readout { margin-top: 12px; }
+.buzz-gauge {
+  height: 14px; border-radius: 7px; background: var(--surface2);
+  border: 1px solid var(--border); overflow: hidden;
+}
+.buzz-gauge-fill { height: 100%; background: var(--accent); transition: width 0.4s ease; }
+.buzz-gauge-fill.buzz-charging { background: var(--success-fg); }
+.buzz-gauge-fill.buzz-empty { background: var(--text-muted); }
+
+.buzz-figure { display: flex; align-items: baseline; justify-content: space-between; margin-top: 8px; }
+.buzz-level { font-size: 1.9rem; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.buzz-state {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.75rem; font-weight: 600; color: var(--accent);
+}
+.buzz-state.buzz-charging { color: var(--success-fg); }
+.buzz-state.buzz-empty { color: var(--text-muted); }
+
+.buzz-chart { margin-top: 14px; }
+.buzz-chart svg { width: 100%; height: 110px; display: block; }
+.buzz-axis {
+  display: flex; justify-content: space-between; margin-top: 4px;
+  font-size: 0.65rem; color: var(--text-muted);
+}
+
+.buzz-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.buzz-fact {
+  display: flex; flex-direction: column; gap: 2px; align-items: center;
+  padding: 8px 6px; background: var(--surface2); border-radius: 8px; text-align: center;
+}
+.buzz-fact-val { font-size: 0.9rem; font-weight: 700; color: var(--text-primary); }
+.buzz-fact-key { font-size: 0.62rem; color: var(--text-muted); }
+
+.buzz-note { margin-top: 12px; font-size: 0.72rem; line-height: 1.5; color: var(--text-muted); }

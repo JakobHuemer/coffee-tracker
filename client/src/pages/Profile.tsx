@@ -5,6 +5,7 @@ import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
+import { BuzzWidget } from '../components/BuzzWidget';
 import type { User, Badge } from '../types';
 
 interface PhotoEntry {
@@ -356,6 +357,8 @@ export function Profile() {
             </>
           )}
         </div>
+
+        <BuzzWidget />
 
         <GalleryCard />
 

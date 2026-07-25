@@ -41,6 +41,7 @@ in `server/src/data/*.js` (static). Endpoints:
 - `coffees` — `GET /`, `GET|POST /entries`, `PATCH|DELETE /entries/:id`, `GET /stats`
 - `goals` — `GET /today`, `POST /complete`
 - `achievements` `GET /` · `badges` `GET /` · `streaks` `GET /` · `rankings` `GET /` · `casualties` `GET /`
+- `energy` — `GET /?hours=` (the derived Buzz score, see [docs/energy-score.md](./docs/energy-score.md))
 - `challenges` — `GET /`, `POST /`, `GET /:id`, `POST /:id/join`
 - `compare` — `GET /:username`
 
