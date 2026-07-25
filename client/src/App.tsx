@@ -1,4 +1,4 @@
-import type { JSX } from 'react';
+import { useEffect, type JSX } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from './api/client';
@@ -32,6 +32,17 @@ export function App() {
     enabled: !!token && !user,
     retry: false,
   });
+
+  // Keep the stored IANA timezone in sync with the current browser zone (the
+  // user may have travelled). Fire-and-forget on the next interaction; the
+  // server evaluates civil-time logic in this zone. See docs/time-and-timezones.md.
+  useEffect(() => {
+    if (!user || !token) return;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && user.timezone && user.timezone !== tz) {
+      api.patch<User>('/auth/me', { timezone: tz }).then(u => setAuth(u, token)).catch(() => {});
+    }
+  }, [user, token, setAuth]);
 
   const isAuth = location.pathname === '/auth';
 

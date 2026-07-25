@@ -18,7 +18,10 @@ export function Auth() {
     setError('');
     setLoading(true);
     try {
-      const body = { username, password };
+      // Send the browser's IANA zone so the server evaluates civil-time logic
+      // (daily goals, streaks, "today") in the user's local day.
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const body = { username, password, timezone };
       const data = await api.post<{ token: string; user: User }>(`/auth/${mode}`, body);
       setAuth(data.user, data.token);
       navigate('/');

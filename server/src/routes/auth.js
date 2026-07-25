@@ -8,6 +8,7 @@ const fs       = require('fs');
 const multer   = require('multer');
 const db       = require('../db');
 const { requireAuth } = require('../middleware/auth');
+const { isValidTz, DEFAULT_TZ } = require('../time');
 
 const UPLOAD_DIR = process.env.DB_DIR
   ? path.join(process.env.DB_DIR, 'uploads')
@@ -45,7 +46,7 @@ function handleUpload(mw) {
 
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous
@@ -73,7 +74,7 @@ function makeToken(user) {
 }
 
 router.post('/register', authLimiter, (req, res) => {
-  const { username, password } = req.body;
+  const { username, password, timezone } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Missing fields' });
   // No complexity/minimum rule by design — this is a for-fun site, passwords
   // are treated as public (see the register-page warning). Any non-empty
@@ -87,7 +88,8 @@ router.post('/register', authLimiter, (req, res) => {
 
   const password_hash = bcrypt.hashSync(password, 10);
   const id = randomUUID();
-  db.prepare('INSERT INTO users (id, username, password_hash, created_at) VALUES (?, ?, ?, ?)').run(id, username, password_hash, Date.now());
+  const tz = isValidTz(timezone) ? timezone : DEFAULT_TZ;
+  db.prepare('INSERT INTO users (id, username, password_hash, timezone, created_at) VALUES (?, ?, ?, ?, ?)').run(id, username, password_hash, tz, Date.now());
   db.prepare('INSERT INTO user_streaks (user_id) VALUES (?)').run(id);
   db.prepare('INSERT INTO user_combos (user_id) VALUES (?)').run(id);
 
@@ -103,6 +105,13 @@ router.post('/login', authLimiter, (req, res) => {
   if (!row || !bcrypt.compareSync(password, row.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password' });
   }
+  // Refresh the stored zone from the client on login (lazy tz update — the user
+  // may have moved). Only when it's a valid IANA name and actually changed.
+  const { timezone } = req.body;
+  if (isValidTz(timezone) && timezone !== row.timezone) {
+    db.prepare('UPDATE users SET timezone = ? WHERE id = ?').run(timezone, row.id);
+    row.timezone = timezone;
+  }
   const { password_hash, ...safe } = row;
   res.json({ token: makeToken(row), user: parseUser(safe) });
 });
@@ -114,9 +123,14 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.patch('/me', requireAuth, (req, res) => {
-  const { username, avatar, featured_badges, password } = req.body;
+  const { username, avatar, featured_badges, password, timezone } = req.body;
   if (username && !USERNAME_RE.test(username)) {
     return res.status(400).json({ error: 'Invalid username' });
+  }
+  // Timezone: accept only a valid IANA name; silently ignore anything else so a
+  // stale/garbage client value can't overwrite a good one.
+  if (timezone !== undefined && isValidTz(timezone)) {
+    db.prepare('UPDATE users SET timezone = ? WHERE id = ?').run(timezone, req.user.id);
   }
   if (password !== undefined) {
     if (typeof password !== 'string' || password.length === 0 || password.length > 72) {

@@ -41,6 +41,7 @@ export interface User {
   avatar: string;
   profile_photo_url?: string | null;
   featured_badges: string[];
+  timezone?: string;
   created_at: number;
 }
 

@@ -4,7 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const { checkAfterCompare } = require('../achievements');
 const { COFFEES } = require('../data/coffees');
 const { BADGES } = require('../data/badges');
-const { dateStr } = require('./_helpers');
+const { getUserTz, localTodayStr, localDateStr } = require('../time');
 
 const router = express.Router();
 
@@ -13,8 +13,10 @@ function buildUserStats(userId) {
     'SELECT coffee_id, caffeine_mg, logged_at FROM coffee_entries WHERE user_id = ? ORDER BY logged_at'
   ).all(userId);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayEntries = allEntries.filter(e => dateStr(e.logged_at) === today);
+  // Each user's "today" is evaluated in that user's own timezone.
+  const tz = getUserTz(db, userId);
+  const today = localTodayStr(tz);
+  const todayEntries = allEntries.filter(e => localDateStr(e.logged_at, tz) === today);
   const sevenDayTotal = allEntries.filter(e => Date.now() - e.logged_at <= 7 * 86400000).length;
 
   const byType = {};

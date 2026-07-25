@@ -7,7 +7,8 @@ const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { COFFEES } = require('../data/coffees');
 const { checkAfterCoffeeLog } = require('../achievements');
-const { dateStr, dayBounds, DATE_RE } = require('./_helpers');
+const { DATE_RE } = require('./_helpers');
+const { getUserTz, localTodayStr, localDateStr, localDayBounds } = require('../time');
 
 const router = express.Router();
 
@@ -51,10 +52,14 @@ function handleUpload(mw) {
 // Timestamps must stay in a range Date can represent, otherwise a single
 // poisoned value (e.g. 1e300) makes every later toISOString() throw and
 // permanently breaks /stats, /compare and achievement checks for that user.
-// Allow backdating to 2000-01-01 and up to one day of clock skew ahead.
+// No future events (docs/time-and-timezones.md): reject anything past now, with
+// only a 2-minute allowance for client/server clock skew — the old +1 day
+// window let a post sit at "just now" for hours. Backdating to 2000-01-01 is
+// still allowed.
 const MIN_TS = Date.UTC(2000, 0, 1);
+const SKEW_MS = 2 * 60 * 1000;
 function validTimestamp(ts) {
-  return typeof ts === 'number' && Number.isFinite(ts) && ts >= MIN_TS && ts <= Date.now() + 86400000;
+  return typeof ts === 'number' && Number.isFinite(ts) && ts >= MIN_TS && ts <= Date.now() + SKEW_MS;
 }
 
 router.get('/', (req, res) => {
@@ -66,7 +71,8 @@ router.get('/entries', requireAuth, (req, res) => {
   let rows;
   if (date) {
     if (!DATE_RE.test(date)) return res.status(400).json({ error: 'Invalid date (expected YYYY-MM-DD)' });
-    const { start, end } = dayBounds(date);
+    // `date` is a civil day in the user's zone → convert to UTC instant bounds.
+    const { start, end } = localDayBounds(date, getUserTz(db, req.user.id));
     rows = db.prepare(
       'SELECT * FROM coffee_entries WHERE user_id = ? AND logged_at BETWEEN ? AND ? ORDER BY logged_at DESC'
     ).all(req.user.id, start, end);
@@ -167,19 +173,23 @@ router.get('/stats', requireAuth, (req, res) => {
     'SELECT coffee_id, caffeine_mg, logged_at FROM coffee_entries WHERE user_id = ? ORDER BY logged_at'
   ).all(req.user.id);
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayEntries = allEntries.filter(e => dateStr(e.logged_at) === today);
+  // Civil "today" and per-day grouping are evaluated in the user's zone, so the
+  // day boundaries match what the user sees on their own clock.
+  const tz = getUserTz(db, req.user.id);
+  const today = localTodayStr(tz);
+  const todayEntries = allEntries.filter(e => localDateStr(e.logged_at, tz) === today);
 
   const byType = {};
   for (const e of allEntries) byType[e.coffee_id] = (byType[e.coffee_id] || 0) + 1;
 
+  // Last 14 civil days ending today, by date-only arithmetic on the label.
   const last14 = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() - (13 - i)); return d.toISOString().slice(0, 10);
+    return new Date(Date.parse(`${today}T00:00:00Z`) - (13 - i) * 86400000).toISOString().slice(0, 10);
   });
 
   const byDay = {};
   for (const e of allEntries) {
-    const d = dateStr(e.logged_at);
+    const d = localDateStr(e.logged_at, tz);
     if (!byDay[d]) byDay[d] = { cups: 0, caffeine: 0 };
     byDay[d].cups++;
     byDay[d].caffeine += e.caffeine_mg;

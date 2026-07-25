@@ -66,6 +66,14 @@ export function LogCoffee() {
     const ts = new Date();
     ts.setHours(h, m, 0, 0);
 
+    // No future logs — a later time-of-day would land in the future and show as
+    // "just now" until the clock caught up. (See docs/time-and-timezones.md.)
+    if (ts.getTime() > Date.now() + 60_000) {
+      setError("Can't log a coffee in the future — pick a time up to now.");
+      setSubmitting(false);
+      return;
+    }
+
     const fd = new FormData();
     fd.append('coffeeId', selectedId);
     fd.append('timestamp', String(ts.getTime()));
