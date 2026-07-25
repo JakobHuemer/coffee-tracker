@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon';
 import {
   PastTimePicker, currentPastTime, resolvePastTime, useNow, type PastTime,
 } from '../components/PastTimePicker';
+import { getSkipSpacing } from '../devFlags';
 import type { UnlockNotification } from '../types';
 
 const COFFEES = [
@@ -124,6 +125,9 @@ export function LogCoffee() {
     fd.append('is_public', isPublic ? '1' : '0');
     if (description.trim()) fd.append('description', description.trim());
     if (photo) fd.append('photo', photo);
+    // Debug switch from the Profile page. Ignored unless the server itself runs
+    // with DEV_OVERRIDES=1 (see server/src/routes/coffees.js).
+    if (getSkipSpacing()) fd.append('skip_spacing', '1');
 
     try {
       const res = await fetch('/api/coffees/entries', {

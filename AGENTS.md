@@ -38,7 +38,7 @@ Gamification/reference data (achievements, badges, tasks, coffee catalog) lives
 in `server/src/data/*.js` (static). Endpoints:
 
 - `auth` — `POST /register`, `POST /login`, `GET|PATCH /me`
-- `coffees` — `GET /`, `GET|POST /entries`, `PATCH|DELETE /entries/:id`, `GET /stats`
+- `coffees` — `GET /`, `GET|POST /entries`, `PATCH|DELETE /entries/:id`, `GET /stats`, `GET /dev-flags`
 - `goals` — `GET /today`, `POST /complete`
 - `achievements` `GET /` · `badges` `GET /` · `streaks` `GET /` · `rankings` `GET /` · `casualties` `GET /`
 - `energy` — `GET /?hours=` (the derived Buzz score, see [docs/energy-score.md](./docs/energy-score.md))
@@ -54,6 +54,8 @@ Test suite: `server/src/*.test.js` (run with `bun test`).
 ```bash
 # Local dev (two processes)
 cd server && bun install && bun --watch src/index.js     # API on :3001
+# Add DEV_OVERRIDES=1 to that command to enable the debug toggles on the
+# Profile page (currently: bypass the 5-minute coffee spacing rule).
 cd client && bun install && bun run dev                  # Vite on :5173 (proxies /api)
 
 # Production (single container)

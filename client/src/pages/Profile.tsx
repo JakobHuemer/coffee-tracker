@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/auth';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { BuzzWidget } from '../components/BuzzWidget';
+import { getSkipSpacing, setSkipSpacing } from '../devFlags';
 import type { User, Badge } from '../types';
 
 interface PhotoEntry {
@@ -56,6 +57,48 @@ function GalleryCard() {
         </div>
       )}
     </>
+  );
+}
+
+// Debug switches, rendered only when the server actually honours them (it must
+// run with DEV_OVERRIDES=1). On a normal production server this card does not
+// exist, so there is never a toggle here that quietly does nothing.
+function DebugCard() {
+  const { data } = useQuery<{ spacing_override: boolean }>({
+    queryKey: ['dev-flags'],
+    queryFn: () => api.get('/coffees/dev-flags'),
+    staleTime: Infinity,
+  });
+  const [skipSpacing, setSkipSpacingState] = useState(getSkipSpacing);
+
+  if (!data?.spacing_override) return null;
+
+  function toggle() {
+    const next = !skipSpacing;
+    setSkipSpacing(next);
+    setSkipSpacingState(next);
+  }
+
+  return (
+    <div className="card">
+      <div className="section-label">Debug</div>
+      <div className="log-share-row">
+        <div>
+          <div className="log-share-label">Ignore the 5-minute spacing rule</div>
+          <div className="log-share-sub">
+            Log coffees closer than 5 minutes apart. Dev servers only — stored in this browser.
+          </div>
+        </div>
+        <button
+          className={`log-toggle${skipSpacing ? ' on' : ''}`}
+          onClick={toggle}
+          aria-pressed={skipSpacing}
+          aria-label="Ignore the 5-minute spacing rule"
+        >
+          <span className="log-toggle-knob" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -363,6 +406,8 @@ export function Profile() {
         <GalleryCard />
 
         <ChangePasswordCard />
+
+        <DebugCard />
 
         <div className="card account-actions-card">
           <button className="btn-secondary" onClick={() => { logout(); navigate('/auth'); }}>Sign Out</button>

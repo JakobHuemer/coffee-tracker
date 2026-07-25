@@ -1,5 +1,5 @@
 ---
-topics: [buzz-energy-score, caffeine-pharmacokinetics, energy-endpoint, svg-charts, chartjs-unused]
+topics: [buzz-energy-score, caffeine-pharmacokinetics, energy-endpoint, svg-charts, chartjs-unused, dev-overrides]
 ---
 
 # Buzz energy score (issue #22)
@@ -25,3 +25,15 @@ topics: [buzz-energy-score, caffeine-pharmacokinetics, energy-endpoint, svg-char
   Axis labels are formatted client-side in the browser's zone.
 - Testing note: `bun test` in `server/` picks up `src/energy.test.js`; the model
   is exported separately from the route precisely so it is testable without HTTP.
+
+# DEV_OVERRIDES (5-minute spacing bypass)
+
+- **Gate is opt-in, never derived from `NODE_ENV`.** Nothing in this repo sets
+  `NODE_ENV`, so a `!== 'production'` check would read as "dev" inside the real
+  container and silently switch off a data-integrity rule. `DEV_OVERRIDES=1`
+  must be set explicitly; absent = enforced.
+- Two locks, both required: the server must run with `DEV_OVERRIDES=1` **and**
+  the request must carry `skip_spacing`. A client flag alone does nothing, so
+  the localStorage key can't be abused against a production server.
+- `GET /api/coffees/dev-flags` exists so the Profile toggle only renders when
+  the server honours it — a visible switch that does nothing is a VALUES 0.4 bug.
