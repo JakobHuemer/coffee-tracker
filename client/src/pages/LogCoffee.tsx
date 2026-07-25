@@ -3,22 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/auth';
 import { UnlockToast } from '../components/UnlockToast';
+import { Icon } from '../components/Icon';
 import type { UnlockNotification } from '../types';
 
 const COFFEES = [
-  { id: 'espresso',        name: 'Espresso',        caffeine: 63,  icon: '☕' },
-  { id: 'espresso_mac',   name: 'Espresso Mac.',   caffeine: 63,  icon: '☕' },
-  { id: 'doppio',          name: 'Doppio',           caffeine: 128, icon: '☕' },
-  { id: 'lungo',           name: 'Lungo',            caffeine: 60,  icon: '☕' },
-  { id: 'americano',       name: 'Americano',        caffeine: 95,  icon: '☕' },
-  { id: 'cappuccino',      name: 'Cappuccino',       caffeine: 75,  icon: '☕' },
-  { id: 'flat_white',      name: 'Flat White',       caffeine: 130, icon: '☕' },
-  { id: 'latte',           name: 'Latte',            caffeine: 75,  icon: '🥛' },
-  { id: 'latte_macchiato', name: 'Latte Macchiato',  caffeine: 75,  icon: '🥛' },
-  { id: 'affogato',        name: 'Affogato',         caffeine: 63,  icon: '🍨' },
-  { id: 'frappuccino',     name: 'Frappuccino',      caffeine: 95,  icon: '🧋' },
-  { id: 'chocochino',      name: 'Chocochino',       caffeine: 30,  icon: '🍫' },
-  { id: 'hot_chocolate',   name: 'Hot Chocolate',    caffeine: 25,  icon: '🍫' },
+  { id: 'espresso',        name: 'Espresso',        caffeine: 63,  icon: 'coffee' },
+  { id: 'espresso_mac',   name: 'Espresso Mac.',   caffeine: 63,  icon: 'coffee' },
+  { id: 'doppio',          name: 'Doppio',           caffeine: 128, icon: 'coffee' },
+  { id: 'lungo',           name: 'Lungo',            caffeine: 60,  icon: 'coffee' },
+  { id: 'americano',       name: 'Americano',        caffeine: 95,  icon: 'coffee' },
+  { id: 'cappuccino',      name: 'Cappuccino',       caffeine: 75,  icon: 'coffee' },
+  { id: 'flat_white',      name: 'Flat White',       caffeine: 130, icon: 'coffee' },
+  { id: 'latte',           name: 'Latte',            caffeine: 75,  icon: 'milk' },
+  { id: 'latte_macchiato', name: 'Latte Macchiato',  caffeine: 75,  icon: 'milk' },
+  { id: 'affogato',        name: 'Affogato',         caffeine: 63,  icon: 'ice-cream' },
+  { id: 'frappuccino',     name: 'Frappuccino',      caffeine: 95,  icon: 'blended' },
+  { id: 'chocochino',      name: 'Chocochino',       caffeine: 30,  icon: 'chocolate' },
+  { id: 'hot_chocolate',   name: 'Hot Chocolate',    caffeine: 25,  icon: 'chocolate' },
 ];
 
 type Step = 'photo' | 'details';
@@ -44,6 +45,13 @@ export function LogCoffee() {
 
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // A coffee entry must carry a photo or a description — mirrors the server's
+  // POST /coffees/entries rule. Keep every label/hint here in sync with that
+  // rule; a disabled button with no explanation is a bug (see VALUES.md 0.4).
+  const hasPhoto = !!photo;
+  const hasDescription = description.trim().length > 0;
+  const meetsContentRule = hasPhoto || hasDescription;
+
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -59,6 +67,7 @@ export function LogCoffee() {
 
   async function handleSubmit() {
     if (!selectedId) { setError('Please select a coffee type.'); return; }
+    if (!meetsContentRule) { setError('Add a photo or write a description.'); return; }
     setError(null);
     setSubmitting(true);
 
@@ -69,7 +78,7 @@ export function LogCoffee() {
     // No future logs — a later time-of-day would land in the future and show as
     // "just now" until the clock caught up. (See docs/time-and-timezones.md.)
     if (ts.getTime() > Date.now() + 60_000) {
-      setError("Can't log a coffee in the future — pick a time up to now.");
+      setError("Can't post a coffee in the future — pick a time up to now.");
       setSubmitting(false);
       return;
     }
@@ -118,8 +127,8 @@ export function LogCoffee() {
       <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
 
       <header className="log-header-bar">
-        <button className="log-back-btn" onClick={() => navigate('/')}>✕</button>
-        <h2 className="log-title">{step === 'photo' ? 'Snap a photo' : 'Log coffee'}</h2>
+        <button className="log-back-btn" onClick={() => navigate('/')} aria-label="Close"><Icon name="close" /></button>
+        <h2 className="log-title">{step === 'photo' ? 'Snap a photo' : 'New coffee'}</h2>
         {step === 'photo' && (
           <button className="log-skip-btn" onClick={() => setStep('details')}>Skip</button>
         )}
@@ -133,15 +142,15 @@ export function LogCoffee() {
               <img className="log-photo-preview" src={photoPreview} alt="Preview" />
               <button className="log-retake-btn" onClick={retakePhoto}>Retake</button>
               <button className="btn-primary log-next-btn" onClick={() => setStep('details')}>
-                Use this photo →
+                Use this photo <Icon name="arrow-right" />
               </button>
             </div>
           ) : (
             <div className="log-camera-area">
-              <div className="log-camera-icon">📷</div>
-              <p className="log-camera-hint">Take a photo of your coffee</p>
+              <div className="log-camera-icon"><Icon name="camera" size={44} /></div>
+              <p className="log-camera-hint">Add a photo of your coffee</p>
               <button className="btn-primary log-camera-btn" onClick={() => fileRef.current?.click()}>
-                Open camera
+                Add photo
               </button>
               <button className="btn-secondary log-skip-inline" onClick={() => setStep('details')}>
                 Skip photo
@@ -150,7 +159,6 @@ export function LogCoffee() {
                 ref={fileRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 style={{ display: 'none' }}
                 onChange={handlePhotoChange}
               />
@@ -176,7 +184,7 @@ export function LogCoffee() {
                   className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
                   onClick={() => setSelectedId(c.id)}
                 >
-                  <span className="cb-icon">{c.icon}</span>
+                  <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
                   <span className="cb-name">{c.name}</span>
                   <span className="cb-mg">{c.caffeine}mg</span>
                 </button>
@@ -189,7 +197,12 @@ export function LogCoffee() {
             </div>
 
             <div className="field">
-              <label>Description <span className="field-hint">(optional)</span></label>
+              <label>
+                Description{' '}
+                <span className="field-hint">
+                  {hasPhoto ? '(optional)' : '(required unless you add a photo)'}
+                </span>
+              </label>
               <textarea
                 className="log-textarea"
                 value={description}
@@ -216,8 +229,15 @@ export function LogCoffee() {
 
             {error && <div className="auth-error">{error}</div>}
 
-            <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId}>
-              {submitting ? 'Logging…' : 'Log coffee'}
+            {!selectedId && (
+              <div className="log-requirement-hint">Pick a coffee type to continue.</div>
+            )}
+            {selectedId && !meetsContentRule && (
+              <div className="log-requirement-hint">Add a photo or write a description to post.</div>
+            )}
+
+            <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId || !meetsContentRule}>
+              {submitting ? 'Posting…' : 'Post coffee'}
             </button>
           </div>
         </div>

@@ -16,6 +16,21 @@ for project values; AGENTS.md covers architecture and workflows.
    import you introduced to confirm it exists. If you cannot confirm it exists,
    do not reference it.
 
+0.4. **A refactor is not done until every dependent is updated to match — no
+   stale logic left alive anywhere.** When behavior/a rule changes anywhere
+   (a backend endpoint, a shared function, a constant, a type), every other
+   place that assumed the old behavior must be found and updated in the same
+   change: UI labels and copy ("optional", disabled-state hints, validation
+   messages, placeholders), other call sites, duplicated/parallel logic
+   elsewhere in the same layer, docs, tests. This is not only a backend→
+   frontend concern — a rule can drift within a single file or across several
+   frontend components with no backend involved at all. A disabled control
+   with no explanation of why, or copy that contradicts actual behavior, is a
+   bug, not a minor gap. Do not ship a change that leaves the codebase telling
+   two different stories. This costs more tokens per change — pay it. Grep for
+   the old wording/constant/behavior across the whole affected surface before
+   calling a refactor finished.
+
 0.5. **No emojis in the UI — use real icons.** Every glyph in the interface is a
    proper icon from a single library (`react-icons`, Font Awesome set), never an
    emoji. This keeps rendering consistent across platforms/fonts (emoji look

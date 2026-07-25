@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
+import { Icon } from '../components/Icon';
 import { CompareContent } from './Compare';
 import type {
   Achievement, Badge, Challenge, GoalsResponse,
@@ -71,14 +72,14 @@ function GoalsTab({ setNotifications }: { setNotifications: (n: UnlockNotificati
         <div className="task-list">
           {data.tasks.map(task => (
             <div key={task.id} className={`task-item${task.completed ? ' done' : ''}`}>
-              <div className="task-check">{task.completed ? '✅' : '⬜'}</div>
-              <span className="task-icon">{task.icon}</span>
+              <div className="task-check"><Icon name={task.completed ? 'check-circle' : 'square-empty'} /></div>
+              <span className="task-icon"><Icon name={task.icon} /></span>
               <span className="task-label">{task.label}</span>
             </div>
           ))}
         </div>
         {allDone ? (
-          <div className="goals-complete-banner">🎉 All goals completed! Streak extended!</div>
+          <div className="goals-complete-banner"><Icon name="trophy" /> All goals completed! Streak extended!</div>
         ) : (
           <button className="btn-primary" style={{ marginTop: 16 }}
             onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}>
@@ -90,7 +91,7 @@ function GoalsTab({ setNotifications }: { setNotifications: (n: UnlockNotificati
         <div className="section-label">How goals work</div>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-sec)', lineHeight: 1.6 }}>
           You get 2 compatible tasks each day. Complete them both to extend your streak. Tasks
-          evaluate automatically based on today's coffee log — just log your coffees and check back!
+          evaluate automatically based on the coffees you post today — just post your coffees and check back!
         </p>
       </div>
     </div>
@@ -118,7 +119,7 @@ function BadgesTab() {
             .sort((a, b) => (b.unlocked ? 1 : 0) - (a.unlocked ? 1 : 0) || RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity))
             .map(b => (
               <div key={b.id} className={`badge-card${b.unlocked ? ' unlocked' : ' locked'}`} title={b.description}>
-                <div className="badge-icon">{b.icon}</div>
+                <div className="badge-icon"><Icon name={b.icon} size={28} /></div>
                 <div className="badge-name">{b.name}</div>
                 <div className="badge-rarity" style={{ color: RARITY_COLORS[b.rarity] || '#999' }}>{rarityLabel(b.rarity)}</div>
                 {b.unlocked && b.unlocked_at && <div className="badge-date">{new Date(b.unlocked_at).toLocaleDateString()}</div>}
@@ -135,13 +136,13 @@ function BadgesTab() {
             <div className="ach-list">
               {catAchs.map(a => (
                 <div key={a.id} className={`ach-item${a.unlocked ? ' unlocked' : ' locked'}`}>
-                  <div className="ach-icon">{a.icon}</div>
+                  <div className="ach-icon"><Icon name={a.icon} size={24} /></div>
                   <div className="ach-body">
                     <div className="ach-name">{a.name}</div>
                     <div className="ach-desc">{a.description}</div>
                     {a.unlocked && a.unlocked_at && <div className="ach-date">Unlocked {new Date(a.unlocked_at).toLocaleDateString()}</div>}
                   </div>
-                  {a.unlocked && <div className="ach-check">✅</div>}
+                  {a.unlocked && <div className="ach-check"><Icon name="check-circle" /></div>}
                 </div>
               ))}
             </div>
@@ -174,17 +175,17 @@ function RankingsTab() {
   return (
     <div className="stats-tab-body">
       <div className="card casualties-card">
-        <div className="section-label">☠️ Coffee Casualties This Month</div>
+        <div className="section-label"><Icon name="skull" /> Coffee Casualties This Month</div>
         <div className="casualties-count">{((casualties as any)?.global_count ?? 0).toLocaleString()}</div>
         <div className="casualties-sub">fellow caffeine enthusiasts who crossed the 400mg threshold</div>
-        <div className="casualties-disclaimer">⚠️ Entertainment only. Not real medical data.</div>
+        <div className="casualties-disclaimer"><Icon name="warning" /> Entertainment only. Not real medical data.</div>
         <div className="risk-section">
           <div className="risk-label">Your Heart Attack Risk Today™</div>
           <div className="risk-bar-wrap">
             <div className="risk-bar" style={{ width: `${risk}%`, backgroundColor: riskColor }} />
           </div>
           <div className="risk-value" style={{ color: riskColor }}>
-            {risk}% — {risk < 10 ? 'Your heart is fine 💚' : risk < 30 ? 'Getting caffeinated ☕' : risk < 50 ? 'Heart says slow down ⚠️' : risk < 75 ? 'Doctor on speed dial 🚨' : 'Please drink water 💀'}
+            {risk}% — {risk < 10 ? 'Your heart is fine' : risk < 30 ? 'Getting caffeinated' : risk < 50 ? 'Heart says slow down' : risk < 75 ? 'Doctor on speed dial' : 'Please drink water'}
           </div>
           <div className="risk-disclaimer">(For entertainment only. Please do not call an ambulance.)</div>
         </div>
@@ -223,7 +224,7 @@ function RankingsTab() {
               <div key={r.id} className={`lb-row${r.id === user?.id ? ' me' : ''}`}
                 onClick={() => r.id !== user?.id && navigate(`/compare/${r.username}`)}
                 style={{ cursor: r.id !== user?.id ? 'pointer' : 'default' }}>
-                <div className="lb-rank">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${r.rank}`}</div>
+                <div className="lb-rank">{i < 3 ? <Icon name="medal" className={`lb-medal lb-medal-${i}`} /> : `#${r.rank}`}</div>
                 <div className="lb-user">
                   <span className="lb-avatar">{r.avatar}</span>
                   <span className="lb-username">{r.username}</span>
@@ -325,7 +326,7 @@ function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotif
                 <span className="milestone-label">{m.label}</span>
                 <span className="milestone-count">
                   {m.unlocked
-                    ? '✅ Done'
+                    ? <><Icon name="check-circle" /> Done</>
                     : `${m.current.toLocaleString()} / ${m.target.toLocaleString()}`}
                 </span>
               </div>
@@ -359,11 +360,11 @@ function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotif
             </div>
             <div className="ch-progress-wrap"><div className="ch-progress-bar" style={{ width: `${pct}%` }} /></div>
             <div className="ch-meta">
-              <span>👥 {c.participants_count} participants</span>
-              <span>📅 Ends {new Date(c.end_date).toLocaleDateString()}</span>
+              <span><Icon name="users" /> {c.participants_count} participants</span>
+              <span><Icon name="calendar" /> Ends {new Date(c.end_date).toLocaleDateString()}</span>
             </div>
             {c.joined ? (
-              <div className="ch-joined">✅ Joined · Your contribution: {c.my_progress?.toLocaleString() ?? 0}</div>
+              <div className="ch-joined"><Icon name="check-circle" /> Joined · Your contribution: {c.my_progress?.toLocaleString() ?? 0}</div>
             ) : (
               <button className="btn-primary" onClick={() => joinMutation.mutate(c.id)} disabled={joinMutation.isPending}>Join Challenge</button>
             )}
@@ -412,8 +413,8 @@ function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotif
             </div>
             <div className="ch-progress-wrap"><div className="ch-progress-bar personal" style={{ width: `${pct}%` }} /></div>
             <div className="ch-meta">
-              <span>📅 Ends {new Date(c.end_date).toLocaleDateString()}</span>
-              <span>{pct >= 100 ? '🎉 Completed!' : `${pct}%`}</span>
+              <span><Icon name="calendar" /> Ends {new Date(c.end_date).toLocaleDateString()}</span>
+              <span>{pct >= 100 ? <><Icon name="trophy" /> Completed!</> : `${pct}%`}</span>
             </div>
           </div>
         );
@@ -443,11 +444,11 @@ export function Stats() {
   const safeColor = !todayCaf ? 'var(--text-muted)' : pct < 0.75 ? '#4CAF50' : pct < 1 ? '#FF9800' : '#E53935';
 
   const TABS: { id: Tab; label: string; icon: string }[] = [
-    { id: 'goals',      label: 'Goals',      icon: '🎯' },
-    { id: 'badges',     label: 'Badges',     icon: '🏅' },
-    { id: 'rankings',   label: 'Rankings',   icon: '🏆' },
-    { id: 'challenges', label: 'Challenges', icon: '⚡' },
-    { id: 'compare',    label: 'Compare',    icon: '⚔️' },
+    { id: 'goals',      label: 'Goals',      icon: 'target' },
+    { id: 'badges',     label: 'Badges',     icon: 'medal' },
+    { id: 'rankings',   label: 'Rankings',   icon: 'trophy' },
+    { id: 'challenges', label: 'Challenges', icon: 'bolt' },
+    { id: 'compare',    label: 'Compare',    icon: 'scale' },
   ];
 
   return (
@@ -470,7 +471,7 @@ export function Stats() {
             <div className="stats-rank-label">Global Rank</div>
           </div>
           <div className="stats-streak-tile">
-            <div className="stats-streak-num">{streaks?.current_streak ?? 0} 🔥</div>
+            <div className="stats-streak-num">{streaks?.current_streak ?? 0} <Icon name="fire" /></div>
             <div className="stats-streak-label">Day Streak</div>
           </div>
         </div>
@@ -495,7 +496,7 @@ export function Stats() {
       <div className="stats-tabs">
         {TABS.map(t => (
           <button key={t.id} className={`stats-tab-btn${activeTab === t.id ? ' active' : ''}`} onClick={() => setActiveTab(t.id)}>
-            <span>{t.icon}</span> {t.label}
+            <span><Icon name={t.icon} /></span> {t.label}
           </button>
         ))}
       </div>

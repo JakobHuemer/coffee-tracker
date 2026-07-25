@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { AppHeader } from '../components/AppHeader';
+import { Icon } from '../components/Icon';
 import type { User, Badge } from '../types';
 
 interface PhotoEntry {
@@ -27,7 +28,7 @@ function GalleryCard() {
         <div className="section-label">Gallery</div>
         {isLoading && <div className="gallery-loading">Loading…</div>}
         {!isLoading && photos.length === 0 && (
-          <div className="profile-placeholder-body">No photos yet — snap one when logging your next coffee.</div>
+          <div className="profile-placeholder-body">No photos yet — snap one when you post your next coffee.</div>
         )}
         {photos.length > 0 && (
           <div className="gallery-grid">
@@ -49,7 +50,7 @@ function GalleryCard() {
               <span className="gallery-lightbox-date">{new Date(lightbox.logged_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })}</span>
             </div>
             {lightbox.description && <p className="gallery-lightbox-desc">{lightbox.description}</p>}
-            <button className="gallery-lightbox-close" onClick={() => setLightbox(null)} aria-label="Close">✕</button>
+            <button className="gallery-lightbox-close" onClick={() => setLightbox(null)} aria-label="Close"><Icon name="close" /></button>
           </div>
         </div>
       )}
@@ -274,7 +275,8 @@ export function Profile() {
                 onClick={() => fileInputRef.current?.click()}
                 title="Change photo"
                 disabled={photoMutation.isPending}
-              >📷</button>
+                aria-label="Change photo"
+              ><Icon name="camera" /></button>
               <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
             </div>
             {user?.profile_photo_url && (
@@ -319,7 +321,7 @@ export function Profile() {
                           title={b.description}
                           style={{ borderColor: selected ? RARITY_COLORS[b.rarity] : undefined }}
                         >
-                          <span className="bpo-icon">{b.icon}</span>
+                          <span className="bpo-icon"><Icon name={b.icon} /></span>
                           <span className="bpo-name">{b.name}</span>
                         </button>
                       );
@@ -342,7 +344,7 @@ export function Profile() {
                 <div className="profile-featured-badges">
                   {displayedBadges.map(b => (
                     <div key={b.id} className="pfb-item" title={b.description} style={{ borderColor: RARITY_COLORS[b.rarity] }}>
-                      <span className="pfb-icon">{b.icon}</span>
+                      <span className="pfb-icon"><Icon name={b.icon} /></span>
                       <span className="pfb-name">{b.name}</span>
                     </div>
                   ))}
@@ -356,11 +358,6 @@ export function Profile() {
         </div>
 
         <GalleryCard />
-
-        <div className="card profile-section-placeholder">
-          <div className="section-label">Liked Posts</div>
-          <div className="profile-placeholder-body">Posts you've liked will appear here.</div>
-        </div>
 
         <ChangePasswordCard />
 

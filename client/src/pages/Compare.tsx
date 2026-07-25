@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
 import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
+import { Icon } from '../components/Icon';
 import type { CompareUserProfile, CompareUserStats, FeaturedBadge, UnlockNotification } from '../types';
 
 interface CompareResponse {
@@ -36,7 +37,7 @@ function FeaturedBadges({ badges }: { badges: FeaturedBadge[] }) {
     <div className="vs-featured-badges">
       {badges.map(b => (
         <div key={b.id} className="vs-feat-badge" title={b.name} style={{ borderColor: RARITY_COLORS[b.rarity] }}>
-          <span className="vs-feat-icon">{b.icon}</span>
+          <span className="vs-feat-icon"><Icon name={b.icon} /></span>
         </div>
       ))}
     </div>
@@ -105,7 +106,7 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
 
   const verdict = tally
     ? tally.me > tally.them
-      ? { text: "You're on top ☕", cls: 'win' }
+      ? { text: "You're on top", cls: 'win' }
       : tally.them > tally.me
         ? { text: "They've got the edge", cls: 'lose' }
         : { text: 'Neck and neck', cls: 'tie' }

@@ -429,6 +429,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .field input:focus, .field select:focus, .search-input:focus { border-color: var(--accent); }
 .auth-error { background: var(--danger-bg); border: 1px solid var(--danger-bd); border-radius: 8px; padding: 10px; font-size: 0.8rem; color: var(--danger-fg); text-align: center; }
+.log-requirement-hint { background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 8px 10px; font-size: 0.78rem; color: var(--warn-fg); text-align: center; }
 .auth-warn { display: flex; flex-direction: column; gap: 4px; background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.78rem; line-height: 1.4; color: var(--warn-fg); text-align: left; }
 .auth-warn strong { font-size: 0.82rem; color: var(--warn-fg); }
 .auth-submit {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
+import { Icon } from '../components/Icon';
 import type { User } from '../types';
 
 export function Auth() {
@@ -46,7 +47,7 @@ export function Auth() {
 
         {mode === 'register' && (
           <div className="auth-warn" role="alert">
-            <strong>☕ Just for fun — use a throwaway password.</strong>
+            <strong><Icon name="coffee" /> Just for fun — use a throwaway password.</strong>
             <span>Never reuse a password from anywhere else. Treat whatever you type
             here as public. A break-in does zero real damage, so keep it simple.</span>
           </div>
