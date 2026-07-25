@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './Icon';
 import type { UnlockNotification } from '../types';
 
 interface Props {
@@ -40,9 +41,12 @@ export function UnlockToast({ notifications, onClear }: Props) {
 
   return (
     <div className="unlock-toast" onClick={() => setVisible(false)}>
-      <span className="ut-icon">{current.icon}</span>
+      <span className="ut-icon"><Icon name={current.icon} size={28} /></span>
       <div className="ut-body">
-        <div className="ut-type">{current.type === 'achievement' ? '🏅 Achievement Unlocked' : '🎖️ Badge Earned'}</div>
+        <div className="ut-type">
+          <Icon name={current.type === 'achievement' ? 'medal' : 'award'} />{' '}
+          {current.type === 'achievement' ? 'Achievement Unlocked' : 'Badge Earned'}
+        </div>
         <div className="ut-name">{current.name}</div>
         <div className="ut-desc">{current.description}</div>
       </div>

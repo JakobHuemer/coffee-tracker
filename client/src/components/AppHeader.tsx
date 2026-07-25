@@ -1,4 +1,5 @@
 import { useThemeStore } from '../store/theme';
+import { Icon } from './Icon';
 
 // Single app header shared by every main page so the top bar looks identical
 // everywhere: brand on the left, theme toggle on the right. Profile lives in the
@@ -22,7 +23,7 @@ export function AppHeader() {
           title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           aria-label="Toggle theme"
         >
-          {isDark ? '☀️' : '🌙'}
+          {isDark ? <Icon name="sun" /> : <Icon name="moon" />}
         </button>
       </div>
     </header>

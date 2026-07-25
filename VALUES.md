@@ -16,6 +16,16 @@ for project values; AGENTS.md covers architecture and workflows.
    import you introduced to confirm it exists. If you cannot confirm it exists,
    do not reference it.
 
+0.5. **No emojis in the UI — use real icons.** Every glyph in the interface is a
+   proper icon from a single library (`react-icons`, Font Awesome set), never an
+   emoji. This keeps rendering consistent across platforms/fonts (emoji look
+   different on every OS) and the visual language uniform. The **only** exception
+   is the user's profile "image": the avatar picker (`Profile.tsx` `AVATARS`) is
+   deliberately an emoji chooser, and that emoji is rendered as the user's avatar
+   wherever their identity appears (feed headers, compare, profile). No other
+   emoji — not in buttons, labels, empty states, toasts, tabs, status text, or
+   coffee-type icons. When you need a glyph, import an icon; do not paste an emoji.
+
 1. **Stability & consistency above all.** This app should just run, for a long
    time, without surprises. Prefer boring, proven approaches over clever ones.
    "Code quality" polish is not a goal in itself — a stable, predictable system
