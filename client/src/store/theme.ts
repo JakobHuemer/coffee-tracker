@@ -27,8 +27,25 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   toggleDark: () => {
     const next = !get().isDark;
     localStorage.setItem('dark', String(next));
-    document.documentElement.setAttribute('data-dark', String(next));
+
+    // Suppress every transition for just the theme flip, then restore. Elements
+    // that legitimately animate a color for interaction (e.g. the Stats filter
+    // pills' selection state, which use `transition: all`) would otherwise also
+    // animate on the theme change while plain elements snap — looking broken.
+    // This is the standard `disableTransitionOnChange` trick: kill transitions,
+    // apply the theme, force a synchronous reflow so the new colors paint
+    // instantly, then remove the override so interactions animate again.
+    const root = document.documentElement;
+    const killer = document.createElement('style');
+    killer.textContent = '*,*::before,*::after{transition:none !important}';
+    document.head.appendChild(killer);
+
+    root.setAttribute('data-dark', String(next));
     set({ isDark: next });
+
+    // Force reflow so the transition-less styles are committed, then re-enable.
+    void root.offsetHeight;
+    document.head.removeChild(killer);
   },
 
   // No-op: theme is a fixed light/dark pair, no longer driven by caffeine.
