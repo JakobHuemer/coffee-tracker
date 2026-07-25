@@ -7,6 +7,16 @@ function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
+// A 401 on anything other than a login/register attempt means the stored token
+// is no longer valid (expired, or its user was deleted). Drop it and bounce to
+// the auth screen so the app can't keep running in a half-logged-in state.
+function handleAuthFailure(path: string, status: number) {
+  if (status !== 401) return;
+  if (/^\/auth\/(login|register)$/.test(path)) return;
+  localStorage.removeItem('token');
+  if (!window.location.pathname.startsWith('/auth')) window.location.assign('/auth');
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
 
@@ -22,6 +32,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const data: unknown = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    handleAuthFailure(path, res.status);
     const message =
       typeof data === 'object' && data !== null &&
       typeof (data as { error?: unknown }).error === 'string'
@@ -40,6 +51,7 @@ async function requestForm<T>(path: string, body: FormData, method: string): Pro
   const res = await fetch(`${BASE}${path}`, { method, body, headers });
   const data: unknown = await res.json().catch(() => ({}));
   if (!res.ok) {
+    handleAuthFailure(path, res.status);
     const message =
       typeof data === 'object' && data !== null &&
       typeof (data as { error?: unknown }).error === 'string'

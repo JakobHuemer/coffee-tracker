@@ -1,6 +1,6 @@
 import { useEffect, type JSX } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './api/client';
 import { useAuthStore } from './store/auth';
 // Animated caffeine background disabled for now — kept in the tree for later.
@@ -24,14 +24,26 @@ export function App() {
   const token = useAuthStore(s => s.token);
   const user = useAuthStore(s => s.user);
   const setAuth = useAuthStore(s => s.setAuth);
+  const logout = useAuthStore(s => s.logout);
+  const qc = useQueryClient();
   const location = useLocation();
 
-  useQuery({
+  const { data: meData, isError: meError } = useQuery({
     queryKey: ['me'],
-    queryFn: () => api.get<User>('/auth/me').then(u => { setAuth(u, token!); return u; }),
+    queryFn: () => api.get<User>('/auth/me'),
     enabled: !!token && !user,
     retry: false,
   });
+
+  // Adopt the fetched user; on any failure (invalid/expired token, deleted user)
+  // clear the session so the app can't render half-logged-in. RequireAuth then
+  // redirects to /auth.
+  useEffect(() => {
+    if (meData && token) setAuth(meData, token);
+  }, [meData, token, setAuth]);
+  useEffect(() => {
+    if (meError) { logout(); qc.clear(); }
+  }, [meError, logout, qc]);
 
   // Keep the stored IANA timezone in sync with the current browser zone (the
   // user may have travelled). Fire-and-forget on the next interaction; the

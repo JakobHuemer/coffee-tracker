@@ -118,7 +118,9 @@ router.post('/login', authLimiter, (req, res) => {
 
 router.get('/me', requireAuth, (req, res) => {
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  // A valid token whose user no longer exists (e.g. deleted, or DB reset) is an
+  // invalid session, not a missing resource — 401 so the client logs out.
+  if (!user) return res.status(401).json({ error: 'Session no longer valid' });
   res.json(user);
 });
 
