@@ -74,12 +74,19 @@ instant is the offset used all year.
 
 ```
 offsetHours = offsetMs(REFERENCE_INSTANT, userTz) / 3600000
-shard       = ((round(offsetHours) % 24) + 24) % 24        // 0..23
+shard       = ((Math.round(offsetHours) % 24) + 24) % 24   // 0..23
 ```
 
 Rounding to whole hours folds :30/:45 zones (India, Nepal, Chatham) into the
 nearest hour. The `% 24` wrap merges +14 with -10 and +13 with -11 — those
 share a wall clock, so they belong in the same match. Exactly 24 shards.
+
+**Rounding rule is JS `Math.round`: ties break toward `+∞`, not away from
+zero.** This matters only for negative half-hour zones — `Math.round(-9.5)`
+is `-9` (Marquesas lands on -9), `Math.round(-3.5)` is `-3` (Newfoundland
+lands on -3). Any reimplementation must match this exactly; a language whose
+`round` breaks ties away from zero would put those zones in a different
+shard.
 
 Window for shard `s` on civil date `D`:
 
@@ -145,9 +152,10 @@ one (avoids a `(n-1)` division by zero in the losing-side split below).
 Settle team result first, then split each side's pot by contribution share.
 
 ```
-R_team = mean(rating_i for i in team)
+R_team  = mean(rating_i for i in team)
+S_team  = mean(S_i for i in team)
 E_A = 1 / (1 + 10^((R_B - R_A)/400))
-A_A = 1/0.5/0 by which team's aggregate score is higher
+A_A = 1 if S_A > S_B, 0.5 if S_A == S_B, 0 if S_A < S_B
 P_A = K_team * (A_A - E_A)
 P_B = -P_A
 
@@ -157,8 +165,8 @@ winning side: delta_i = P * share_i                   # sum = P
 losing side:  delta_i = P * (1-share_i)/(n-1)          # sum = P
 ```
 
-Decided: `R_team = mean(rating_i)`, team score for the A/B logistic =
-`mean(S_i)`.
+A team-level tie (`A_A = 0.5`) that also lands on `E_A = 0.5` gives `P = 0`,
+so every member's delta is `0 * share_i = 0` — no special case needed.
 
 Decided — softmax over score, temperature `T=1`:
 
