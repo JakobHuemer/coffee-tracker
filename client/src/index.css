@@ -206,8 +206,10 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .bn-item.active { color: var(--accent); }
 /* Inert placeholder slot — reset the button chrome, dim it, no pointer. */
 .bn-placeholder { background: none; border: none; opacity: 0.4; cursor: default; }
-.bn-icon { font-size: 1.2rem; line-height: 1; display: flex; align-items: center; justify-content: center; }
-.bn-icon-img { width: 1.2rem; height: 1.2rem; vertical-align: -0.15em; }
+/* One fixed 22px icon box for every item, so glyphs and the logo line up. */
+.bn-icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
+.bn-icon svg { width: 22px; height: 22px; display: block; }
+.bn-icon-img { width: 22px; height: 22px; display: block; }
 .bn-label { font-size: 0.6rem; }
 
 .bn-add-wrap {
