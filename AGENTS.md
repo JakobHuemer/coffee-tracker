@@ -77,3 +77,12 @@ loop. Never write values into AGENTS.md.
 - Don't add cross-origin API calls / a hardcoded API base URL.
 - Don't let the process start with missing config or a failed migration.
 - Verify persistence + `integrity_check` after any change near the DB or Docker.
+- **Prefer fetching over recall. Assume you know ~1% of any topic and that the
+  rest of your "knowledge" is wrong.** Before designing, reviewing, or changing
+  anything non-trivial (timezones, security, protocols, library behaviour,
+  APIs), **look it up** — WebFetch/WebSearch the primary source, read the actual
+  docs, or grep this repo — instead of answering from memory. State plainly when
+  something is unverified recall vs. checked. Confident-sounding guesses are the
+  failure mode here; a fetched citation beats a remembered "fact" every time.
+- **Time / timezones:** follow [docs/time-and-timezones.md](./docs/time-and-timezones.md)
+  and fetch its linked sources before touching time code.
