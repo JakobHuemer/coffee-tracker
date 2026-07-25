@@ -44,7 +44,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id
 
   return (
     <article className="feed-post">
-      <div className="feed-post-header feed-post-header-clickable" onClick={handleUserClick} role="button" tabIndex={0} onKeyDown={e => e.key === 'Enter' && handleUserClick()}>
+      <div className="feed-post-header feed-post-header-clickable" onClick={handleUserClick} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleUserClick(); } }}>
         {post.profile_photo_url
           ? <img src={uploadUrl(post.profile_photo_url)} alt={post.username} className="feed-avatar-img" />
           : <span className="feed-avatar">{post.avatar}</span>}
