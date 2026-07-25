@@ -8,6 +8,7 @@ import { useAuthStore } from './store/auth';
 import { BottomNav } from './components/BottomNav';
 import { Auth } from './pages/Auth';
 import { Feed } from './pages/Feed';
+import { Saved } from './pages/Saved';
 import { LogCoffee } from './pages/LogCoffee';
 import { Stats } from './pages/Stats';
 import { Compare } from './pages/Compare';
@@ -65,6 +66,7 @@ export function App() {
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/" element={<RequireAuth><Feed /></RequireAuth>} />
+          <Route path="/saved" element={<RequireAuth><Saved /></RequireAuth>} />
           <Route path="/log" element={<RequireAuth><LogCoffee /></RequireAuth>} />
           <Route path="/stats" element={<RequireAuth><Stats /></RequireAuth>} />
           <Route path="/compare" element={<RequireAuth><Compare /></RequireAuth>} />

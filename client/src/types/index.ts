@@ -33,6 +33,7 @@ export interface FeedPost {
   profile_photo_url: string | null;
   likes_count: number;
   liked_by_me: boolean;
+  bookmarked_by_me: boolean;
 }
 
 export interface User {

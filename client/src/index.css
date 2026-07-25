@@ -281,6 +281,15 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .feed-like-count { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); }
 .feed-like-btn.liked .feed-like-count { color: #E53935; }
 
+.feed-bookmark-btn {
+  margin-left: auto;
+  background: none; border: none; cursor: pointer; padding: 4px 2px;
+  font-size: 1rem; color: var(--text-muted);
+  transition: color 0.15s;
+}
+.feed-bookmark-btn:hover { color: var(--accent); }
+.feed-bookmark-btn.saved { color: var(--accent); }
+
 .feed-load-more {
   margin: 16px auto 0; display: block; padding: 10px 28px;
   background: var(--surface2); border: 1.5px solid var(--border); border-radius: 8px;

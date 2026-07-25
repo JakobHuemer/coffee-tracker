@@ -117,19 +117,29 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), (req,
     }
   }
 
-  // Cooldown uses created_at (wall-clock insert time) so a backdated user-supplied
-  // timestamp cannot be used to bypass the 5-minute limit.
-  const recent = db.prepare(
-    'SELECT created_at FROM coffee_entries WHERE user_id = ? ORDER BY created_at DESC LIMIT 1'
-  ).get(req.user.id);
-  if (recent && Date.now() - recent.created_at < 5 * 60 * 1000) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(409).json({ error: 'Too soon — last coffee was less than 5 minutes ago.' });
+  // A coffee entry must carry a photo or a description — never neither.
+  if (!req.file && !description?.trim()) {
+    return res.status(400).json({ error: 'Add a photo or a description.' });
   }
 
   const id = randomUUID();
   const now = Date.now();
   const logged_at = ts || now;
+
+  // Not a rate limit — a data-integrity rule on the coffee's own time. No two
+  // coffees may occupy the same 5-minute window (you can't drink two that
+  // close), so we reject when any existing entry sits within ±5 min of this
+  // one's logged_at. Because the constraint is on logged_at (not wall-clock
+  // insert time), a user can still backfill several past coffees in one sitting
+  // as long as each is 5+ minutes apart.
+  const clash = db.prepare(
+    'SELECT id FROM coffee_entries WHERE user_id = ? AND ABS(logged_at - ?) < ? LIMIT 1'
+  ).get(req.user.id, logged_at, 5 * 60 * 1000);
+  if (clash) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    return res.status(409).json({ error: 'Another coffee is already logged within 5 minutes of this time.' });
+  }
+
   const photo_path = req.file ? req.file.filename : null;
   // Public only when explicitly opted in. Accepts the multipart string '1'/'true'
   // and the JSON boolean true / number 1; anything else (including an absent
