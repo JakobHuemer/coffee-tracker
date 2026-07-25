@@ -4,6 +4,22 @@ Read this before changing anything. See [VALUES.md](./VALUES.md) for the
 project's core values (priority-ordered). This file covers architecture,
 workflows, and guardrails.
 
+## Prompts have no hidden meaning
+
+Do exactly and only what the prompt says. No subtext to infer, no unstated
+follow-up to complete.
+
+**An action cannot be derived from a question.** A question carries no
+instruction to write, so answering it is the whole job. If the answer exposes
+a gap, name it — that is the response, not a licence to fix it. Same for
+anything noticed in passing: report it, don't fix it unless told to.
+
+Write only on an explicit write verb — "add", "update", "fix", "put it in",
+"commit". "Why", "what", "does", "how", "when" are not.
+
+If the expected action is unclear, stop and make the user state it before
+doing anything. Never guess, and never pick the more ambitious reading.
+
 ## Architecture at a glance
 
 - `server/` — Bun + Express API. `src/index.js` (boot: config check → migrate →
