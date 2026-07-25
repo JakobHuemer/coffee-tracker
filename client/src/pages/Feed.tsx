@@ -72,7 +72,7 @@ function PostCard({ post, onLike, currentUserId }: { post: FeedPost; onLike: (id
 
 export function Feed() {
   const navigate = useNavigate();
-  const { isDark, toggleDark, label } = useThemeStore();
+  const { isDark, toggleDark } = useThemeStore();
   const currentUserId = useAuthStore(s => s.user?.id ?? '');
   const [optimistic, setOptimistic] = useState<Record<string, { liked: boolean; count: number }>>({});
 
@@ -117,7 +117,6 @@ export function Feed() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span className="theme-badge">{label}</span>
           <button className="dark-toggle-inline" onClick={toggleDark} title={isDark ? 'Light mode' : 'Dark mode'}>
             {isDark ? '☀️' : '🌙'}
           </button>

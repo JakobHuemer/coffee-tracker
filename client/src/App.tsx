@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from './api/client';
 import { useAuthStore } from './store/auth';
 import { useThemeStore } from './store/theme';
-import { BgCanvas } from './components/BgCanvas';
+// Animated caffeine background disabled for now — kept in the tree for later.
+// import { BgCanvas } from './components/BgCanvas';
 import { BottomNav } from './components/BottomNav';
 import { Auth } from './pages/Auth';
 import { Feed } from './pages/Feed';
@@ -24,7 +25,6 @@ export function App() {
   const token = useAuthStore(s => s.token);
   const user = useAuthStore(s => s.user);
   const setAuth = useAuthStore(s => s.setAuth);
-  const levelIndex = useThemeStore(s => s.levelIndex);
   const isDark = useThemeStore(s => s.isDark);
   const toggleDark = useThemeStore(s => s.toggleDark);
   const location = useLocation();
@@ -43,7 +43,7 @@ export function App() {
 
   return (
     <>
-      <BgCanvas level={levelIndex} />
+      {/* <BgCanvas level={levelIndex} /> */}
       {!isAuth && !hasOwnTopRight && (
         <div className="top-right-actions">
           <button
