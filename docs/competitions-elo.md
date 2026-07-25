@@ -59,7 +59,21 @@ split step), not because the match itself is less deliberate.
 1v1, ondemand, and team matches have no fixed recurring window — the
 `scope_start`/`scope_end` is whatever the creator sets when the match is
 made (e.g. "settle at end of today", "run for the next 3 days"). Only daily
-and weekly are on a fixed recurring UTC boundary.
+and weekly are on a fixed recurring window.
+
+**Daily/weekly windows are UTC, not per-user civil days — deliberate
+exception to `docs/time-and-timezones.md`.** That doc's convention (civil
+day/week boundaries evaluated per-user IANA timezone) exists for single-user
+constructs like streaks and goals. A match pools multiple participants who
+must all be scored over the *identical* window — if each participant's "day"
+were their own civil day, two participants in different zones would be
+scored over windows offset by up to ~23 hours, handing one of them extra
+time to accumulate score before settlement. A single shared clock (UTC)
+removes that unfairness entirely, so it also removes the need for a
+timezone-based join restriction: participants in any timezone can compete
+in the same daily/weekly match, since the window is an absolute instant
+range, not evaluated relative to anyone's locale. No cross-timezone block
+needed — the shared clock *is* the simpler solution.
 
 `actual` is rank, not magnitude: for scores `S_i`, `S_j`,
 `A_ij = 1 if S_i>S_j, 0.5 if equal, 0 if S_i<S_j`. Only ordering matters —
@@ -72,8 +86,16 @@ All `N*(N-1)/2` unordered pairs. For ordered pair `(i,j)`:
 ```
 E_ij = 1 / (1 + 10^((R_j - R_i) / 400))
 delta_i = K/(N-1) * sum_{j!=i} (A_ij - E_ij)
-rating_i' = max(MIN_RATING, rating_i + delta_i)
+rating_i' = rating_i + delta_i
 ```
+
+**No floor/clamp in the settlement formula, anywhere, in any mode.** A
+`MIN_RATING` clamp on `rating_i'` would break zero-sum the moment any single
+participant hits it — the clamped amount vanishes from the ledger instead of
+landing on the other side. If a rating floor is wanted at all, it's a
+display-only concern (e.g. render `max(0, rating)` on the leaderboard) and
+must never feed back into `rating_before` for the next match — the stored,
+settled rating is unclamped, full stop.
 
 Zero-sum is structural: `A_ij+A_ji=1` and `E_ij+E_ji=1` always, so every pair's
 contribution to `sum(delta_i)` cancels exactly, for any N, K, rating spread.
@@ -88,6 +110,9 @@ N=2 of the same formula, no branch: one pair, `K/(N-1)=K`, reduces to classic
 head-to-head Elo.
 
 ### Teams (x vs y)
+
+Each side must have `n>=2` — a side of 1 is the 1v1 mode above, not a team of
+one (avoids a `(n-1)` division by zero in the losing-side split below).
 
 Settle team result first, then split each side's pot by contribution share.
 
