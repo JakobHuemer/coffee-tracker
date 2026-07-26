@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { FaTrophy, FaUser, FaLayerGroup } from 'react-icons/fa';
+import { AppLogo } from './AppLogo';
 
 const itemClass = ({ isActive }: { isActive: boolean }) => 'bn-item' + (isActive ? ' active' : '');
 const ICON = 22; // one size for every nav icon
@@ -10,8 +11,9 @@ export function BottomNav() {
   return (
     <nav className="bottom-nav">
       <NavLink to="/" end className={itemClass}>
-        {/* Feed keeps the app logo rather than a glyph. */}
-        <span className="bn-icon"><img className="bn-icon-img" src="/favicon.svg" alt="" /></span>
+        {/* Feed keeps the app logo rather than a glyph — monochrome, so it
+            takes the same muted/active colour as the neighbouring glyphs. */}
+        <span className="bn-icon"><AppLogo monochrome="currentColor" /></span>
         <span className="bn-label">Feed</span>
       </NavLink>
 

@@ -234,7 +234,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 /* One fixed 22px icon box for every item, so glyphs and the logo line up. */
 .bn-icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
 .bn-icon svg { width: 22px; height: 22px; display: block; }
-.bn-icon-img { width: 22px; height: 22px; display: block; }
 .bn-label { font-size: 0.6rem; }
 
 .bn-add-wrap {

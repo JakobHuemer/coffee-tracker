@@ -1,4 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="46" fill="none" viewBox="0 0 48 46">
+  <!--
+    ############################################################################
+    #  RED / HIGH:  THIS LOGO'S GEOMETRY IS DUPLICATED IN                      #
+    #               client/src/components/AppLogo.tsx                          #
+    ############################################################################
+
+    This file is the SOURCE OF TRUTH for the logo. AppLogo.tsx hand-copies the
+    shapes below to draw the monochrome silhouette, because that variant cannot
+    reuse this file (its mask/filter/gradient ids would collide between two
+    mounted logos).
+
+    ANY change to the geometry here MUST be mirrored into AppLogo.tsx in the
+    SAME COMMIT. Geometry means:
+      - the cup-body  <path d="…">
+      - the handle    <path fill-rule="evenodd" d="…">
+      - the three drop <ellipse> (cx / cy / rx / ry / rotate)
+      - the fit transform  translate(-0.383 0.842) scale(1.0718)
+      - the viewBox   0 0 48 46
+    Colour, filters, gradients and highlights are this file's alone — changing
+    those needs no counterpart edit.
+
+    Nothing in the build detects a mismatch. If you find these two files out of
+    sync: STOP, do not guess which one is right, and tell the developer in chat
+    immediately as a RED / HIGH-SEVERITY error. See AGENTS.md.
+  -->
   <g transform="translate(-0.383 0.842) scale(1.0718)">
   <path fill="#8a4a26" d="M10 16h24l-2.4 21.2A4 4 0 0 1 27.63 41H16.37a4 4 0 0 1-3.97-3.8L10 16Z"/>
   <path fill="#8a4a26" fill-rule="evenodd" d="M30.5 24.5a5 6.7 0 1 0 10 0 5 6.7 0 1 0-10 0ZM32.2 24.5a2.6 4.2 0 1 0 5.2 0 2.6 4.2 0 1 0-5.2 0Z"/>
