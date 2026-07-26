@@ -158,6 +158,15 @@ function ensureRecurringMatch(group, mode, now) {
   ).get(group.id, mode, periodKey);
   if (existing) return null;
 
+  // Never open a period that is already under way. The lead time only lands on
+  // a future window when it crosses a period boundary — weekly's two days do
+  // that on Sat/Sun only, so Mon-Fri this asks for the CURRENT week. For a
+  // group that already has the row that is a no-op (caught above), but a group
+  // that crosses two members mid-week would otherwise get a match whose window
+  // opened days before it existed: cancelled on the next tick at best, and at
+  // worst settled over days nobody was in the group for.
+  if (start <= now) return null;
+
   if (memberIds(group.id).length < 2) return null;
 
   const matchId = randomUUID();

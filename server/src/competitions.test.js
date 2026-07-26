@@ -203,19 +203,55 @@ test('the weekly opens exactly two days before it starts, not earlier', () => {
   const b = makeUser('b');
   const group = makeGroup('UTC', [a, b]);
 
-  // Week of Mon 2026-07-27. Friday is 3 days out: still the current week's
-  // match. Saturday is 2 days out: next week's opens.
+  // Week of Mon 2026-07-27. The two-day lead only crosses a week boundary on
+  // Sat/Sun; Mon-Fri it resolves to the week already under way, which is not a
+  // match anyone can be opened into.
   ensureRecurringMatch(group, 'weekly', Date.parse('2026-07-24T10:00:00Z')); // Fri
   expect(db.prepare("SELECT period_key FROM matches WHERE group_id = ? AND mode = 'weekly'")
-    .all(group.id).map((r) => r.period_key)).toEqual(['2026-07-20']);
+    .all(group.id).map((r) => r.period_key)).toEqual([]);
 
   ensureRecurringMatch(group, 'weekly', Date.parse('2026-07-25T10:00:00Z')); // Sat
   const keys = db.prepare("SELECT period_key FROM matches WHERE group_id = ? AND mode = 'weekly' ORDER BY period_key")
     .all(group.id).map((r) => r.period_key);
-  expect(keys).toEqual(['2026-07-20', '2026-07-27']);
+  expect(keys).toEqual(['2026-07-27']);
 
   const next = db.prepare("SELECT * FROM matches WHERE group_id = ? AND period_key = ?").get(group.id, '2026-07-27');
   expect(next.scope_start - Date.parse('2026-07-25T10:00:00Z')).toBeGreaterThan(DAY);
+});
+
+test('a group that reaches two members mid-week gets no weekly for the week already running', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = makeGroup('UTC', [a, b]);
+  const wed = Date.parse('2026-07-29T12:00:00Z');
+
+  // Before the guard this opened the week of 2026-07-27 — a window that started
+  // two days before the group existed. Empty it was cancelled on the next tick;
+  // with auto-join members on the roster it went live and settled over days
+  // nobody had been in the group for.
+  ensureRecurringMatches(wed);
+  expect(db.prepare("SELECT COUNT(*) AS c FROM matches WHERE group_id = ? AND mode = 'weekly'")
+    .get(group.id).c).toBe(0);
+
+  // The daily is unaffected: its one-day lead always lands on tomorrow.
+  const daily = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily'").get(group.id);
+  expect(daily.period_key).toBe('2026-07-30');
+  expect(daily.scope_start).toBeGreaterThan(wed);
+});
+
+test('auto-join members never get rostered into a window that already started', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  db.prepare('UPDATE users SET auto_join_weekly = 1 WHERE id IN (?, ?)').run(a, b);
+  const group = makeGroup('UTC', [a, b]);
+  const wed = Date.parse('2026-07-29T12:00:00Z');
+
+  tick(wed);
+  expect(db.prepare("SELECT COUNT(*) AS c FROM matches WHERE group_id = ? AND mode = 'weekly'")
+    .get(group.id).c).toBe(0);
+  // Nothing settled, so no rating moved for a week they were not in the group for.
+  expect(ratingOf(a)).toBe(BASE_RATING);
+  expect(ratingOf(b)).toBe(BASE_RATING);
 });
 
 test('a solo group gets no match at all', () => {
