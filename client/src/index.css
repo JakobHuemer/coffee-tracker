@@ -914,10 +914,28 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .buzz-state.buzz-empty { color: var(--text-muted); }
 
 .buzz-chart { margin-top: 14px; }
+.buzz-plot { position: relative; }
 .buzz-chart svg { width: 100%; height: 110px; display: block; }
+.buzz-dose-labels { position: absolute; inset: 0; pointer-events: none; }
+/* Sits above the coffee tick it belongs to; `bottom` is set per label, since
+   crowded times stack into rows. The chip keeps it readable over the fill. */
+.buzz-dose-label {
+  position: absolute; white-space: nowrap;
+  padding: 0 3px; border-radius: 3px;
+  background: var(--surface); color: var(--accent);
+  font-size: 0.58rem; line-height: 1.3; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* Labels are placed under their own major tick, so the row is a positioning
+   context rather than a flex strip; its height has to be set explicitly
+   because absolute children cannot give it one. */
 .buzz-axis {
-  display: flex; justify-content: space-between; margin-top: 4px;
+  position: relative; height: 14px; margin-top: 4px;
   font-size: 0.65rem; color: var(--text-muted);
+}
+.buzz-axis-label {
+  position: absolute; top: 0; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .buzz-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }

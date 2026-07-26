@@ -27,8 +27,8 @@ function timeLabel(t: number) {
   return new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function dayTimeLabel(t: number) {
-  return new Date(t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+function dayLabel(t: number) {
+  return new Date(t).toLocaleDateString([], { weekday: 'short' });
 }
 
 // "in 4h 20m" / "in 35m" for the moment the battery runs flat.
@@ -118,50 +118,163 @@ function HalfLifeControl({ current }: { current: number }) {
   );
 }
 
+// Ticks on whole local clock hours. Minor ones are bare marks for reading a
+// position off the curve; major ones are thicker and carry the axis label, and
+// they are the only axis labels there are. At 7d there are 168 hours and the
+// minor ticks would merge into a solid band, so each step widens until its
+// marks are far enough apart — minors need room for a line, majors for text.
+const HOUR_STEPS = [1, 3, 6, 12, 24];
+const MIN_TICK_GAP = 5;   // viewBox user units
+// Capped at 24 because getHours() only reaches 23: a larger step would silently
+// mean "midnight" instead of "every other midnight". The window maxes out at
+// 168 h, where 24 already clears MIN_MAJOR_GAP, so nothing bigger is needed.
+const MAJOR_STEPS = [6, 12, 24];
+const MIN_MAJOR_GAP = 36; // viewBox user units, room for "Mon" / "06:00"
+
+function hourTicks(start: number, end: number) {
+  const hours = (end - start) / 3600000;
+  const per = (s: number) => (VB_W / hours) * s;
+  const step = HOUR_STEPS.find(s => per(s) >= MIN_TICK_GAP) ?? 24;
+  // Every major step is a multiple of every minor step it can pair with, so a
+  // major always lands on a tick rather than between two.
+  const majorStep = MAJOR_STEPS.find(s => per(s) >= MIN_MAJOR_GAP) ?? 24;
+
+  // Walk forward to the first whole `step` hour at or after `start`. Stepping
+  // with setHours (not by adding ms) keeps the ticks on the clock across a DST
+  // change, which is the whole point of aligning them to hours.
+  const cur = new Date(start);
+  cur.setMinutes(0, 0, 0);
+  while (cur.getTime() < start || cur.getHours() % step !== 0) cur.setHours(cur.getHours() + 1);
+
+  const ticks: { t: number; major: boolean }[] = [];
+  while (cur.getTime() <= end) {
+    ticks.push({ t: cur.getTime(), major: cur.getHours() % majorStep === 0 });
+    cur.setHours(cur.getHours() + step);
+  }
+  // A window short enough to contain no whole major hour would otherwise render
+  // a bare axis; label what there is instead.
+  if (!ticks.some(t => t.major)) for (const t of ticks) t.major = true;
+  return { ticks, majorStep };
+}
+
+// Each coffee's tick carries its clock time. Two coffees close together would
+// overprint on a single line, so labels stack into rows: a label stays on the
+// bottom row unless it would touch the last one there, in which case it moves
+// up. Nothing is dropped — the bottom row is preferred, never required.
+const MIN_LABEL_GAP = 9; // % of chart width, about the width of "12:30"
+const LABEL_ROWS = 2;
+const LABEL_ROW_H = 10; // px between stacked rows
+// Within this much of an edge a label is pinned to the border rather than
+// centred on its tick: centring there would push it out of the card, and
+// flipping it fully to the other side of the tick reads as the wrong tick.
+const LABEL_EDGE = 4; // % of chart width
+
+// Centred on the tick, except within LABEL_EDGE of a border, where the label
+// hugs that border instead.
+function labelPos(pct: number) {
+  if (pct <= LABEL_EDGE) return { left: 0 };
+  if (pct >= 100 - LABEL_EDGE) return { right: 0 };
+  return { left: `${pct}%`, transform: 'translateX(-50%)' };
+}
+
+function doseLabels(doses: EnergyResponse['doses'], start: number, span: number) {
+  const lastPct = new Array<number>(LABEL_ROWS).fill(-Infinity);
+  return doses.map(d => {
+    const pct = ((d.logged_at - start) / span) * 100;
+    // The top row is the overflow row and takes whatever still collides there.
+    let row = 0;
+    while (row < LABEL_ROWS - 1 && pct - lastPct[row] < MIN_LABEL_GAP) row++;
+    lastPct[row] = pct;
+    return { id: d.id, pct, row, text: timeLabel(d.logged_at) };
+  });
+}
+
 function Chart({ data }: { data: EnergyResponse }) {
-  const { series, doses, now, window_hours } = data;
+  const { series, doses, now, window_hours, full_mg } = data;
   const start = series[0].t;
   const span = Math.max(1, now - start);
   const x = (t: number) => ((t - start) / span) * VB_W;
   const y = (level: number) => VB_H - (level / 100) * VB_H;
 
-  const line = series.map(p => `${x(p.t).toFixed(2)},${y(p.level).toFixed(2)}`).join(' ');
+  // Plot from active_mg, not from `level`. `level` is rounded to whole percent
+  // for the battery readout, which is only 101 distinct heights — about 1px
+  // apart on this chart — so drawing it gives a visibly stepped curve. This is
+  // the same number before that rounding, capped the way levelFromMg caps it.
+  const pct = (mg: number) => Math.min(100, (mg / full_mg) * 100);
+
+  // The API reaches back past the window so old coffee still shows as residual
+  // level at the left edge. Those doses have no tick position on this chart.
+  const shown = doses.filter(d => d.logged_at >= start && d.logged_at <= now);
+  const labels = doseLabels(shown, start, span);
+
+  const line = series.map(p => `${x(p.t).toFixed(2)},${y(pct(p.active_mg)).toFixed(2)}`).join(' ');
   const area = `${x(start).toFixed(2)},${VB_H} ${line} ${VB_W},${VB_H}`;
 
-  const mid = start + span / 2;
-  const fmt = window_hours > 24 ? dayTimeLabel : timeLabel;
+  const { ticks, majorStep } = hourTicks(start, now);
+  // Once the majors are a day apart the clock time on each is always 00:00, so
+  // the weekday is the only part that carries information.
+  const fmt = majorStep >= 24 ? dayLabel : timeLabel;
 
   return (
     <div className="buzz-chart">
-      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" role="img"
-        aria-label={`Buzz level over the last ${window_hours} hours`}>
-        <defs>
-          <linearGradient id="buzz-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.03" />
-          </linearGradient>
-        </defs>
+      <div className="buzz-plot">
+        <svg viewBox={`0 0 ${VB_W} ${VB_H}`} preserveAspectRatio="none" role="img"
+          aria-label={`Buzz level over the last ${window_hours} hours`}>
+          <defs>
+            <linearGradient id="buzz-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.45" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.03" />
+            </linearGradient>
+          </defs>
 
-        {/* 25 / 50 / 75% guides */}
-        {[25, 50, 75].map(v => (
-          <line key={v} x1="0" x2={VB_W} y1={y(v)} y2={y(v)}
-            stroke="var(--grid)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          {/* 25 / 50 / 75% guides */}
+          {[25, 50, 75].map(v => (
+            <line key={v} x1="0" x2={VB_W} y1={y(v)} y2={y(v)}
+              stroke="var(--grid)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          ))}
+
+          {/* Hour marks, for reading a position off the curve. Muted rather
+              than --grid (the horizontal guides) so they stay legible over the
+              fill, but still clearly quieter than a coffee tick. Majors are the
+              ones the axis labels below belong to, so they read as anchors. */}
+          {ticks.map(m => (
+            <line key={m.t} x1={x(m.t)} x2={x(m.t)} y1={VB_H} y2={VB_H - (m.major ? 11 : 5)}
+              stroke="var(--text-muted)" strokeOpacity={m.major ? 0.9 : 0.5}
+              strokeWidth={m.major ? 2 : 1} vectorEffect="non-scaling-stroke" />
+          ))}
+
+          {/* One tick per coffee, at the instant it was logged. Accent-coloured
+              to read as an event on the curve, not as another axis mark. */}
+          {shown.map(d => (
+            <line key={d.id} x1={x(d.logged_at)} x2={x(d.logged_at)} y1={VB_H} y2={VB_H - 12}
+              stroke="var(--accent)" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+          ))}
+
+          <polygon points={area} fill="url(#buzz-fill)" />
+          <polyline points={line} fill="none" stroke="var(--accent)" strokeWidth="1.5"
+            strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        </svg>
+
+        {/* HTML, not SVG <text>: the viewBox is stretched to the card width and
+            would squash the glyphs with it. The svg already carries the label for
+            screen readers, so these are decoration on top of it. */}
+        <div className="buzz-dose-labels" aria-hidden="true">
+          {labels.map(l => (
+            <span key={l.id} className="buzz-dose-label"
+              style={{ bottom: `${14 + l.row * LABEL_ROW_H}px`, ...labelPos(l.pct) }}>
+              {l.text}
+            </span>
+          ))}
+        </div>
+      </div>
+      {/* The axis is exactly the major ticks — no fixed start/middle/now marks,
+          so every label sits under a mark you can actually line the curve up
+          against. Positioned to match those ticks, hence absolute. */}
+      <div className="buzz-axis" aria-hidden="true">
+        {ticks.filter(m => m.major).map(m => (
+          <span key={m.t} className="buzz-axis-label"
+            style={labelPos((x(m.t) / VB_W) * 100)}>{fmt(m.t)}</span>
         ))}
-
-        {/* One tick per coffee, at the instant it was logged. */}
-        {doses.map(d => (
-          <line key={d.id} x1={x(d.logged_at)} x2={x(d.logged_at)} y1={VB_H} y2={VB_H - 10}
-            stroke="var(--text-muted)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        ))}
-
-        <polygon points={area} fill="url(#buzz-fill)" />
-        <polyline points={line} fill="none" stroke="var(--accent)" strokeWidth="2"
-          vectorEffect="non-scaling-stroke" />
-      </svg>
-      <div className="buzz-axis">
-        <span>{fmt(start)}</span>
-        <span>{fmt(mid)}</span>
-        <span>Now</span>
       </div>
     </div>
   );
