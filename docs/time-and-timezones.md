@@ -67,10 +67,23 @@ sameDay = todayLocal === activityLocal
 ## Future events
 
 - We do **not** create future events. A logged coffee's `logged_at` must satisfy
-  `instant <= serverNow` (UTC), full stop — no skew tolerance. The picker takes a
-  *civil* time in the user's zone, the translation layer converts it to an
-  instant, and the server rejects anything `> now`. This is the fix for the
-  "post stuck at 'just now'" bug (a future `logged_at` gave a negative age).
+  `instant <= serverNow + SKEW_MS` (UTC). The picker takes a *civil* time in the
+  user's zone, the translation layer converts it to an instant, and the server
+  rejects anything later. This is the fix for the "post stuck at 'just now'" bug
+  (a future `logged_at` gave a negative age).
+- **`SKEW_MS` is 2 minutes and is not a tolerance for future events — it is a
+  tolerance for wrong clocks.** The client sends a timestamp derived from the
+  *device's* clock; the server compares it against its own. Two correct clocks
+  disagree by seconds, a slightly-off device by a minute or two, and without the
+  allowance a user whose phone runs 40s fast cannot log a coffee *right now*.
+  Two minutes is small enough that a post can never sit at "just now" for a
+  noticeable stretch. Intentional backdating is unrestricted; only the future
+  side is capped.
+- **One value, one source.** `SKEW_MS` is defined in
+  `server/src/routes/coffees.js` and the client mirrors it exactly
+  (`client/src/components/PastTimePicker.tsx`). A client that allows *more* than
+  the server offers the user a time the API then rejects; a client that allows
+  *less* silently blocks a valid one. If the number changes, change both.
 - (For the record: storing *scheduled* future civil times is a harder problem —
   tz rules can change before the date arrives, so you'd store wall-clock + IANA
   + UTC + tzdb version. **We deliberately avoid that entirely** by forbidding
