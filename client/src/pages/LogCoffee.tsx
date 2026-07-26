@@ -54,12 +54,13 @@ export function LogCoffee() {
   const now = useNow(30_000);
   const resolvedTime = resolvePastTime(pastTime, now);
 
-  // A coffee entry must carry a photo or a description — mirrors the server's
-  // POST /coffees/entries rule. Keep every label/hint here in sync with that
-  // rule; a disabled button with no explanation is a bug (see VALUES.md 0.4).
+  // A *public* post must carry a photo or a description — mirrors the server's
+  // POST /coffees/entries rule. A private entry needs only the coffee type.
+  // Keep every label/hint here in sync with that rule; a disabled button with
+  // no explanation is a bug (see VALUES.md 0.4).
   const hasPhoto = !!photo;
   const hasDescription = description.trim().length > 0;
-  const meetsContentRule = hasPhoto || hasDescription;
+  const meetsContentRule = !isPublic || hasPhoto || hasDescription;
 
   // Object URLs are entries in the document's blob URL store, which holds a
   // strong reference to the File. Dropping the string does not free the image —
@@ -105,7 +106,7 @@ export function LogCoffee() {
 
   async function handleSubmit() {
     if (!selectedId) { setError('Please select a coffee type.'); return; }
-    if (!meetsContentRule) { setError('Add a photo or write a description.'); return; }
+    if (!meetsContentRule) { setError('Public posts need a photo or a description.'); return; }
     // No future logs, nothing older than 24h — the picker flags both inline, so
     // this only catches a submit that races the window's edge. Re-resolved
     // against a fresh Date.now() rather than the render's ticking clock, since
@@ -263,7 +264,7 @@ export function LogCoffee() {
               <label>
                 Description{' '}
                 <span className="field-hint">
-                  {hasPhoto ? '(optional)' : '(required unless you add a photo)'}
+                  {hasPhoto || !isPublic ? '(optional)' : '(required unless you add a photo)'}
                 </span>
               </label>
               <textarea
@@ -296,7 +297,7 @@ export function LogCoffee() {
               <div className="log-requirement-hint">Pick a coffee type to continue.</div>
             )}
             {selectedId && !meetsContentRule && (
-              <div className="log-requirement-hint">Add a photo or write a description to post.</div>
+              <div className="log-requirement-hint">Add a photo or write a description to post publicly.</div>
             )}
 
             <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId || !meetsContentRule || resolvedTime.timestamp === null}>

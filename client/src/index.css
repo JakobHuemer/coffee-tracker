@@ -267,11 +267,30 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .feed-post-meta { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .feed-username { font-size: 0.88rem; font-weight: 700; color: var(--text-primary); }
 .feed-time { font-size: 0.7rem; color: var(--text-muted); }
+.feed-private-tag {
+  display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0;
+  padding: 3px 8px; border-radius: 999px;
+  background: var(--surface2); border: 1px solid var(--border);
+  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--text-muted); text-transform: uppercase;
+}
 
-.feed-photo-wrap { width: 100%; aspect-ratio: 4/3; overflow: hidden; background: var(--surface2); }
-.feed-photo { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* The photo keeps its own aspect ratio until it is taller than 1.1× the card
+   width; only past that does it crop (max-height in cqw, hence the container).
+   A browser without container queries simply shows the full frame. */
+.feed-photo-wrap {
+  container-type: inline-size;
+  display: block; width: 100%; padding: 0; border: 0;
+  overflow: hidden; background: var(--surface2); cursor: pointer;
+}
+.feed-photo { width: 100%; height: auto; max-height: 110cqw; object-fit: cover; display: block; }
 
 .feed-post-body { padding: 10px 14px 4px; }
+/* Private posts have no actions row, so their buttons float inside the body and
+   the body has to contain them (flow-root) and close its own bottom edge. */
+.feed-post-body.with-float { display: flow-root; padding-bottom: 10px; }
+.feed-body-float { float: right; display: flex; gap: 10px; margin: -2px 0 4px 10px; }
+.feed-body-float .feed-bookmark-btn { margin-left: 0; }
 .feed-coffee-tag { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .feed-coffee-name {
   font-size: 0.82rem; font-weight: 600; color: var(--text-primary);
@@ -304,6 +323,28 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .feed-bookmark-btn:hover { color: var(--accent); }
 .feed-bookmark-btn.saved { color: var(--accent); }
+.feed-delete-btn {
+  background: none; border: none; cursor: pointer; padding: 4px 2px;
+  font-size: 0.95rem; color: var(--danger-fg);
+  transition: opacity 0.15s;
+}
+.feed-delete-btn:hover { opacity: 0.7; }
+
+.confirm-backdrop {
+  position: fixed; inset: 0; z-index: 210;
+  background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.confirm-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px;
+  max-width: 340px; width: 100%;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+}
+.confirm-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.confirm-msg { margin: 8px 0 16px; font-size: 0.85rem; line-height: 1.45; color: var(--text-sec); }
+.confirm-actions { display: flex; flex-direction: column; gap: 8px; }
 
 .feed-load-more {
   margin: 16px auto 0; display: block; padding: 10px 28px;
@@ -512,6 +553,15 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
 .btn-danger { background: #E53935; color: white; border: none; border-radius: 8px; cursor: pointer; padding: 10px 18px; font-size: 0.85rem; font-weight: 600; width: 100%; }
 .account-actions-card { display: flex; flex-direction: column; gap: 0; }
+/* A whole card acting as one nav row (Profile → Saved). */
+.profile-link-card {
+  display: flex; align-items: center; gap: 12px; width: calc(100% - 32px);
+  padding: 16px 20px; cursor: pointer; text-align: left;
+  color: var(--text-primary); font: inherit; transition: background 0.15s;
+}
+.profile-link-card:hover { background: var(--surface2); }
+.profile-link-icon { display: inline-flex; color: var(--text-muted); }
+.profile-link-label { flex: 1; font-size: 0.9rem; font-weight: 600; }
 .delete-confirm { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--surface2); }
 .delete-confirm-msg { font-size: 0.82rem; color: var(--text-sec); margin: 0 0 10px; line-height: 1.5; }
 .delete-confirm-actions { display: flex; flex-direction: column; gap: 8px; }
@@ -803,7 +853,8 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .gallery-lightbox-img {
   width: 100%; display: block;
-  max-height: 60vh; object-fit: contain;
+  /* contain, never cover: this view exists to show the frame the card crops. */
+  max-height: 78vh; object-fit: contain;
   background: #000;
 }
 .gallery-lightbox-meta {

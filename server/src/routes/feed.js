@@ -44,8 +44,10 @@ router.get('/', requireAuth, (req, res) => {
   res.json(posts.map(mapPost));
 });
 
-// The current user's saved posts, newest-saved first. Still-public only — a post
-// that has since gone private drops out, matching the main feed's privacy rule.
+// The current user's saved posts, newest-saved first. Someone else's post has to
+// still be public — one that has gone private drops out, matching the main
+// feed's privacy rule — but your own private entries stay, since you may save
+// those too.
 router.get('/saved', requireAuth, (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
   const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
@@ -56,9 +58,30 @@ router.get('/saved', requireAuth, (req, res) => {
     JOIN coffee_entries e ON e.id = mine.entry_id
     JOIN users u ON e.user_id = u.id
     LEFT JOIN post_likes pl ON pl.entry_id = e.id
-    WHERE mine.user_id = ? AND e.is_public = 1
+    WHERE mine.user_id = ? AND (e.is_public = 1 OR e.user_id = ?)
     GROUP BY e.id
     ORDER BY mine.created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(req.user.id, req.user.id, req.user.id, req.user.id, limit, offset);
+
+  res.json(posts.map(mapPost));
+});
+
+// Everything the current user has posted, newest coffee first — public and
+// private alike. This is the only list that shows a user their own private
+// entries, which is why it filters on user_id instead of is_public.
+router.get('/mine', requireAuth, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+  const posts = db.prepare(`
+    SELECT ${POST_COLUMNS}
+    FROM coffee_entries e
+    JOIN users u ON e.user_id = u.id
+    LEFT JOIN post_likes pl ON pl.entry_id = e.id
+    WHERE e.user_id = ?
+    GROUP BY e.id
+    ORDER BY e.logged_at DESC
     LIMIT ? OFFSET ?
   `).all(req.user.id, req.user.id, req.user.id, limit, offset);
 
@@ -102,11 +125,12 @@ router.delete('/:entryId/like', requireAuth, (req, res) => {
   res.json({ likes_count: count, liked_by_me: false });
 });
 
-// Bookmarks are private — unlike likes, you may bookmark your own post.
+// Bookmarks are private — unlike likes, you may bookmark your own post, and
+// that includes your own private entries. Someone else's post must be public.
 router.post('/:entryId/bookmark', requireAuth, (req, res) => {
   const entry = db.prepare(
-    'SELECT id FROM coffee_entries WHERE id = ? AND is_public = 1'
-  ).get(req.params.entryId);
+    'SELECT id FROM coffee_entries WHERE id = ? AND (is_public = 1 OR user_id = ?)'
+  ).get(req.params.entryId, req.user.id);
   if (!entry) return res.status(404).json({ error: 'Post not found' });
 
   try {

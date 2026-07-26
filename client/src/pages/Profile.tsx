@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/auth';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { BuzzWidget } from '../components/BuzzWidget';
+import { PhotoLightbox } from '../components/PhotoLightbox';
 import { getSkipSpacing, setSkipSpacing } from '../devFlags';
 import type { User, Badge } from '../types';
 
@@ -44,17 +45,17 @@ function GalleryCard() {
       </div>
 
       {lightbox && (
-        <div className="gallery-lightbox" onClick={() => setLightbox(null)}>
-          <div className="gallery-lightbox-inner" onClick={e => e.stopPropagation()}>
-            <img src={uploadUrl(lightbox.photo_url)} alt={lightbox.coffee_id} className="gallery-lightbox-img" />
-            <div className="gallery-lightbox-meta">
-              <span className="gallery-lightbox-coffee">{lightbox.coffee_id.replace(/_/g, ' ')}</span>
-              <span className="gallery-lightbox-date">{new Date(lightbox.logged_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-            </div>
-            {lightbox.description && <p className="gallery-lightbox-desc">{lightbox.description}</p>}
-            <button className="gallery-lightbox-close" onClick={() => setLightbox(null)} aria-label="Close"><Icon name="close" /></button>
+        <PhotoLightbox
+          src={uploadUrl(lightbox.photo_url)}
+          alt={lightbox.coffee_id}
+          onClose={() => setLightbox(null)}
+        >
+          <div className="gallery-lightbox-meta">
+            <span className="gallery-lightbox-coffee">{lightbox.coffee_id.replace(/_/g, ' ')}</span>
+            <span className="gallery-lightbox-date">{new Date(lightbox.logged_at).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })}</span>
           </div>
-        </div>
+          {lightbox.description && <p className="gallery-lightbox-desc">{lightbox.description}</p>}
+        </PhotoLightbox>
       )}
     </>
   );
@@ -402,6 +403,14 @@ export function Profile() {
         </div>
 
         <BuzzWidget />
+
+        {/* Saved gave up its bottom-nav slot to "Yours"; this is now the only
+            way in. */}
+        <button className="card profile-link-card" onClick={() => navigate('/saved')}>
+          <span className="profile-link-icon"><Icon name="bookmark-o" size={18} /></span>
+          <span className="profile-link-label">Saved posts</span>
+          <Icon name="arrow-right" size={14} />
+        </button>
 
         <GalleryCard />
 
