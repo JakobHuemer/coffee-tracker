@@ -47,6 +47,21 @@ not this file, for the design. Only what is nowhere else is below.
   (achievements/badges/challenges relocation) was deliberately left alone —
   that issue is still `status:needs-discussion`.
 
+## Reshape after first review (same day)
+
+The first cut auto-rostered every group member into every daily/weekly match.
+Reported immediately as a no-go, and rightly: issue #21 says "no auto join" and
+that rule is about MATCHES, not just about joining the group. Group membership
+now grants the right to join, nothing more. Recurring matches open as empty
+lobbies ahead of their window (daily 1 day, weekly 2), and `auto_join_daily` /
+`auto_join_weekly` (migration 012, default off) are the only way onto a roster
+without pressing join.
+
+Bug this surfaced, worth knowing: the leave route cancelled any lobby whose
+last player left. Correct for a match someone created, wrong for the group's
+daily — one player leaving would have denied the whole group that day's match.
+The route now keys off `period_key` (non-null = recurring) to tell them apart.
+
 ## Verification worth repeating
 
 Driving the built client through headless Chromium over CDP catches what

@@ -260,17 +260,36 @@ softmax contribution split, and no floor or clamp anywhere in settlement.
 
 ## Match lifecycle
 
-`open` (lobby, user-created only) → `pending` (roster locked) → `settled`, plus
-`cancelled` for a lobby that never reached a legal roster. The spec only named
-`pending` and `settled`.
+`open` (lobby) → `pending` (roster locked) → `settled`, plus `cancelled` for a
+lobby that never reached a legal roster. The spec only named `pending` and
+`settled`.
 
-- daily/weekly are opened by the server per group and period, and only for a
-  group with **two or more members** — a solo match settles every delta to 0,
-  so it is not created at all.
+**Every match is a lobby, including the recurring ones, and every roster is
+built by players pressing join.** Group membership means you *may* join the
+group's matches — never that you are entered in them. This is the issue's
+"no auto join" rule applied at the match level, not just the group level: a
+first implementation put every member on every daily roster automatically,
+which is exactly the "rating as a proxy for attendance" outcome the issue
+rules out.
+
+- Recurring matches open **ahead of their own window** so there is a period in
+  which to join them: the daily opens a day early (`DAILY_LEAD_DAYS`), the
+  weekly two days early (`WEEKLY_LEAD_DAYS`). So the daily you can join today is
+  tomorrow's.
+- They open **empty**. The single exception is a member who turned on the
+  per-user `auto_join_daily` / `auto_join_weekly` preference, which is what that
+  preference means; both default to off and apply only to matches opened after
+  they are switched on.
+- Creation still requires a group of **two or more members** — below that no
+  legal roster could be fielded by the start instant, so the lobby would only
+  ever be cancelled.
+- A recurring lobby that empties out is **not** cancelled (it belongs to the
+  group, and the rest of the group can still join); a user-created one is.
+- A lobby that has fewer than two players at its start instant is cancelled.
+  Nobody's rating moves — an unplayed day costs nothing.
 - The roster freezes when a match starts. A player who leaves the group still
   finishes the matches already running, which is what stops a bad day being
-  dodged by walking out; a player who joins the group mid-window plays from the
-  next window.
+  dodged by walking out.
 - Membership is exclusive (one group at a time, clan-style), enforced by a
   UNIQUE on `group_members.user_id`. Leaving never deletes the group — settled
   matches hang off it and are the rating ledger — so ownership passes to the

@@ -46,6 +46,10 @@ export interface User {
   // Personal caffeine half-life in hours, driving the Buzz decay curve. null
   // means unset — the server falls back to the 5 h population default.
   caffeine_half_life_h?: number | null;
+  // Opt-in: enter me in my group's recurring matches without pressing join.
+  // Off by default — nothing ever puts a user on a roster otherwise.
+  auto_join_daily?: 0 | 1;
+  auto_join_weekly?: 0 | 1;
   created_at: number;
 }
 

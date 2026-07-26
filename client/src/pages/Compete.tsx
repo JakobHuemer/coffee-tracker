@@ -7,7 +7,7 @@ import { Icon } from '../components/Icon';
 import { useAuthStore } from '../store/auth';
 import type {
   CompetitionsResponse, GroupsResponse, GroupDetailResponse, LeaderboardResponse,
-  Match, MatchMode, MatchParticipant,
+  Match, MatchMode, MatchParticipant, User,
 } from '../types';
 
 type Tab = 'matches' | 'ranking' | 'group';
@@ -67,24 +67,80 @@ function toLocalInput(ts: number) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// Visibility switch for a group. Uses the app's existing toggle (the one on the
-// log form and the Profile debug card) rather than a bare checkbox, so a
-// boolean looks the same everywhere in the app.
+// Visibility switch for a group. Same control as everything else in the app.
 function PublicToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <ToggleRow
+      label="Listed publicly"
+      sub="Anyone can find this group and join it"
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+// Generic toggle row, matching the log form and the Profile debug card.
+function ToggleRow({ label, sub, value, onChange, disabled }: {
+  label: string; sub: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean;
+}) {
   return (
     <div className="log-share-row">
       <div>
-        <div className="log-share-label">Listed publicly</div>
-        <div className="log-share-sub">Anyone can find this group and join it</div>
+        <div className="log-share-label">{label}</div>
+        <div className="log-share-sub">{sub}</div>
       </div>
       <button
         className={`log-toggle${value ? ' on' : ''}`}
         onClick={() => onChange(!value)}
         aria-pressed={value}
-        aria-label="Listed publicly"
+        aria-label={label}
+        disabled={disabled}
       >
         <span className="log-toggle-knob" />
       </button>
+    </div>
+  );
+}
+
+// The only mechanism that puts a player on a recurring roster without them
+// pressing join. Off by default, per user, and it only affects matches opened
+// after it is switched on — an already-open lobby still has to be joined.
+function AutoJoinCard() {
+  const user = useAuthStore(s => s.user);
+  const token = useAuthStore(s => s.token);
+  const setAuth = useAuthStore(s => s.setAuth);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: (body: { auto_join_daily?: boolean; auto_join_weekly?: boolean }) =>
+      api.patch<User>('/auth/me', body),
+    onSuccess: (updated) => { if (token) setAuth(updated, token); },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  return (
+    <div className="card cmp-form">
+      <div className="section-label">Auto-join</div>
+      <ToggleRow
+        label="Daily matches"
+        sub="Enter me in my group's daily match as soon as it opens"
+        value={user?.auto_join_daily === 1}
+        disabled={save.isPending}
+        onChange={v => { setError(null); save.mutate({ auto_join_daily: v }); }}
+      />
+      <ToggleRow
+        label="Weekly matches"
+        sub="Enter me in my group's weekly match as soon as it opens"
+        value={user?.auto_join_weekly === 1}
+        disabled={save.isPending}
+        onChange={v => { setError(null); save.mutate({ auto_join_weekly: v }); }}
+      />
+      <div className="field-hint">
+        Both are off by default. With them off you join each match yourself, and
+        nothing enters you in one. Turning one on applies to matches that open from
+        now on — a lobby already waiting still needs a join.
+      </div>
+      {error && <div className="auth-error">{error}</div>}
     </div>
   );
 }
@@ -121,6 +177,10 @@ function MatchStandings({ match }: { match: Match }) {
         {match.participants.map((p, i) => (
           <Standing key={p.user_id} p={p} settled={settled} rank={i + 1} />
         ))}
+        {/* A lobby nobody has joined would otherwise render an empty gap. */}
+        {match.participants.length === 0 && (
+          <div className="cmp-side-empty">No players yet — be the first.</div>
+        )}
       </div>
     );
   }
@@ -373,13 +433,15 @@ function MatchesTab({ data }: { data: CompetitionsResponse }) {
 
       <div className="section-label">Live now</div>
       {data.live.length === 0
-        ? <div className="cmp-empty">No match running. The daily and weekly ones open automatically once your group has two members.</div>
+        ? <div className="cmp-empty">No match running. Tomorrow’s daily is open below — join it to be in it.</div>
         : data.live.map(m => <MatchCard key={m.id} match={m} />)}
 
       <div className="section-label">Waiting to start</div>
       {data.open.length === 0
-        ? <div className="cmp-empty">No open lobbies. Start one with “New match” above.</div>
-        : data.open.map(m => (
+        ? <div className="cmp-empty">Nothing open right now. The daily opens a day ahead and the weekly two days ahead — or start your own with “New match”.</div>
+        /* Soonest first: the API orders by start descending, which puts the
+           match that starts last at the top of a list of upcoming ones. */
+        : [...data.open].sort((a, b) => a.scope_start - b.scope_start).map(m => (
           <MatchCard
             key={m.id} match={m} busy={busy}
             onJoin={side => { setError(null); join.mutate({ id: m.id, side }); }}
@@ -475,6 +537,8 @@ function GroupTab() {
           You can only be in one group at a time — joining another one leaves this one.
         </div>
       </div>
+
+      <AutoJoinCard />
 
       {isOwner && <GroupSettings group={group} />}
 

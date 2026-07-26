@@ -255,10 +255,16 @@ router.post('/:id/leave', requireAuth, (req, res) => {
   db.transaction(() => {
     db.prepare('DELETE FROM match_participants WHERE match_id = ? AND user_id = ?')
       .run(match.id, req.user.id);
-    // The creator walking out of an empty lobby cancels it rather than leaving
-    // an ownerless shell that the ticker would cancel later anyway.
+    // A user-created lobby whose last player walked out is cancelled rather
+    // than left as an ownerless shell the ticker would cancel anyway.
+    //
+    // A recurring lobby is NOT cancelled when it empties: it belongs to the
+    // group, not to whoever happened to join first, and it opens a day (or two)
+    // ahead precisely so people can join over that period. Emptying it must not
+    // deny the rest of the group their daily match.
+    const isRecurring = match.period_key !== null;
     const left = db.prepare('SELECT COUNT(*) AS c FROM match_participants WHERE match_id = ?').get(match.id).c;
-    if (left === 0) {
+    if (left === 0 && !isRecurring) {
       db.prepare("UPDATE matches SET state = 'cancelled', settled_at = ? WHERE id = ?").run(Date.now(), match.id);
     }
   })();

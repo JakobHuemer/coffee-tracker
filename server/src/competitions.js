@@ -22,6 +22,12 @@ const { localDateStr, localWallInstant, localDayBounds, isValidTz, DEFAULT_TZ } 
 // its window closes, so this is also the worst-case settlement lag.
 const TICK_MS = 60 * 1000;
 
+// How far ahead a recurring match opens for joining. Both are lobbies: they
+// exist before their window starts precisely so members have a period in which
+// to join them, because nothing joins on a member's behalf.
+const DAILY_LEAD_DAYS = 1;   // tomorrow's daily is joinable all of today
+const WEEKLY_LEAD_DAYS = 2;  // next week's weekly opens on the Saturday before
+
 // ── civil windows (group zone) ───────────────────────────────────────────────
 
 function groupTz(group) {
@@ -42,18 +48,21 @@ function addDaysStr(dateStr, n) {
   return new Date(Date.parse(`${dateStr}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 }
 
-// The current daily window for a group: { periodKey, start, end }.
-function dailyWindow(group, now = Date.now()) {
+// The daily window `offsetDays` from the group's current local day.
+// offsetDays = 0 is today, 1 is tomorrow (the one that opens for joining).
+function dailyWindow(group, now = Date.now(), offsetDays = 0) {
   const tz = groupTz(group);
-  const date = localDateStr(now, tz);
+  const date = addDaysStr(localDateStr(now, tz), offsetDays);
   const { start, end } = localDayBounds(date, tz);
   return { periodKey: date, start, end };
 }
 
-// The current weekly window for a group, Monday-anchored in the group's zone.
-function weeklyWindow(group, now = Date.now()) {
+// The weekly window containing "now plus `offsetDays`", Monday-anchored in the
+// group's zone. With the weekly lead time this rolls over to next week's match
+// exactly `WEEKLY_LEAD_DAYS` before it starts.
+function weeklyWindow(group, now = Date.now(), offsetDays = 0) {
   const tz = groupTz(group);
-  const monday = mondayOf(localDateStr(now, tz));
+  const monday = mondayOf(addDaysStr(localDateStr(now, tz), offsetDays));
   const start = localWallInstant(monday, '00:00:00', tz);
   const end = localWallInstant(addDaysStr(monday, 7), '00:00:00', tz) - 1;
   return { periodKey: monday, start, end };
@@ -114,31 +123,48 @@ function memberIds(groupId) {
     .all(groupId).map((r) => r.user_id);
 }
 
-// Open one recurring match if it does not already exist for this period. The
-// roster is the group's membership at creation time and is then fixed: someone
-// who joins the group mid-window plays from the next window, and someone who
-// leaves still finishes the match they were already in (no dodging a bad day).
+// Members who asked to be entered into this mode's recurring matches without
+// pressing join each time. Opt-in only: a member who has not set the flag is
+// never placed on a roster by the server.
+function autoJoinMemberIds(groupId, mode) {
+  const column = mode === 'daily' ? 'auto_join_daily' : 'auto_join_weekly';
+  return db.prepare(`
+    SELECT m.user_id FROM group_members m
+    JOIN users u ON u.id = m.user_id
+    WHERE m.group_id = ? AND u.${column} = 1
+    ORDER BY m.joined_at
+  `).all(groupId).map((r) => r.user_id);
+}
+
+// Open one recurring match if it does not already exist for this period.
 //
-// A group with fewer than two members gets no match at all — a solo match is a
-// mathematical no-op (every delta is 0) and would only add empty rows.
+// It opens as a LOBBY, ahead of its own window (a day early for daily, two for
+// weekly), and starts EMPTY. Group membership does not put anyone on a roster:
+// being in a group means you may join its matches, not that you are entered in
+// all of them. The only exception is a member who explicitly turned on
+// auto-join for this mode, which is what that preference means.
+//
+// Group size still gates creation: with fewer than two members nobody could
+// field a legal roster by the start instant, so the lobby would only ever be
+// cancelled.
 function ensureRecurringMatch(group, mode, now) {
+  const leadDays = mode === 'daily' ? DAILY_LEAD_DAYS : WEEKLY_LEAD_DAYS;
   const { periodKey, start, end } = mode === 'daily'
-    ? dailyWindow(group, now)
-    : weeklyWindow(group, now);
+    ? dailyWindow(group, now, leadDays)
+    : weeklyWindow(group, now, leadDays);
 
   const existing = db.prepare(
     'SELECT id FROM matches WHERE group_id = ? AND mode = ? AND period_key = ?'
   ).get(group.id, mode, periodKey);
   if (existing) return null;
 
-  const members = memberIds(group.id);
-  if (members.length < 2) return null;
+  if (memberIds(group.id).length < 2) return null;
 
   const matchId = randomUUID();
   const insertMatch = db.prepare(`
     INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
                          scope_start, scope_end, state, k_factor, team_size, created_at)
-    VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 'pending', ?, NULL, ?)
+    VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, 'open', ?, NULL, ?)
   `);
   const insertParticipant = db.prepare(
     'INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)'
@@ -146,7 +172,9 @@ function ensureRecurringMatch(group, mode, now) {
 
   db.transaction(() => {
     insertMatch.run(matchId, group.id, mode, periodKey, start, end, K_BY_MODE[mode], now);
-    for (const userId of members) insertParticipant.run(randomUUID(), matchId, userId, now);
+    for (const userId of autoJoinMemberIds(group.id, mode)) {
+      insertParticipant.run(randomUUID(), matchId, userId, now);
+    }
   })();
 
   return matchId;
@@ -172,7 +200,10 @@ function rosterIsLegal(match, participants) {
     const b = participants.filter((p) => p.side === 'B').length;
     return a === match.team_size && b === match.team_size;
   }
-  return participants.length >= 2; // ondemand free-for-all
+  // ondemand, daily and weekly are free-for-alls: any two players make a match.
+  // A recurring lobby nobody joined is cancelled by this, which is the intended
+  // outcome — an empty day costs nobody any rating.
+  return participants.length >= 2;
 }
 
 function lockDueLobbies(now = Date.now()) {
@@ -285,8 +316,8 @@ function stopTicker() {
 }
 
 module.exports = {
-  TICK_MS,
-  mondayOf, addDaysStr, dailyWindow, weeklyWindow, groupOf,
+  TICK_MS, DAILY_LEAD_DAYS, WEEKLY_LEAD_DAYS,
+  mondayOf, addDaysStr, dailyWindow, weeklyWindow, groupOf, autoJoinMemberIds,
   metricsFor, scoreFor, ratingOf,
   ensureRecurringMatch, ensureRecurringMatches, rosterIsLegal, lockDueLobbies,
   settleMatch, settleDueMatches, tick, startTicker, stopTicker,

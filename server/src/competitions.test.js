@@ -73,6 +73,16 @@ function openMatch({ group, mode, start, end, teamSize = null, state = 'open', r
   return db.prepare('SELECT * FROM matches WHERE id = ?').get(id);
 }
 
+// What POST /competitions/:id/join does to the database. Recurring lobbies open
+// empty now, so every settlement test has to put its players on the roster the
+// same way a real player would.
+function joinMatch(matchId, userIds, side = null) {
+  for (const userId of [].concat(userIds)) {
+    db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, ?, ?)')
+      .run(randomUUID(), matchId, userId, side, Date.now());
+  }
+}
+
 const matchById = (id) => db.prepare('SELECT * FROM matches WHERE id = ?').get(id);
 const participants = (id) => db.prepare('SELECT * FROM match_participants WHERE match_id = ?').all(id);
 
@@ -154,7 +164,7 @@ test('a user with no entries at all scores zero, not NaN', () => {
 
 // ── recurring match creation ─────────────────────────────────────────────────
 
-test('a group of two gets one daily and one weekly match, and creation is idempotent', () => {
+test('recurring matches open EMPTY — being in a group never enters you in one', () => {
   const a = makeUser('a');
   const b = makeUser('b');
   const group = makeGroup('UTC', [a, b]);
@@ -167,11 +177,45 @@ test('a group of two gets one daily and one weekly match, and creation is idempo
   expect(rows.length).toBe(2);
   expect(rows.map((m) => m.mode).sort()).toEqual(['daily', 'weekly']);
   for (const m of rows) {
-    expect(m.state).toBe('pending');
-    expect(participants(m.id).length).toBe(2);
+    expect(m.state).toBe('open');            // a lobby, not a running match
+    expect(participants(m.id).length).toBe(0); // nobody was placed on it
   }
   expect(rows.find((m) => m.mode === 'daily').k_factor).toBe(K_BY_MODE.daily);
   expect(rows.find((m) => m.mode === 'weekly').k_factor).toBe(K_BY_MODE.weekly);
+});
+
+test('the daily that opens is TOMORROW\'s, and it starts in the future', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = makeGroup('UTC', [a, b]);
+  const now = Date.parse('2026-07-26T10:00:00Z');
+
+  ensureRecurringMatch(group, 'daily', now);
+  const daily = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily'").get(group.id);
+
+  expect(daily.period_key).toBe('2026-07-27');
+  expect(daily.scope_start).toBeGreaterThan(now); // joinable for the rest of today
+  expect(daily.scope_start).toBe(Date.parse('2026-07-27T00:00:00Z'));
+});
+
+test('the weekly opens exactly two days before it starts, not earlier', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = makeGroup('UTC', [a, b]);
+
+  // Week of Mon 2026-07-27. Friday is 3 days out: still the current week's
+  // match. Saturday is 2 days out: next week's opens.
+  ensureRecurringMatch(group, 'weekly', Date.parse('2026-07-24T10:00:00Z')); // Fri
+  expect(db.prepare("SELECT period_key FROM matches WHERE group_id = ? AND mode = 'weekly'")
+    .all(group.id).map((r) => r.period_key)).toEqual(['2026-07-20']);
+
+  ensureRecurringMatch(group, 'weekly', Date.parse('2026-07-25T10:00:00Z')); // Sat
+  const keys = db.prepare("SELECT period_key FROM matches WHERE group_id = ? AND mode = 'weekly' ORDER BY period_key")
+    .all(group.id).map((r) => r.period_key);
+  expect(keys).toEqual(['2026-07-20', '2026-07-27']);
+
+  const next = db.prepare("SELECT * FROM matches WHERE group_id = ? AND period_key = ?").get(group.id, '2026-07-27');
+  expect(next.scope_start - Date.parse('2026-07-25T10:00:00Z')).toBeGreaterThan(DAY);
 });
 
 test('a solo group gets no match at all', () => {
@@ -181,7 +225,7 @@ test('a solo group gets no match at all', () => {
   expect(db.prepare('SELECT COUNT(*) AS c FROM matches WHERE group_id = ?').get(group.id).c).toBe(0);
 });
 
-test('a new day opens a new daily match without touching the old one', () => {
+test('each day opens its own daily without touching the previous one', () => {
   const a = makeUser('a');
   const b = makeUser('b');
   const group = makeGroup('UTC', [a, b]);
@@ -191,28 +235,53 @@ test('a new day opens a new daily match without touching the old one', () => {
 
   const keys = db.prepare("SELECT period_key FROM matches WHERE group_id = ? AND mode = 'daily' ORDER BY period_key")
     .all(group.id).map((r) => r.period_key);
-  expect(keys).toEqual(['2026-07-26', '2026-07-27']);
+  expect(keys).toEqual(['2026-07-27', '2026-07-28']);
 });
 
-test('the roster is frozen at creation — a later joiner plays from the next window', () => {
+test('only members who opted in are auto-joined, and only for that mode', () => {
+  const optIn = makeUser('optin');
+  const optOut = makeUser('optout');
+  const weeklyOnly = makeUser('weeklyonly');
+  const group = makeGroup('UTC', [optIn, optOut, weeklyOnly]);
+  db.prepare('UPDATE users SET auto_join_daily = 1, auto_join_weekly = 1 WHERE id = ?').run(optIn);
+  db.prepare('UPDATE users SET auto_join_weekly = 1 WHERE id = ?').run(weeklyOnly);
+
+  const now = Date.parse('2026-07-25T10:00:00Z'); // Saturday: both modes open
+  ensureRecurringMatches(now);
+
+  const daily = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily'").get(group.id);
+  const weekly = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'weekly'").get(group.id);
+
+  expect(participants(daily.id).map((p) => p.user_id)).toEqual([optIn]);
+  expect(participants(weekly.id).map((p) => p.user_id).sort()).toEqual([optIn, weeklyOnly].sort());
+});
+
+test('auto-join defaults to off for a brand-new user', () => {
+  const u = makeUser('fresh');
+  const row = db.prepare('SELECT auto_join_daily, auto_join_weekly FROM users WHERE id = ?').get(u);
+  expect(row.auto_join_daily).toBe(0);
+  expect(row.auto_join_weekly).toBe(0);
+});
+
+test('joining a lobby is what puts you on a roster', () => {
   const a = makeUser('a');
   const b = makeUser('b');
   const group = makeGroup('UTC', [a, b]);
   const now = Date.parse('2026-07-26T10:00:00Z');
   ensureRecurringMatches(now);
 
-  const late = makeUser('late');
-  db.prepare('INSERT INTO group_members (id, group_id, user_id, joined_at) VALUES (?, ?, ?, ?)')
-    .run(randomUUID(), group.id, late, Date.now());
-  ensureRecurringMatches(now); // same period — nothing new
-
   const daily = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily'").get(group.id);
-  expect(participants(daily.id).map((p) => p.user_id).sort()).toEqual([a, b].sort());
+  expect(participants(daily.id).length).toBe(0);
 
-  ensureRecurringMatches(now + DAY); // next day picks the newcomer up
-  const tomorrow = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily' AND period_key = ?")
-    .get(group.id, '2026-07-27');
-  expect(participants(tomorrow.id).length).toBe(3);
+  db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
+    .run(randomUUID(), daily.id, a, now);
+  expect(participants(daily.id).map((p) => p.user_id)).toEqual([a]);
+
+  // One player is not a match: the lobby is cancelled at its start instant and
+  // nobody's rating moves.
+  lockDueLobbies(daily.scope_start);
+  expect(matchById(daily.id).state).toBe('cancelled');
+  expect(db.prepare('SELECT COUNT(*) AS c FROM user_ratings').get().c).toBe(0);
 });
 
 // ── lobbies ──────────────────────────────────────────────────────────────────
@@ -243,6 +312,24 @@ test('a lobby that filled goes live, one that did not is cancelled with no ratin
   expect(db.prepare('SELECT COUNT(*) AS c FROM user_ratings').get().c).toBe(0);
 });
 
+test('period_key is what tells a recurring match from a user-created one', () => {
+  // The leave route keys off exactly this to decide whether an emptied lobby
+  // gets cancelled: a user-created one does, a group's daily does not (it
+  // belongs to the group, so one player leaving must not deny everyone else
+  // the match). That branch itself is HTTP-level and is covered by driving the
+  // API, not here — this pins the invariant it depends on.
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = makeGroup('UTC', [a, b]);
+  ensureRecurringMatches(Date.parse('2026-07-26T10:00:00Z'));
+
+  const daily = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily'").get(group.id);
+  expect(daily.period_key).not.toBeNull();
+
+  const adhoc = openMatch({ group, mode: '1v1', start: Date.now() + DAY, end: Date.now() + 2 * DAY });
+  expect(adhoc.period_key).toBeNull();
+});
+
 test('a lobby whose start is still ahead stays open', () => {
   const a = makeUser('a');
   const b = makeUser('b');
@@ -263,6 +350,7 @@ test('settling a daily match moves rating from the idle player to the active one
   ensureRecurringMatches(now);
 
   const daily = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily'").get(group.id);
+  joinMatch(daily.id, [a, b]);
   logCoffee(a, daily.scope_start + 3600000, { mg: 150 });
 
   settleMatch(daily, daily.scope_end + 1);
@@ -293,7 +381,9 @@ test('a settled match is never settled twice', () => {
   const now = Date.parse('2026-07-22T10:00:00Z');
   ensureRecurringMatches(now);
   const daily = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily'").get(group.id);
+  joinMatch(daily.id, [a, b]);
   logCoffee(a, daily.scope_start + 1000, { mg: 150 });
+  lockDueLobbies(daily.scope_start); // the lobby goes live before it can settle
 
   const after = daily.scope_end + 1;
   // Only the daily window has closed — the weekly one still has days to run.
@@ -372,8 +462,9 @@ test('ratings compound across matches — the second match starts from the first
 
   const runDay = (dayInstant) => {
     ensureRecurringMatch(group, 'daily', dayInstant);
-    const m = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily' AND state = 'pending' ORDER BY scope_start DESC")
+    const m = db.prepare("SELECT * FROM matches WHERE group_id = ? AND mode = 'daily' AND state = 'open' ORDER BY scope_start DESC")
       .get(group.id);
+    joinMatch(m.id, [a, b]);
     logCoffee(a, m.scope_start + 1000, { mg: 150 });
     settleMatch(m, m.scope_end + 1);
     return m;

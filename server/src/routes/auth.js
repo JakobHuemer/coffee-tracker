@@ -47,7 +47,7 @@ function handleUpload(mw) {
 
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous
@@ -126,9 +126,22 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.patch('/me', requireAuth, (req, res) => {
-  const { username, avatar, featured_badges, password, timezone, caffeine_half_life_h } = req.body;
+  const {
+    username, avatar, featured_badges, password, timezone, caffeine_half_life_h,
+    auto_join_daily, auto_join_weekly,
+  } = req.body;
   if (username && !USERNAME_RE.test(username)) {
     return res.status(400).json({ error: 'Invalid username' });
+  }
+  // Opt-in auto-join for the recurring competition matches. Booleans only: a
+  // silent coercion here would be the difference between being entered into
+  // every daily match and none of them.
+  for (const [key, value] of [['auto_join_daily', auto_join_daily], ['auto_join_weekly', auto_join_weekly]]) {
+    if (value === undefined) continue;
+    if (typeof value !== 'boolean') {
+      return res.status(400).json({ error: `${key} must be true or false` });
+    }
+    db.prepare(`UPDATE users SET ${key} = ? WHERE id = ?`).run(value ? 1 : 0, req.user.id);
   }
   // Personal caffeine half-life (hours) for the Buzz score. null clears it back
   // to the population default. Out-of-range numbers are clamped rather than
