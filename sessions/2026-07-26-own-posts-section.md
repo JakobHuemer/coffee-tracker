@@ -30,3 +30,9 @@ topics: [own-posts-section, feed-privacy, post-content-rule, bottom-nav]
   means no crop.
 - `components/PhotoLightbox.tsx` is shared by the feed and the Profile gallery;
   it kept the older `.gallery-lightbox-*` class names on purpose.
+- Delete lives on every own card (feed, yours, saved — decided with the user) and
+  reuses the existing `DELETE /coffees/entries/:id`; no new endpoint. Removal is
+  *not* optimistic, so a failed delete can never look like it worked. Pending and
+  error state come off the one mutation, keyed by `mutation.variables === post.id`
+  so only the card whose dialog is open shows them, and `mutation.reset()` on
+  cancel keeps a stale error out of the next dialog.

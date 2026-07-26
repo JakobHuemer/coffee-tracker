@@ -5,6 +5,7 @@ import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { Icon } from './Icon';
 import { PhotoLightbox } from './PhotoLightbox';
+import { ConfirmDialog } from './ConfirmDialog';
 import type { FeedPost } from '../types';
 
 const PAGE_SIZE = 20;
@@ -42,15 +43,21 @@ function removeFromList(
 }
 
 function PostCard({
-  post, onLike, onBookmark, currentUserId,
+  post, onLike, onBookmark, onDelete, onDeleteDismiss, deleting, deleteError, currentUserId,
 }: {
   post: FeedPost;
   onLike: (id: string, liked: boolean) => void;
   onBookmark: (id: string, bookmarked: boolean) => void;
+  onDelete: (id: string) => void;
+  // Clears a failed delete, so reopening the dialog doesn't show a stale error.
+  onDeleteDismiss: () => void;
+  deleting: boolean;
+  deleteError: string | null;
   currentUserId: string;
 }) {
   const navigate = useNavigate();
   const [zoomed, setZoomed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const liked = post.liked_by_me;
   const isOwn = post.user_id === currentUserId;
 
@@ -106,7 +113,10 @@ function PostCard({
             empty band, so the save button floats into the body instead and the
             coffee tag / description flow around it. */}
         {!post.is_public && (
-          <BookmarkButton post={post} onBookmark={onBookmark} floating />
+          <div className="feed-body-float">
+            <BookmarkButton post={post} onBookmark={onBookmark} />
+            {isOwn && <DeleteButton onClick={() => setConfirming(true)} />}
+          </div>
         )}
         <div className="feed-coffee-tag">
           <span className="feed-coffee-name">{post.coffee_id.replace(/_/g, ' ')}</span>
@@ -135,27 +145,49 @@ function PostCard({
           )}
 
           <BookmarkButton post={post} onBookmark={onBookmark} />
+          {isOwn && <DeleteButton onClick={() => setConfirming(true)} />}
         </div>
+      )}
+
+      {confirming && (
+        <ConfirmDialog
+          title="Delete this coffee?"
+          message="The entry, its photo and everything it counted towards — stats, streaks, Buzz — go with it. This cannot be undone."
+          confirmLabel="Delete coffee"
+          busy={deleting}
+          error={deleteError}
+          onConfirm={() => onDelete(post.id)}
+          onCancel={() => { if (!deleting) { setConfirming(false); onDeleteDismiss(); } }}
+        />
       )}
     </article>
   );
 }
 
 function BookmarkButton({
-  post, onBookmark, floating = false,
+  post, onBookmark,
 }: {
   post: FeedPost;
   onBookmark: (id: string, bookmarked: boolean) => void;
-  floating?: boolean;
 }) {
   const bookmarked = post.bookmarked_by_me;
   return (
     <button
-      className={`feed-bookmark-btn${bookmarked ? ' saved' : ''}${floating ? ' floating' : ''}`}
+      className={`feed-bookmark-btn${bookmarked ? ' saved' : ''}`}
       onClick={() => onBookmark(post.id, bookmarked)}
       aria-label={bookmarked ? 'Remove bookmark' : 'Save'}
     >
       <Icon name={bookmarked ? 'bookmark' : 'bookmark-o'} />
+    </button>
+  );
+}
+
+// Only ever rendered on the viewer's own posts — the server enforces that too,
+// DELETE /coffees/entries/:id matches on user_id.
+function DeleteButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button className="feed-delete-btn" onClick={onClick} aria-label="Delete coffee">
+      <Icon name="trash" />
     </button>
   );
 }
@@ -232,6 +264,21 @@ export function FeedList({
     },
   });
 
+  // Deleting a coffee moves every derived surface (stats, streaks, Buzz, the
+  // Profile gallery, the other feed lists), so the whole set is invalidated
+  // rather than only this list. No optimistic removal: the card stays put until
+  // the server confirms, so a failed delete can't look like it worked.
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/coffees/entries/${id}`),
+    onSuccess: (_result, id) => {
+      qc.setQueryData<InfiniteData<FeedPost[]>>(queryKey, old => removeFromList(old, id));
+      for (const key of ['feed', 'entries', 'my-photos', 'stats', 'streaks', 'goals',
+        'badges', 'achievements', 'casualties', 'challenges', 'rankings', 'energy']) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+    },
+  });
+
   const handleLike = useCallback((id: string, liked: boolean) => {
     likeMutation.mutate({ id, liked });
   }, [likeMutation]);
@@ -239,6 +286,10 @@ export function FeedList({
   const handleBookmark = useCallback((id: string, bookmarked: boolean) => {
     bookmarkMutation.mutate({ id, bookmarked });
   }, [bookmarkMutation]);
+
+  const handleDelete = useCallback((id: string) => {
+    deleteMutation.mutate(id);
+  }, [deleteMutation]);
 
   const posts = data?.pages.flat() ?? [];
 
@@ -261,6 +312,14 @@ export function FeedList({
             post={post}
             onLike={handleLike}
             onBookmark={handleBookmark}
+            onDelete={handleDelete}
+            onDeleteDismiss={deleteMutation.reset}
+            // Pending/error state is per-mutation, not per-card, but only the
+            // card being deleted has its dialog open to show it.
+            deleting={deleteMutation.isPending && deleteMutation.variables === post.id}
+            deleteError={deleteMutation.variables === post.id && deleteMutation.error
+              ? deleteMutation.error.message
+              : null}
             currentUserId={currentUserId}
           />
         ))}
