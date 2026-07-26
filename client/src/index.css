@@ -1152,6 +1152,24 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .cmp-mode-opt.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+/* Timezone picker */
+.tzp { position: relative; }
+.tzp-list {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+  max-height: 260px; overflow-y: auto;
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 8px; box-shadow: var(--shadow);
+}
+.tzp-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 12px; border: none; background: none; cursor: pointer;
+  font-size: 0.82rem; color: var(--text-primary); text-align: left;
+}
+.tzp-opt.active { background: var(--accent-bg); }
+.tzp-zone { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tzp-offset { flex-shrink: 0; font-size: 0.72rem; color: var(--text-muted); }
+.tzp-empty { padding: 12px; font-size: 0.8rem; color: var(--text-muted); text-align: center; }
+
 /* Group */
 .cmp-group-card { display: flex; flex-direction: column; gap: 8px; }
 .cmp-group-name { font-size: 1rem; font-weight: 700; color: var(--text-primary); }

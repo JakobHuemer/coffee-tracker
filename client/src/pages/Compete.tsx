@@ -4,6 +4,7 @@ import { api, uploadUrl } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Icon } from '../components/Icon';
+import { TimezonePicker } from '../components/TimezonePicker';
 import { useAuthStore } from '../store/auth';
 import type {
   CompetitionsResponse, GroupsResponse, GroupDetailResponse, LeaderboardResponse,
@@ -683,8 +684,8 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
 
       <div className="field">
         <label htmlFor="cmp-gtz">Timezone</label>
-        <input id="cmp-gtz" className="search-input" value={timezone} onChange={e => setTimezone(e.target.value)} />
-        <div className="field-hint">IANA name, e.g. Europe/Vienna. Applies from the next day and week.</div>
+        <TimezonePicker id="cmp-gtz" value={timezone} onChange={setTimezone} />
+        <div className="field-hint">Applies from the next day and week.</div>
       </div>
 
       <PublicToggle value={isPublic} onChange={setIsPublic} />
