@@ -5,9 +5,12 @@
 // The tier names themselves are the server's — see the `rarity` field in
 // server/src/data/badges.js. This module only decides how they look and sort.
 
-export const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'secret'];
+const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'secret'];
 
-export const RARITY_COLORS: Record<string, string> = {
+// Both tables stay private: callers go through the accessors below so an
+// unknown tier gets the fallback everywhere instead of only where someone
+// remembered to write `|| '#999'`.
+const RARITY_COLORS: Record<string, string> = {
   common: '#9E9E9E', uncommon: '#4CAF50', rare: '#2196F3',
   epic: '#9C27B0', legendary: '#FF9800', secret: '#FF1744',
 };

@@ -9,7 +9,7 @@ import { BuzzWidget } from '../components/BuzzWidget';
 import { PhotoLightbox } from '../components/PhotoLightbox';
 import { getSkipSpacing, setSkipSpacing } from '../devFlags';
 import type { User, Badge } from '../types';
-import { RARITY_COLORS } from '../rarity';
+import { rarityColor } from '../rarity';
 
 interface PhotoEntry {
   id: string;
@@ -360,7 +360,7 @@ export function Profile() {
                           className={`badge-pick-opt${selected ? ' selected' : ''}${disabled ? ' disabled' : ''}`}
                           onClick={() => !disabled && toggleBadge(b.id)}
                           title={b.description}
-                          style={{ borderColor: selected ? RARITY_COLORS[b.rarity] : undefined }}
+                          style={{ borderColor: selected ? rarityColor(b.rarity) : undefined }}
                         >
                           <span className="bpo-icon"><Icon name={b.icon} /></span>
                           <span className="bpo-name">{b.name}</span>
@@ -384,7 +384,7 @@ export function Profile() {
               {displayedBadges.length > 0 && (
                 <div className="profile-featured-badges">
                   {displayedBadges.map(b => (
-                    <div key={b.id} className="pfb-item" title={b.description} style={{ borderColor: RARITY_COLORS[b.rarity] }}>
+                    <div key={b.id} className="pfb-item" title={b.description} style={{ borderColor: rarityColor(b.rarity) }}>
                       <span className="pfb-icon"><Icon name={b.icon} /></span>
                       <span className="pfb-name">{b.name}</span>
                     </div>

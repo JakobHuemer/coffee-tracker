@@ -19,8 +19,10 @@
   /* Semantic feedback + tag colors (theme-aware so they adapt in dark mode). */
   --danger-bg:    #FDECEC; --danger-bd:  #F0BCBC; --danger-fg:  #C0392B;
   /* Filled destructive buttons need their own solid red: --danger-fg is tuned
-     for text on the page background and does not carry white text safely. */
-  --danger-solid: #E53935; --danger-solid-hv: #C62828;
+     for text on the page background and does not carry white text safely.
+     Both shades clear 4.5:1 against white (#D32F2F is 4.98:1, #B71C1C 6.6:1);
+     the old #E53935 was 4.22:1 and missed AA for the button's 0.85rem label. */
+  --danger-solid: #D32F2F; --danger-solid-hv: #B71C1C;
   --warn-bg:      #FFF6E5; --warn-bd:    #F0D9A8; --warn-fg:    #8A6D1B;
   --success-bg:   #E8F5E9; --success-bd: #A5D6A7; --success-fg: #2E7D32;
   --tag-community-bg: #E3F2FD; --tag-community-fg: #1565C0;
@@ -51,7 +53,10 @@
   --shadow:       0 1px 3px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.35);
 
   --danger-bg:    #3A1414; --danger-bd:  #5E2222; --danger-fg:  #FF9A90;
-  --danger-solid: #E53935; --danger-solid-hv: #EF5350;
+  /* Same base as light: the button carries white text either way, so the
+     contrast floor does not move with the theme. Hover darkens rather than
+     lightens for the same reason — #EF5350 under white is only 3.5:1. */
+  --danger-solid: #D32F2F; --danger-solid-hv: #B71C1C;
   --warn-bg:      #3A2E12; --warn-bd:    #5A4620; --warn-fg:    #F0C674;
   --success-bg:   #14301B; --success-bd: #245A32; --success-fg: #8FD69C;
   --tag-community-bg: #0D2A45; --tag-community-fg: #8AC4FF;
@@ -524,6 +529,13 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .field input:focus, .field select:focus, .search-input:focus { border-color: var(--accent); }
 .auth-error { background: var(--danger-bg); border: 1px solid var(--danger-bd); border-radius: 8px; padding: 10px; font-size: 0.8rem; color: var(--danger-fg); text-align: center; }
 .log-requirement-hint { background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 8px 10px; font-size: 0.78rem; color: var(--warn-fg); text-align: center; }
+/* Retry sits inside a .log-requirement-hint, so it inherits that block's amber
+   rather than introducing a second colour for one word. */
+.log-menu-retry {
+  background: none; border: none; padding: 0; font: inherit; font-weight: 700;
+  color: inherit; text-decoration: underline; cursor: pointer;
+}
+.log-menu-note { padding: 8px 10px; font-size: 0.78rem; color: var(--text-muted); text-align: center; }
 .auth-warn { display: flex; flex-direction: column; gap: 4px; background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.78rem; line-height: 1.4; color: var(--warn-fg); text-align: left; }
 .auth-warn strong { font-size: 0.82rem; color: var(--warn-fg); }
 .auth-submit {

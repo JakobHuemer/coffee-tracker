@@ -8,6 +8,7 @@ import {
   PastTimePicker, currentPastTime, resolvePastTime, useNow, type PastTime,
 } from '../components/PastTimePicker';
 import { getSkipSpacing } from '../devFlags';
+import { api } from '../api/client';
 import type { Coffee, UnlockNotification } from '../types';
 
 export function LogCoffee() {
@@ -15,9 +16,11 @@ export function LogCoffee() {
   const qc = useQueryClient();
   const token = useAuthStore(s => s.token);
 
-  const { data: coffees = [] } = useQuery<Coffee[]>({
+  const {
+    data: coffees = [], isPending: menuPending, isError: menuFailed, refetch: refetchMenu,
+  } = useQuery<Coffee[]>({
     queryKey: ['coffees'],
-    queryFn: () => fetch('/api/coffees', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+    queryFn: () => api.get<Coffee[]>('/coffees'),
     staleTime: Infinity,
   });
 
@@ -218,19 +221,31 @@ export function LogCoffee() {
 
         <div className="log-form">
           <div className="section-label">Coffee type</div>
-          <div className="coffee-grid">
-            {coffees.map(c => (
-              <button
-                key={c.id}
-                className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
-                onClick={() => setSelectedId(c.id)}
-              >
-                <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
-                <span className="cb-name">{c.name}</span>
-                <span className="cb-mg">{c.caffeine}mg</span>
-              </button>
-            ))}
-          </div>
+          {/* The menu is the server's now, so it can be missing. An empty grid
+              under "Pick a coffee type to continue" is a dead end that blames
+              the user for a failed fetch — say what happened and offer a retry. */}
+          {menuPending ? (
+            <div className="log-menu-note">Loading the coffee menu…</div>
+          ) : menuFailed || coffees.length === 0 ? (
+            <div className="log-requirement-hint">
+              Couldn’t load the coffee menu.{' '}
+              <button className="log-menu-retry" onClick={() => refetchMenu()}>Try again</button>
+            </div>
+          ) : (
+            <div className="coffee-grid">
+              {coffees.map(c => (
+                <button
+                  key={c.id}
+                  className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
+                  onClick={() => setSelectedId(c.id)}
+                >
+                  <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
+                  <span className="cb-name">{c.name}</span>
+                  <span className="cb-mg">{c.caffeine}mg</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="field" style={{ marginTop: 16 }}>
             <label>Time</label>
@@ -275,7 +290,9 @@ export function LogCoffee() {
 
           {error && <div className="auth-error">{error}</div>}
 
-          {!selectedId && (
+          {/* Only ask for a pick when there is something to pick from — with no
+              menu the block above already explains why. */}
+          {!selectedId && coffees.length > 0 && (
             <div className="log-requirement-hint">Pick a coffee type to continue.</div>
           )}
           {selectedId && !meetsContentRule && (
