@@ -1,9 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { Icon } from './Icon';
+import { PhotoLightbox } from './PhotoLightbox';
 import type { FeedPost } from '../types';
 
 const PAGE_SIZE = 20;
@@ -49,6 +50,7 @@ function PostCard({
   currentUserId: string;
 }) {
   const navigate = useNavigate();
+  const [zoomed, setZoomed] = useState(false);
   const liked = post.liked_by_me;
   const bookmarked = post.bookmarked_by_me;
   const isOwn = post.user_id === currentUserId;
@@ -79,9 +81,25 @@ function PostCard({
       </div>
 
       {post.photo_url && (
-        <div className="feed-photo-wrap">
+        // In the card the photo is capped at 1.5× its width; tapping it opens
+        // the uncropped frame.
+        <button className="feed-photo-wrap" onClick={() => setZoomed(true)} aria-label="View photo">
           <img className="feed-photo" src={uploadUrl(post.photo_url)} alt={post.coffee_id} loading="lazy" />
-        </div>
+        </button>
+      )}
+
+      {zoomed && post.photo_url && (
+        <PhotoLightbox
+          src={uploadUrl(post.photo_url)}
+          alt={post.coffee_id}
+          onClose={() => setZoomed(false)}
+        >
+          <div className="gallery-lightbox-meta">
+            <span className="gallery-lightbox-coffee">{post.coffee_id.replace(/_/g, ' ')}</span>
+            <span className="gallery-lightbox-date">{timeAgo(post.logged_at)}</span>
+          </div>
+          {post.description && <p className="gallery-lightbox-desc">{post.description}</p>}
+        </PhotoLightbox>
       )}
 
       <div className="feed-post-body">
