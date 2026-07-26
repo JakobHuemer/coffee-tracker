@@ -915,6 +915,8 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 
 .buzz-chart { margin-top: 14px; }
 .buzz-plot { position: relative; }
+/* Height is mirrored as PLOT_H in BuzzWidget.tsx, which sizes how many rows of
+   dose labels fit inside the plot — change both together. */
 .buzz-chart svg { width: 100%; height: 110px; display: block; }
 .buzz-dose-labels { position: absolute; inset: 0; pointer-events: none; }
 /* Sits above the coffee tick it belongs to; `bottom` is set per label, since

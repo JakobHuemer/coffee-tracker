@@ -158,12 +158,23 @@ function hourTicks(start: number, end: number) {
 }
 
 // Each coffee's tick carries its clock time. Two coffees close together would
-// overprint on a single line, so labels stack into rows: a label stays on the
-// bottom row unless it would touch the last one there, in which case it moves
-// up. Nothing is dropped — the bottom row is preferred, never required.
+// overprint on a single line, so labels stack into rows: a label takes the
+// lowest row where it clears the last label already there, and a new row opens
+// only once every existing one is still crowded. Nothing is dropped, and the
+// bottom row is preferred but never required.
+//
+// How many rows that needs is a property of the data, not a constant: four
+// coffees inside one MIN_LABEL_GAP need four rows. A fixed two-row cap silently
+// overprinted everything past the second, which is exactly what a run like
+// 09:00 / 09:05 / 09:15 / 09:20 produces.
 const MIN_LABEL_GAP = 9; // % of chart width, about the width of "12:30"
-const LABEL_ROWS = 2;
 const LABEL_ROW_H = 10; // px between stacked rows
+const LABEL_BASE_BOTTOM = 14; // px, clears the coffee tick (12 user units tall)
+const LABEL_H = 12; // px, a chip at 0.58rem/1.3
+const PLOT_H = 110; // px — keep in sync with `.buzz-chart svg` in index.css
+// Stack until the next row would push a chip out of the top of the plot. Past
+// that there is nowhere left to go and labels have to share a row.
+const MAX_LABEL_ROWS = Math.floor((PLOT_H - LABEL_BASE_BOTTOM - LABEL_H) / LABEL_ROW_H) + 1;
 // Within this much of an edge a label is pinned to the border rather than
 // centred on its tick: centring there would push it out of the card, and
 // flipping it fully to the other side of the tick reads as the wrong tick.
@@ -177,13 +188,23 @@ function labelPos(pct: number) {
   return { left: `${pct}%`, transform: 'translateX(-50%)' };
 }
 
+// `doses` arrives sorted by logged_at, so lastPct[row] is always behind the
+// label being placed and one comparison per row settles it.
 function doseLabels(doses: EnergyResponse['doses'], start: number, span: number) {
-  const lastPct = new Array<number>(LABEL_ROWS).fill(-Infinity);
+  const lastPct: number[] = []; // where the last label on each row ended
   return doses.map(d => {
     const pct = ((d.logged_at - start) / span) * 100;
-    // The top row is the overflow row and takes whatever still collides there.
-    let row = 0;
-    while (row < LABEL_ROWS - 1 && pct - lastPct[row] < MIN_LABEL_GAP) row++;
+    let row = lastPct.findIndex(p => pct - p >= MIN_LABEL_GAP);
+    if (row === -1) {
+      if (lastPct.length < MAX_LABEL_ROWS) {
+        row = lastPct.length; // open a new row above the crowded ones
+      } else {
+        // Out of vertical room, so some overprint is now unavoidable. Give the
+        // label to the row whose last entry is furthest back — the most space
+        // available anywhere — rather than always dumping it on the bottom row.
+        row = lastPct.reduce((best, p, i) => (p < lastPct[best] ? i : best), 0);
+      }
+    }
     lastPct[row] = pct;
     return { id: d.id, pct, row, text: timeLabel(d.logged_at) };
   });
@@ -261,7 +282,7 @@ function Chart({ data }: { data: EnergyResponse }) {
         <div className="buzz-dose-labels" aria-hidden="true">
           {labels.map(l => (
             <span key={l.id} className="buzz-dose-label"
-              style={{ bottom: `${14 + l.row * LABEL_ROW_H}px`, ...labelPos(l.pct) }}>
+              style={{ bottom: `${LABEL_BASE_BOTTOM + l.row * LABEL_ROW_H}px`, ...labelPos(l.pct) }}>
               {l.text}
             </span>
           ))}
