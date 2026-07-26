@@ -12,6 +12,7 @@ import { Saved } from './pages/Saved';
 import { MyPosts } from './pages/MyPosts';
 import { LogCoffee } from './pages/LogCoffee';
 import { Stats } from './pages/Stats';
+import { Compete } from './pages/Compete';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
 import type { User } from './types';
@@ -70,7 +71,9 @@ export function App() {
           {/* Saved lost its nav slot to /mine and now lives under Profile. */}
           <Route path="/saved" element={<RequireAuth><Saved /></RequireAuth>} />
           <Route path="/log" element={<RequireAuth><LogCoffee /></RequireAuth>} />
+          {/* Stats lost its bottom-nav slot to Compete; Profile links here. */}
           <Route path="/stats" element={<RequireAuth><Stats /></RequireAuth>} />
+          <Route path="/compete" element={<RequireAuth><Compete /></RequireAuth>} />
           <Route path="/compare" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/compare/:username" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />

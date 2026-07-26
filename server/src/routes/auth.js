@@ -47,7 +47,7 @@ function handleUpload(mw) {
 
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous
@@ -126,9 +126,24 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.patch('/me', requireAuth, (req, res) => {
-  const { username, avatar, featured_badges, password, timezone, caffeine_half_life_h } = req.body;
+  const {
+    username, avatar, featured_badges, password, timezone, caffeine_half_life_h,
+    auto_join_daily, auto_join_weekly,
+  } = req.body;
   if (username && !USERNAME_RE.test(username)) {
     return res.status(400).json({ error: 'Invalid username' });
+  }
+  // Opt-in auto-join for the recurring competition matches. Booleans only: a
+  // silent coercion here would be the difference between being entered into
+  // every daily match and none of them. Validated here but written at the very
+  // end — a later 400/403 (a bad password, a taken username) must not leave the
+  // user opted into every daily match on a request that was rejected.
+  const autoJoin = [['auto_join_daily', auto_join_daily], ['auto_join_weekly', auto_join_weekly]]
+    .filter(([, value]) => value !== undefined);
+  for (const [key, value] of autoJoin) {
+    if (typeof value !== 'boolean') {
+      return res.status(400).json({ error: `${key} must be true or false` });
+    }
   }
   // Personal caffeine half-life (hours) for the Buzz score. null clears it back
   // to the population default. Out-of-range numbers are clamped rather than
@@ -183,6 +198,9 @@ router.patch('/me', requireAuth, (req, res) => {
   }
   if (avatar) {
     db.prepare('UPDATE users SET avatar = ? WHERE id = ?').run(avatar, req.user.id);
+  }
+  for (const [key, value] of autoJoin) {
+    db.prepare(`UPDATE users SET ${key} = ? WHERE id = ?`).run(value ? 1 : 0, req.user.id);
   }
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
   res.json(user);

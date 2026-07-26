@@ -41,6 +41,24 @@ for project values; AGENTS.md covers architecture and workflows.
    emoji — not in buttons, labels, empty states, toasts, tabs, status text, or
    coffee-type icons. When you need a glyph, import an icon; do not paste an emoji.
 
+0.6. **UI copy is terse. Nobody reads a paragraph in an app.** Every piece of
+   user-facing text — hints, empty states, dialogs, toggle sub-labels, error
+   messages — is **one short line**. If a rule genuinely needs a paragraph to
+   explain, the interface is wrong; fix the interface, don't caption it. Some
+   specifics:
+   - **Never restate the control.** A hint reading "Players can join until the
+     match starts" under a field labelled *Starts* is noise.
+   - **Say the constraint, not the reasoning.** "Min 2 per side." — not "at
+     least 2, because a side of one is a 1v1, not a team." The reasoning
+     belongs in a code comment, where the next developer needs it and the user
+     never sees it.
+   - **Don't reassure.** Confirmation dialogs state what happens, once.
+   - Long explanations push the actual controls off the screen, and the text
+     that matters gets skipped along with the text that doesn't.
+
+   This applies to the UI only. **Code comments, commit messages and docs stay
+   as thorough as they need to be** — different readers, opposite rules.
+
 1. **Stability & consistency above all.** This app should just run, for a long
    time, without surprises. Prefer boring, proven approaches over clever ones.
    "Code quality" polish is not a goal in itself — a stable, predictable system

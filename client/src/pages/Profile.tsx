@@ -400,6 +400,14 @@ export function Profile() {
 
         <BuzzWidget />
 
+        {/* Stats gave up its bottom-nav slot to Compete; like Saved posts, it
+            is reached from here now. */}
+        <button className="card profile-link-card" onClick={() => navigate('/stats')}>
+          <span className="profile-link-icon"><Icon name="chart" size={18} /></span>
+          <span className="profile-link-label">Stats</span>
+          <Icon name="arrow-right" size={14} />
+        </button>
+
         {/* Saved gave up its bottom-nav slot to "Yours"; this is now the only
             way in. */}
         <button className="card profile-link-card" onClick={() => navigate('/saved')}>

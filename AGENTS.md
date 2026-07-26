@@ -44,9 +44,16 @@ in `server/src/data/*.js` (static). Endpoints:
 - `energy` — `GET /?hours=` (the derived Buzz score, see [docs/energy-score.md](./docs/energy-score.md))
 - `challenges` — `GET /`, `POST /`, `GET /:id`, `POST /:id/join`
 - `compare` — `GET /:username`
+- `groups` — `GET /`, `GET /mine`, `POST /`, `POST /join`, `POST /leave`,
+  `PATCH /:id`, `GET /:id` (competition groups; one per user at a time)
+- `competitions` — `GET /`, `GET /leaderboard`, `POST /`, `POST /:id/join`,
+  `POST /:id/leave`, `GET /:id` (see [docs/competitions-elo.md](./docs/competitions-elo.md))
 
 Client pages in `client/src/pages/*` map 1:1 to these areas.
-Test suite: `server/src/*.test.js` (run with `bun test`).
+Test suite: `server/src/*.test.js` (run with `bun run test`). Two kinds:
+module tests that call the code directly, and `routes.*.test.js`, which mounts
+a router on a real server and drives it over HTTP to cover validation and
+access control.
 </details>
 
 ## Commands
@@ -62,8 +69,15 @@ cd client && bun install && bun run dev                  # Vite on :5173 (proxie
 cp .env.example .env            # set JWT_SECRET (>= 16 chars), optional PORT
 docker compose up -d --build    # serves / and /api on http://localhost:${PORT:-8080}
 
-# Tests
-cd server && bun test
+# Tests and checks — from the repo root
+bun run test          # server suite (unit + HTTP route tests)
+bun run test:watch    # same, re-running on change
+bun run lint          # client (oxlint)
+bun run build         # client (tsc -b + vite build)
+bun run check         # all of the above, mirroring .github/workflows/pr-checks.yaml
+
+# The same scripts exist in server/ if you are already there
+cd server && bun run test
 ```
 
 ## Concept (planned)

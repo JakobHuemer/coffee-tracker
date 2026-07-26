@@ -32,3 +32,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnp
 .pnp.js
+
+# The root package.json is a dependency-free task runner (see its description).
+# The real lockfiles are server/bun.lock and client/bun.lock — one per package,
+# per VALUES rule 5. Anything bun writes at the root is an empty artifact from
+# someone running `bun install` in the wrong directory; never commit it.
+/bun.lock

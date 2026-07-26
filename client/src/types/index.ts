@@ -46,6 +46,10 @@ export interface User {
   // Personal caffeine half-life in hours, driving the Buzz decay curve. null
   // means unset — the server falls back to the 5 h population default.
   caffeine_half_life_h?: number | null;
+  // Opt-in: enter me in my group's recurring matches without pressing join.
+  // Off by default — nothing ever puts a user on a roster otherwise.
+  auto_join_daily?: 0 | 1;
+  auto_join_weekly?: 0 | 1;
   created_at: number;
 }
 
@@ -263,4 +267,113 @@ export interface EnergyResponse {
   empty_at: number | null;
   series: EnergyPoint[];
   doses: EnergyDose[];
+}
+
+/* ── Competitions ────────────────────────────────────────────────────────────
+ * Groups, matches and ratings. See docs/competitions-elo.md and
+ * server/src/competition-core.js. All instants are UTC epoch ms. */
+
+export type MatchMode = 'daily' | 'weekly' | 'ondemand' | '1v1' | 'team';
+
+// open      lobby, players may still join (user-created modes only)
+// pending   running, roster locked
+// settled   deltas written and applied to every participant's rating
+// cancelled never reached a legal roster; no rating changed hands
+export type MatchState = 'open' | 'pending' | 'settled' | 'cancelled';
+
+export interface CompetitionGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  owner_id: string | null;
+  // One IANA zone for the whole group — every member's day/week boundary.
+  timezone: string;
+  is_public: 0 | 1;
+  member_count: number;
+  created_at: number;
+  // Members only: the code that lets someone join a private group.
+  join_code?: string;
+}
+
+export interface GroupMember {
+  id: string;
+  username: string;
+  avatar: string;
+  profile_photo_url: string | null;
+  joined_at: number;
+  rating: number;
+  matches: number;
+}
+
+export interface MatchParticipant {
+  user_id: string;
+  username: string;
+  avatar: string;
+  profile_photo_url: string | null;
+  side: 'A' | 'B' | null;
+  joined_at: number;
+  // Live for a running match (window so far), frozen at settlement afterwards.
+  score: number;
+  points: number;
+  contribution_share: number | null;
+  rating_before: number | null;
+  rating_after: number | null;
+  delta: number | null;
+  current_rating: number;
+}
+
+export interface Match {
+  id: string;
+  group_id: string;
+  mode: MatchMode;
+  // Civil period for the recurring modes, null for user-created ones.
+  period_key: string | null;
+  title: string | null;
+  creator_id: string | null;
+  scope_start: number;
+  scope_end: number;
+  state: MatchState;
+  k_factor: number;
+  team_size: number | null;
+  created_at: number;
+  settled_at: number | null;
+  participant_count: number;
+  participants: MatchParticipant[];
+}
+
+export interface CompetitionsResponse {
+  group: { id: string; name: string; timezone: string } | null;
+  open: Match[];
+  live: Match[];
+  settled: Match[];
+  my_rating: number;
+  my_matches: number;
+}
+
+export interface GroupsResponse {
+  groups: CompetitionGroup[];
+  my_group: CompetitionGroup | null;
+}
+
+export interface GroupDetailResponse {
+  group: CompetitionGroup | null;
+  members: GroupMember[];
+  is_member?: boolean;
+  // Set by join/leave so the UI can say which group was left behind.
+  left_group?: { id: string; name: string } | null;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  username: string;
+  avatar: string;
+  profile_photo_url: string | null;
+  rating: number;
+  matches: number;
+  rank: number;
+}
+
+export interface LeaderboardResponse {
+  group: { id: string; name: string } | null;
+  leaderboard: LeaderboardEntry[];
 }

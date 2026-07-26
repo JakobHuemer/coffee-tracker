@@ -527,6 +527,12 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   outline: none; transition: border-color 0.15s;
 }
 .field input:focus, .field select:focus, .search-input:focus { border-color: var(--accent); }
+/* date / datetime-local / time / number inputs carry an intrinsic width and do
+   not fill their container the way a text input does, so a form column ends up
+   with one short control among full-width ones. Applies to fields only — the
+   deliberately inline inputs (.ptp-time next to the day toggles, .buzz-hl-exact)
+   are not .field inputs and keep their own sizing. */
+.field input, .field select { width: 100%; }
 .auth-error { background: var(--danger-bg); border: 1px solid var(--danger-bd); border-radius: 8px; padding: 10px; font-size: 0.8rem; color: var(--danger-fg); text-align: center; }
 .log-requirement-hint { background: var(--warn-bg); border: 1px solid var(--warn-bd); border-radius: 8px; padding: 8px 10px; font-size: 0.78rem; color: var(--warn-fg); text-align: center; }
 /* Retry sits inside a .log-requirement-hint, so it inherits that block's amber
@@ -1039,4 +1045,163 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   width: 72px; padding: 5px 8px; font-size: 0.78rem;
   background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
   color: var(--text-primary);
+}
+
+/* ── Compete page ────────────────────────────────────────────────────────── */
+/* Scoped to .cmp-body so the shared .stats-tab-body layout used by Stats keeps
+   its existing spacing untouched. */
+.cmp-body > .empty-state,
+.cmp-body > .leaderboard,
+.cmp-body > .auth-error { padding-left: 16px; padding-right: 16px; }
+
+/* Section headings carry the divider that separates one run of match cards
+   from the next — without it "Live now", "Waiting to start" and "Finished"
+   read as one undifferentiated column. Margins (not padding) so the hairline
+   lines up with the card edges instead of running to the screen edge. */
+.cmp-body > .section-label {
+  margin: 10px 16px 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* Full-width buttons are already width: 100%, so a horizontal margin on top of
+   that overflows the viewport and gives the whole page a horizontal scrollbar.
+   Same fix the Profile link card uses. */
+.cmp-body > .btn-primary,
+.cmp-body > .btn-secondary,
+.cmp-body > .btn-danger { margin: 0 16px; width: calc(100% - 32px); }
+
+/* An empty section still needs to read as that section's body, not as text
+   floating between two headings. */
+.cmp-empty {
+  margin: 0 16px; padding: 16px; border-radius: 10px;
+  background: var(--surface2); border: 1px dashed var(--border);
+  font-size: 0.8rem; color: var(--text-muted); text-align: center;
+}
+
+.cmp-avatar { font-size: 1rem; }
+.cmp-avatar-img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+
+/* Rating headline */
+.cmp-rating-card { text-align: center; }
+.cmp-rating-num {
+  font-size: 2.2rem; font-weight: 700; letter-spacing: -0.04em;
+  color: var(--accent); line-height: 1;
+}
+.cmp-rating-label { font-size: 0.75rem; color: var(--text-muted); margin-top: 6px; }
+
+.cmp-new-btn { display: flex; align-items: center; justify-content: center; gap: 6px; }
+
+/* Match card */
+.cmp-match { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.cmp-match-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cmp-mode {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--accent); background: var(--accent-bg); border-radius: 20px; padding: 3px 9px;
+}
+.cmp-match-title { font-size: 0.85rem; font-weight: 600; color: var(--text-primary); }
+.cmp-state {
+  margin-left: auto; font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; border-radius: 20px; padding: 3px 9px;
+  background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border);
+}
+.cmp-state.pending { background: var(--success-bg); color: var(--success-fg); border-color: var(--success-bd); }
+.cmp-state.open { background: var(--warn-bg); color: var(--warn-fg); border-color: var(--warn-bd); }
+.cmp-state.cancelled { background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd); }
+.cmp-match-when { font-size: 0.72rem; color: var(--text-muted); }
+.cmp-cancelled { font-size: 0.78rem; color: var(--text-muted); }
+
+/* Standings */
+.cmp-standings { display: flex; flex-direction: column; gap: 6px; }
+.cmp-standing {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface2); border-radius: 8px; padding: 8px 10px;
+}
+.cmp-standing-rank {
+  min-width: 18px; text-align: center; font-size: 0.8rem; font-weight: 700;
+  color: var(--text-muted);
+}
+.cmp-standing-name { flex: 1; font-size: 0.85rem; font-weight: 600; }
+.cmp-standing-points { font-size: 0.75rem; color: var(--text-sec); white-space: nowrap; }
+.cmp-standing-rating { font-size: 0.8rem; font-weight: 600; color: var(--accent); min-width: 42px; text-align: right; }
+.cmp-delta { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); min-width: 42px; text-align: right; }
+.cmp-delta.up { color: var(--success-fg); }
+.cmp-delta.down { color: var(--danger-fg); }
+
+.cmp-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.cmp-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cmp-side-head {
+  font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+}
+.cmp-side-empty { font-size: 0.72rem; color: var(--text-muted); }
+
+.cmp-lobby-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.cmp-lobby-actions > button { flex: 1; }
+
+/* Forms */
+.cmp-form { display: flex; flex-direction: column; gap: 14px; }
+.cmp-form-actions { display: flex; gap: 8px; }
+.cmp-form-actions > button { flex: 1; }
+.cmp-mode-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+.cmp-mode-opt {
+  display: flex; align-items: center; gap: 5px;
+  padding: 7px 12px; border-radius: 20px; border: 1.5px solid var(--border);
+  background: var(--surface2); color: var(--text-muted);
+  font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
+}
+.cmp-mode-opt.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+/* Timezone picker */
+.tzp { position: relative; }
+.tzp-list {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+  max-height: 260px; overflow-y: auto;
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 8px; box-shadow: var(--shadow);
+}
+.tzp-opt {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 9px 12px; border: none; background: none; cursor: pointer;
+  font-size: 0.82rem; color: var(--text-primary); text-align: left;
+}
+.tzp-opt.active { background: var(--accent-bg); }
+.tzp-zone { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tzp-offset { flex-shrink: 0; font-size: 0.72rem; color: var(--text-muted); }
+.tzp-empty { padding: 12px; font-size: 0.8rem; color: var(--text-muted); text-align: center; }
+
+/* Group */
+.cmp-group-card { display: flex; flex-direction: column; gap: 8px; }
+.cmp-group-name { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
+.cmp-group-desc { font-size: 0.8rem; color: var(--text-sec); }
+.cmp-group-meta {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  font-size: 0.72rem; color: var(--text-muted);
+}
+.cmp-group-meta span { display: inline-flex; align-items: center; gap: 4px; }
+.cmp-group-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cmp-code {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+}
+.cmp-code-label { font-size: 0.72rem; color: var(--text-muted); }
+.cmp-code-value { font-family: monospace; font-size: 1rem; font-weight: 700; letter-spacing: 0.15em; color: var(--accent); margin-left: auto; }
+.cmp-copy-btn {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-muted); transition: color 0.15s, border-color 0.15s;
+}
+.cmp-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
+.cmp-owner-tag {
+  margin-left: 6px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+}
+.cmp-settings-btn, .cmp-leave-btn { margin: 0 16px; width: calc(100% - 32px); }
+
+/* Two rosters side by side need roughly a tablet's width before the standings
+   rows stop wrapping mid-cell; below that the sides stack. */
+@media (max-width: 620px) {
+  .cmp-sides { grid-template-columns: 1fr; }
 }
