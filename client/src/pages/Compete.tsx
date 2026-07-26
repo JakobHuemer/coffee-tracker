@@ -72,7 +72,7 @@ function PublicToggle({ value, onChange }: { value: boolean; onChange: (v: boole
   return (
     <ToggleRow
       label="Listed publicly"
-      sub="Anyone can find this group and join it"
+      sub="Anyone can find and join"
       value={value}
       onChange={onChange}
     />
@@ -123,23 +123,19 @@ function AutoJoinCard() {
       <div className="section-label">Auto-join</div>
       <ToggleRow
         label="Daily matches"
-        sub="Enter me in my group's daily match as soon as it opens"
+        sub="Join every daily automatically"
         value={user?.auto_join_daily === 1}
         disabled={save.isPending}
         onChange={v => { setError(null); save.mutate({ auto_join_daily: v }); }}
       />
       <ToggleRow
         label="Weekly matches"
-        sub="Enter me in my group's weekly match as soon as it opens"
+        sub="Join every weekly automatically"
         value={user?.auto_join_weekly === 1}
         disabled={save.isPending}
         onChange={v => { setError(null); save.mutate({ auto_join_weekly: v }); }}
       />
-      <div className="field-hint">
-        Both are off by default. With them off you join each match yourself, and
-        nothing enters you in one. Turning one on applies to matches that open from
-        now on — a lobby already waiting still needs a join.
-      </div>
+      <div className="field-hint">Applies to matches opened from now on.</div>
       {error && <div className="auth-error">{error}</div>}
     </div>
   );
@@ -242,9 +238,7 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
       </div>
 
       {match.state === 'cancelled' ? (
-        <div className="cmp-cancelled">
-          Cancelled — the roster was never complete, so no rating changed hands.
-        </div>
+        <div className="cmp-cancelled">Cancelled — too few players. No rating moved.</div>
       ) : (
         <MatchStandings match={match} />
       )}
@@ -343,13 +337,13 @@ function NewMatchForm({ onDone }: { onDone: () => void }) {
       <div className="field">
         <label htmlFor="cmp-start">Starts</label>
         <input id="cmp-start" className="search-input" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} />
-        <div className="field-hint">Players can join until the match starts.</div>
+        <div className="field-hint">Open to join until it starts.</div>
       </div>
 
       <div className="field">
         <label htmlFor="cmp-end">Ends</label>
         <input id="cmp-end" className="search-input" type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} />
-        <div className="field-hint">At most 90 days. Rating settles the moment it ends.</div>
+        <div className="field-hint">Max 90 days. Settles when it ends.</div>
       </div>
 
       {mode === 'team' && (
@@ -360,9 +354,7 @@ function NewMatchForm({ onDone }: { onDone: () => void }) {
               id="cmp-size" className="search-input" type="number" min={2} max={10} value={teamSize}
               onChange={e => setTeamSize(Number(e.target.value))}
             />
-            <div className="field-hint">
-              At least 2 — a side of one is a 1v1, not a team.
-            </div>
+            <div className="field-hint">Min 2 per side.</div>
           </div>
           <div className="field">
             <label>Your side</label>
@@ -433,12 +425,12 @@ function MatchesTab({ data }: { data: CompetitionsResponse }) {
 
       <div className="section-label">Live now</div>
       {data.live.length === 0
-        ? <div className="cmp-empty">No match running. Tomorrow’s daily is open below — join it to be in it.</div>
+        ? <div className="cmp-empty">Nothing running. Join tomorrow’s daily below.</div>
         : data.live.map(m => <MatchCard key={m.id} match={m} />)}
 
       <div className="section-label">Waiting to start</div>
       {data.open.length === 0
-        ? <div className="cmp-empty">Nothing open right now. The daily opens a day ahead and the weekly two days ahead — or start your own with “New match”.</div>
+        ? <div className="cmp-empty">Nothing open. Daily opens a day ahead, weekly two.</div>
         /* Soonest first: the API orders by start descending, which puts the
            match that starts last at the top of a list of upcoming ones. */
         : [...data.open].sort((a, b) => a.scope_start - b.scope_start).map(m => (
@@ -530,11 +522,8 @@ function GroupTab() {
           </div>
         )}
         <div className="field-hint">
-          Every day and week boundary in this group is measured in {group.timezone}, so
-          everyone competes over the exact same window.
-        </div>
-        <div className="field-hint">
-          You can only be in one group at a time — joining another one leaves this one.
+          Days and weeks run on {group.timezone}. One group at a time — joining
+          another leaves this one.
         </div>
       </div>
 
@@ -567,13 +556,7 @@ function GroupTab() {
       {confirmLeave && (
         <ConfirmDialog
           title={`Leave ${group.name}?`}
-          message={
-            <>
-              You will stop being added to new daily and weekly matches. Matches that are
-              already running keep you on their roster and still settle normally — your
-              rating is yours and follows you out either way.
-            </>
-          }
+          message="Matches already running still settle. Your rating stays with you."
           confirmLabel="Leave group"
           error={error}
           onConfirm={() => { setError(null); leave.mutate(); }}
@@ -630,10 +613,7 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
       <div className="field">
         <label htmlFor="cmp-gtz">Timezone</label>
         <input id="cmp-gtz" className="search-input" value={timezone} onChange={e => setTimezone(e.target.value)} />
-        <div className="field-hint">
-          An IANA name like Europe/Vienna. Matches already running keep the window they
-          started with; a new zone applies from the next day and week.
-        </div>
+        <div className="field-hint">IANA name, e.g. Europe/Vienna. Applies from the next day and week.</div>
       </div>
 
       <PublicToggle value={isPublic} onChange={setIsPublic} />
@@ -688,10 +668,7 @@ function GroupGate() {
 
   return (
     <>
-      <div className="empty-state">
-        Competitions run inside a group. Join one and you are in its daily and weekly
-        matches from the next window — nobody is ever entered automatically.
-      </div>
+      <div className="empty-state">Competitions run inside a group. Join one to play.</div>
 
       {error && <div className="auth-error">{error}</div>}
 
@@ -726,9 +703,7 @@ function GroupGate() {
           />
         </div>
         <PublicToggle value={isPublic} onChange={setIsPublic} />
-        <div className="field-hint">
-          The group uses your timezone for its day and week boundaries. You can change it later.
-        </div>
+        <div className="field-hint">Uses your timezone. Changeable later.</div>
         <button className="btn-primary" disabled={busy || !name.trim()} onClick={() => { setError(null); create.mutate(); }}>
           Create group
         </button>
