@@ -1,4 +1,5 @@
 const express = require('express');
+const { rateLimit } = require('express-rate-limit');
 const { randomUUID, randomInt } = require('crypto');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
@@ -15,6 +16,18 @@ const DESCRIPTION_MAX = 200;
 // the characters that get confused there (0/O, 1/I/L).
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const CODE_LENGTH = 6;
+
+// A join code is the ONLY gate on a private group, and unlike a password it is
+// checked without a username to go with it — every guess is a guess at every
+// group at once. 31^6 makes that impractical on its own; this makes it pointless.
+// Generous enough that mistyping a code off a screen a few times is fine.
+const joinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many join attempts — try again later' },
+});
 
 function makeJoinCode() {
   // Loop rather than return blindly: a collision on a 6-char code is unlikely
@@ -179,7 +192,7 @@ router.post('/', requireAuth, (req, res) => {
 });
 
 // POST /api/groups/join — by id (public groups) or by join code (any group).
-router.post('/join', requireAuth, (req, res) => {
+router.post('/join', requireAuth, joinLimiter, (req, res) => {
   const { group_id = null, code = null } = req.body || {};
 
   let group = null;
