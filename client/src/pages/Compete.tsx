@@ -67,6 +67,28 @@ function toLocalInput(ts: number) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// Visibility switch for a group. Uses the app's existing toggle (the one on the
+// log form and the Profile debug card) rather than a bare checkbox, so a
+// boolean looks the same everywhere in the app.
+function PublicToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="log-share-row">
+      <div>
+        <div className="log-share-label">Listed publicly</div>
+        <div className="log-share-sub">Anyone can find this group and join it</div>
+      </div>
+      <button
+        className={`log-toggle${value ? ' on' : ''}`}
+        onClick={() => onChange(!value)}
+        aria-pressed={value}
+        aria-label="Listed publicly"
+      >
+        <span className="log-toggle-knob" />
+      </button>
+    </div>
+  );
+}
+
 function Avatar({ p }: { p: { avatar: string; profile_photo_url: string | null; username: string } }) {
   const url = uploadUrl(p.profile_photo_url);
   return url
@@ -550,10 +572,7 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
         </div>
       </div>
 
-      <label className="cmp-check">
-        <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} />
-        Listed publicly — anyone can find and join this group
-      </label>
+      <PublicToggle value={isPublic} onChange={setIsPublic} />
 
       {error && <div className="auth-error">{error}</div>}
 
@@ -627,7 +646,7 @@ function GroupGate() {
       </div>
 
       <div className="card cmp-form">
-        <div className="section-label">Start your own</div>
+        <div className="section-label">Create a group</div>
         <div className="field">
           <label htmlFor="cmp-newname">Name</label>
           <input
@@ -642,10 +661,7 @@ function GroupGate() {
             onChange={e => setDescription(e.target.value)}
           />
         </div>
-        <label className="cmp-check">
-          <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} />
-          Listed publicly — anyone can find and join
-        </label>
+        <PublicToggle value={isPublic} onChange={setIsPublic} />
         <div className="field-hint">
           The group uses your timezone for its day and week boundaries. You can change it later.
         </div>

@@ -1126,11 +1126,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .cmp-mode-opt.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
-.cmp-check {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 0.78rem; color: var(--text-sec); cursor: pointer;
-}
-
 /* Group */
 .cmp-group-card { display: flex; flex-direction: column; gap: 8px; }
 .cmp-group-name { font-size: 1rem; font-weight: 700; color: var(--text-primary); }
