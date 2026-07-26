@@ -358,6 +358,25 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .log-details-thumb {
   width: 100%; max-height: 220px; object-fit: cover; border-radius: 10px; display: block;
 }
+.log-thumb-actions { display: flex; gap: 8px; margin-top: 8px; }
+.log-thumb-btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px; flex: 1;
+  padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--surface2); color: var(--text-sec);
+  font-size: 0.8rem; font-weight: 600; font-family: inherit;
+  cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.log-thumb-btn:hover { border-color: var(--accent); color: var(--accent); }
+.log-thumb-btn.danger:hover { border-color: var(--danger-bd); color: var(--danger-fg); }
+
+.log-add-photo-bar {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: calc(100% - 32px); margin: 16px 16px 0; padding: 11px 14px;
+  border: 1.5px dashed var(--border); border-radius: 10px; background: var(--surface2);
+  color: var(--text-sec); font-size: 0.85rem; font-weight: 600; font-family: inherit;
+  cursor: pointer; transition: border-color 0.15s, color 0.15s;
+}
+.log-add-photo-bar:hover { border-color: var(--accent); color: var(--accent); }
 .log-form { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-width: 640px; margin: 0 auto; }
 .log-textarea {
   padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
@@ -366,6 +385,32 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   transition: border-color 0.15s;
 }
 .log-textarea:focus { border-color: var(--accent); }
+
+/* ── Past-time picker (rolling 24h window) ───────────────────────────────── */
+/* One full-width row: time field + today/yesterday segmented toggle, with the
+   elapsed line (or the out-of-window hint) directly under it. */
+.ptp { display: flex; flex-direction: column; gap: 5px; width: 100%; }
+.ptp-row { display: flex; align-items: stretch; gap: 8px; width: 100%; }
+.ptp-time {
+  flex: 1 1 auto; min-width: 0;
+  padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--surface2); color: var(--text-primary); font-size: 0.88rem;
+  font-family: inherit; outline: none; transition: border-color 0.15s;
+}
+.ptp-time:focus { border-color: var(--accent); }
+.ptp-time[aria-invalid="true"] { border-color: var(--warn-bd); }
+.ptp-days {
+  display: flex; flex-shrink: 0; gap: 2px; padding: 2px;
+  border: 1.5px solid var(--border); border-radius: 8px; background: var(--surface2);
+}
+.ptp-day {
+  padding: 0 10px; border: none; border-radius: 6px; background: transparent;
+  color: var(--text-sec); font-size: 0.75rem; font-weight: 600; font-family: inherit;
+  white-space: nowrap; cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.ptp-day.on { background: var(--accent); color: #fff; }
+.ptp-elapsed { font-size: 0.72rem; color: var(--text-muted); }
+.ptp-hint { font-size: 0.72rem; color: var(--warn-fg); }
 
 .log-share-row {
   display: flex; align-items: center; justify-content: space-between;
