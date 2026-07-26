@@ -449,6 +449,9 @@ function GroupTab() {
           Every day and week boundary in this group is measured in {group.timezone}, so
           everyone competes over the exact same window.
         </div>
+        <div className="field-hint">
+          You can only be in one group at a time — joining another one leaves this one.
+        </div>
       </div>
 
       {isOwner && <GroupSettings group={group} />}

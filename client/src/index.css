@@ -1097,7 +1097,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   color: var(--text-muted);
 }
 .cmp-standing-name { flex: 1; font-size: 0.85rem; font-weight: 600; }
-.cmp-standing-points { font-size: 0.75rem; color: var(--text-sec); }
+.cmp-standing-points { font-size: 0.75rem; color: var(--text-sec); white-space: nowrap; }
 .cmp-standing-rating { font-size: 0.8rem; font-weight: 600; color: var(--accent); min-width: 42px; text-align: right; }
 .cmp-delta { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); min-width: 42px; text-align: right; }
 .cmp-delta.up { color: var(--success-fg); }
@@ -1154,6 +1154,8 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .cmp-settings-btn, .cmp-leave-btn { margin: 0 16px; }
 
-@media (max-width: 420px) {
+/* Two rosters side by side need roughly a tablet's width before the standings
+   rows stop wrapping mid-cell; below that the sides stack. */
+@media (max-width: 620px) {
   .cmp-sides { grid-template-columns: 1fr; }
 }

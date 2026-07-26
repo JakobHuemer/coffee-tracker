@@ -220,3 +220,81 @@ them — no mechanism auto-adds a user to a match based on activity alone.
 
 - Leaderboard display rule for users with zero matches — display/UI concern,
   not addressed here.
+
+---
+
+# Implementation notes
+
+Everything above is the spec as written before any code existed. This section
+records where the shipped code differs from it and why. Where the two
+disagree, the code is authoritative.
+
+Code: `server/src/competition-core.js` (pure math), `server/src/competitions.js`
+(DB + scheduler), `server/src/routes/groups.js`,
+`server/src/routes/competitions.js`, `client/src/pages/Compete.tsx`.
+Migration: `011_add_competitions.js` — **not** the `010` predicted above, since
+main shipped `010_add_caffeine_half_life.js` after this spec was written.
+
+## Groups replace timezone shards
+
+The spec sharded the automatic daily/weekly matches into 24 buckets by each
+user's UTC offset, on the assumption of one global pool. Competitions are
+instead scoped to a **group**, and shards do not survive that change: a group
+whose members span two zones would be split into two matches whose members can
+never face each other, which defeats the reason they joined the group.
+
+So a group carries **one IANA timezone** (default: the creator's, changeable by
+the owner) and every member's day and week boundary is evaluated in it, through
+the existing `server/src/time.js`. Consequences:
+
+- Real IANA zones, so DST is handled rather than deliberately ignored — a
+  spring-forward local day really is 23 hours long, and there is a test for it.
+- No `shard` column, no reference instant, no `Math.round` tie-break rule. The
+  whole rounding section above does not apply to the shipped code.
+- The weekly `period_key` is the local date of that week's Monday, not an ISO
+  week number, so there is no year-boundary numbering edge case.
+
+Everything in the score and rating layers is implemented exactly as specified:
+same weights, same saturation, rank-only `actual`, pairwise FFA decomposition,
+softmax contribution split, and no floor or clamp anywhere in settlement.
+
+## Match lifecycle
+
+`open` (lobby, user-created only) → `pending` (roster locked) → `settled`, plus
+`cancelled` for a lobby that never reached a legal roster. The spec only named
+`pending` and `settled`.
+
+- daily/weekly are opened by the server per group and period, and only for a
+  group with **two or more members** — a solo match settles every delta to 0,
+  so it is not created at all.
+- The roster freezes when a match starts. A player who leaves the group still
+  finishes the matches already running, which is what stops a bad day being
+  dodged by walking out; a player who joins the group mid-window plays from the
+  next window.
+- Membership is exclusive (one group at a time, clan-style), enforced by a
+  UNIQUE on `group_members.user_id`. Leaving never deletes the group — settled
+  matches hang off it and are the rating ledger — so ownership passes to the
+  longest-standing remaining member instead.
+
+## Scheduling
+
+A `setInterval` ticker (60 s, unref'd, cleared on SIGTERM/SIGINT) runs
+`ensureRecurringMatches → lockDueLobbies → settleDueMatches`. It also runs one
+pass on boot, so a window that opened and closed entirely while the process was
+down is locked and settled on the next start — verified end to end, not just
+asserted.
+
+Settlement of one match is a single transaction. A crash mid-settlement leaves
+the match `pending` and it settles cleanly on the next pass, rather than
+half-applying deltas to the rating cache.
+
+Missed *recurring* windows are not backfilled: only the current day and week
+are ever created, so a group gets no daily match for a day the server was down
+throughout. Accepted — a backfilled match nobody could see while it ran would
+rate people on a window they were never told about.
+
+## Answered from the "open" list
+
+- **Zero-match users on the leaderboard**: they sort last regardless of rating.
+  The default 1000 would otherwise rank someone who has never played above an
+  active player sitting just below it. Their rank renders as `—`.

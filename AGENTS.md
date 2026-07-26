@@ -44,6 +44,10 @@ in `server/src/data/*.js` (static). Endpoints:
 - `energy` — `GET /?hours=` (the derived Buzz score, see [docs/energy-score.md](./docs/energy-score.md))
 - `challenges` — `GET /`, `POST /`, `GET /:id`, `POST /:id/join`
 - `compare` — `GET /:username`
+- `groups` — `GET /`, `GET /mine`, `POST /`, `POST /join`, `POST /leave`,
+  `PATCH /:id`, `GET /:id` (competition groups; one per user at a time)
+- `competitions` — `GET /`, `GET /leaderboard`, `POST /`, `POST /:id/join`,
+  `POST /:id/leave`, `GET /:id` (see [docs/competitions-elo.md](./docs/competitions-elo.md))
 
 Client pages in `client/src/pages/*` map 1:1 to these areas.
 Test suite: `server/src/*.test.js` (run with `bun test`).
