@@ -13,8 +13,8 @@ topics: [buzz-energy-score, caffeine-pharmacokinetics, energy-endpoint, svg-char
   so a deleted/backdated coffee instantly rewrites the whole curve and the value
   can never drift from the log. Resist any future request to cache it in a column.
 - **Window needs a lookback.** `GET /api/energy` loads doses from
-  `now − (hours + 36 h)`, otherwise the left edge of the chart starts at a false
-  zero for someone who drank coffee just before the window.
+  `now − (hours + DOSE_LIFETIME_H)` (72 h), otherwise the left edge of the chart
+  starts at a false zero for someone who drank coffee just before the window.
 - **`chart.js` is a dependency but is used nowhere** in `client/src`. Every chart
   in this app is hand-rolled CSS bars or inline SVG. The Buzz chart follows that
   (inline SVG, `vector-effect="non-scaling-stroke"` because the viewBox is
