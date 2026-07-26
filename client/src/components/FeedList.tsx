@@ -111,7 +111,9 @@ function PostCard({
       </div>
 
       <div className="feed-post-actions">
-        {isOwn ? (
+        {/* Nobody can like a private post — it is visible to its owner alone —
+            so the count is meaningless and the control is left out entirely. */}
+        {!post.is_public ? null : isOwn ? (
           <span className="feed-like-btn feed-like-static" aria-label="Likes">
             <Icon name="heart" /> <span className="feed-like-count">{post.likes_count}</span>
           </span>
@@ -125,17 +127,13 @@ function PostCard({
           </button>
         )}
 
-        {/* Bookmarks only exist for public posts — the server rejects the rest,
-            so no button may offer it (VALUES.md 0.4). */}
-        {post.is_public === 1 && (
-          <button
-            className={`feed-bookmark-btn${bookmarked ? ' saved' : ''}`}
-            onClick={() => onBookmark(post.id, bookmarked)}
-            aria-label={bookmarked ? 'Remove bookmark' : 'Save'}
-          >
-            <Icon name={bookmarked ? 'bookmark' : 'bookmark-o'} />
-          </button>
-        )}
+        <button
+          className={`feed-bookmark-btn${bookmarked ? ' saved' : ''}`}
+          onClick={() => onBookmark(post.id, bookmarked)}
+          aria-label={bookmarked ? 'Remove bookmark' : 'Save'}
+        >
+          <Icon name={bookmarked ? 'bookmark' : 'bookmark-o'} />
+        </button>
       </div>
     </article>
   );

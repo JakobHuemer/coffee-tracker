@@ -12,8 +12,11 @@ topics: [own-posts-section, feed-privacy, post-content-rule, bottom-nav]
   INSERT. Private entries need just the coffee type.
 - The photo-cleanup `fs.unlink` is deliberately absent on that 400: the branch
   can only fire when `!req.file`.
-- Bookmarks/likes are public-only server-side, so `FeedList` hides the bookmark
-  button when `is_public !== 1` — a visible button there would always 404.
+- Likes stay public-only; the like control is hidden entirely on private posts.
+  Bookmarks now accept `is_public = 1 OR user_id = <caller>`, so you can save
+  your own private entries — `GET /feed/saved` carries the same OR, otherwise
+  they would be saved but invisible. Someone else's private post still 404s on
+  bookmark (verified with a second account).
 - Nav swap: Saved lost its bottom-nav slot to "Yours" (`/mine`) and is reachable
   only from the Profile page now. `/saved` route itself is unchanged.
 - Post photos: the old fixed `aspect-ratio: 4/3` cropped nearly everything. The
