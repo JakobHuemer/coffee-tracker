@@ -101,6 +101,8 @@ app.use('/api/badges',      require('./routes/badges'));
 app.use('/api/streaks',     require('./routes/streaks'));
 app.use('/api/challenges',  require('./routes/challenges'));
 app.use('/api/rankings',    require('./routes/rankings'));
+app.use('/api/groups',      require('./routes/groups'));
+app.use('/api/competitions',require('./routes/competitions'));
 app.use('/api/compare',     require('./routes/compare'));
 app.use('/api/casualties',  require('./routes/casualties'));
 
@@ -139,12 +141,21 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => console.log(`Coffee Tracker API running on :${PORT}`));
 
+// Competitions run on wall-clock windows, so something has to open and settle
+// them even when nobody has the app open. The ticker does one catch-up pass on
+// boot (covering anything that closed while the process was down) and then runs
+// on an interval. It is unref'd and cleared on shutdown, so it never keeps the
+// process alive by itself.
+const competitions = require('./competitions');
+competitions.startTicker();
+
 // Graceful shutdown: stop accepting connections, close the DB, exit. Without
 // this the container ignores SIGTERM and the runtime SIGKILLs it after ~10s on
 // every `docker stop` / `compose restart`. A hard 5s cap guarantees we still
 // exit even if a connection hangs.
 function shutdown(signal) {
   console.log(`${signal} received — shutting down.`);
+  competitions.stopTicker();
   server.close(() => {
     try { db.close(); } catch (_) { /* already closed */ }
     process.exit(0);
