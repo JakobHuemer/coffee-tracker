@@ -1,4 +1,26 @@
-// The one place the app logo is rendered. Two forms, one source of truth:
+/* ############################################################################
+ * #  RED / HIGH:  THE SHAPES BELOW ARE A COPY OF                             #
+ * #               client/public/favicon.svg                                  #
+ * ############################################################################
+ *
+ * favicon.svg is the SOURCE OF TRUTH for the logo. The monochrome branch of
+ * this component hand-copies the shapes out of that file's `<mask id="cup">`,
+ * because it cannot reuse the file directly (its mask/filter/gradient ids are
+ * fixed and would collide between two mounted logos).
+ *
+ * ANY change to the geometry in favicon.svg MUST be mirrored here in the SAME
+ * COMMIT, and vice versa. Geometry means the two `d` strings, the three drop
+ * ellipses, `FIT` and `VIEW_BOX` below. Colour, filters and gradients belong
+ * to the SVG alone and need no counterpart edit.
+ *
+ * Nothing in the build detects a mismatch — tsc and vite both pass happily
+ * while the app renders two different logos. If you find the two files out of
+ * sync: STOP. Do not guess which one is correct and do not quietly "fix" it.
+ * Tell the developer in chat immediately, as a RED / HIGH-SEVERITY error,
+ * before continuing with anything else. See AGENTS.md.
+ */
+
+// The one place the app logo is rendered. Two forms:
 //
 //   default      — the full-colour artwork from /favicon.svg, served as an <img>
 //                  so the browser caches the single asset the manifest already

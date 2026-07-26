@@ -192,6 +192,43 @@ Agents have repeatedly killed those while cleaning up their own test servers.
 - Leave a stray test server running rather than risk a broad kill. Say so in the
   summary and let the developer clear it.
 
+## 🔴 The logo geometry lives in TWO files. Both must change together.
+
+The app logo exists in two forms and **the shapes are duplicated on purpose**:
+
+| File | What it holds |
+| --- | --- |
+| `client/public/favicon.svg` | The full-colour artwork. Its `<mask id="cup">` holds the authoritative shapes: cup body, handle, three drops. |
+| `client/src/components/AppLogo.tsx` | A hand-copied duplicate of exactly those shapes, for the monochrome silhouette. |
+
+`favicon.svg` is the **source of truth**. `AppLogo.tsx` is a copy that the build
+cannot check. Nothing errors when they disagree — the app just renders two
+different logos in different places, and it can ship that way unnoticed.
+
+**So: any change to the logo's geometry MUST be applied to both files in the
+same commit.** Geometry means the two `<path d="…">`, the three drop
+`<ellipse>` (cx/cy/rx/ry/rotate), the fit transform
+`translate(-0.383 0.842) scale(1.0718)`, and the `viewBox`. Colour, filters,
+gradients and highlights live only in the SVG and are irrelevant here.
+
+**If you ever find the two out of sync — STOP. This is a hard fail.**
+
+- Do **not** guess which file is correct and quietly "fix" it.
+- Do **not** carry on with the surrounding task and mention it at the end.
+- Do **not** file it as a nit in a PR body.
+- Tell the developer immediately, in chat, before doing anything else, and
+  flag it as a **red / high-severity error**. It means a previous change
+  shipped a broken logo. Which of the two is intended is the developer's call,
+  not yours.
+
+Why it was left duplicated rather than deduplicated: the alternatives were a
+CSS `mask-image` of `favicon.svg` (single-source, but rasterises seven blur
+filters just to keep the alpha, breaks in print and forced-colors, and locks
+the silhouette to one flat alpha forever) or build-time extraction of `#cup`
+(a generated artifact plus a build step that breaks silently if the mask is
+renamed). The duplication was chosen with eyes open — this note is the thing
+that makes it safe. Do not delete it.
+
 ## Guardrails
 
 - **Never reference a symbol that doesn't exist** — a CSS variable / design
@@ -200,6 +237,9 @@ Agents have repeatedly killed those while cleaning up their own test servers.
   regardless of everything else in it. Before committing, run typecheck **and**
   build, and grep for the exact token/function/import you introduced to confirm
   it resolves. Unverified references are unacceptable.
+- **Never change the logo geometry in only one of the two files.** See the
+  section above. Out-of-sync shapes are a red/high hard fail, reported to the
+  developer in chat before anything else.
 - Don't split the frontend back into its own image/service/proxy.
 - Don't add schema changes outside `server/src/migrations/`.
 - Don't introduce npm/yarn/pnpm or a second lockfile.
