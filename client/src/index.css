@@ -286,6 +286,10 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .feed-photo { width: 100%; height: auto; max-height: 110cqw; object-fit: cover; display: block; }
 
 .feed-post-body { padding: 10px 14px 4px; }
+/* Private posts have no actions row, so the save button floats inside the body
+   and the body has to contain it (flow-root) and close its own bottom edge. */
+.feed-post-body.with-float { display: flow-root; padding-bottom: 10px; }
+.feed-bookmark-btn.floating { float: right; margin: -2px 0 4px 10px; }
 .feed-coffee-tag { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
 .feed-coffee-name {
   font-size: 0.82rem; font-weight: 600; color: var(--text-primary);

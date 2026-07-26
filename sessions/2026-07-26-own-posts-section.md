@@ -16,7 +16,10 @@ topics: [own-posts-section, feed-privacy, post-content-rule, bottom-nav]
   Bookmarks now accept `is_public = 1 OR user_id = <caller>`, so you can save
   your own private entries — `GET /feed/saved` carries the same OR, otherwise
   they would be saved but invisible. Someone else's private post still 404s on
-  bookmark (verified with a second account).
+  bookmark (verified with a second account). A private post therefore has no
+  actions row at all — its save button floats right inside `.feed-post-body`
+  (`display: flow-root` to contain the float), which is what keeps the card from
+  ending in an empty band.
 - Nav swap: Saved lost its bottom-nav slot to "Yours" (`/mine`) and is reachable
   only from the Profile page now. `/saved` route itself is unchanged.
 - Post photos: the old fixed `aspect-ratio: 4/3` cropped nearly everything. The

@@ -52,7 +52,6 @@ function PostCard({
   const navigate = useNavigate();
   const [zoomed, setZoomed] = useState(false);
   const liked = post.liked_by_me;
-  const bookmarked = post.bookmarked_by_me;
   const isOwn = post.user_id === currentUserId;
 
   function handleUserClick() {
@@ -102,7 +101,13 @@ function PostCard({
         </PhotoLightbox>
       )}
 
-      <div className="feed-post-body">
+      <div className={`feed-post-body${post.is_public ? '' : ' with-float'}`}>
+        {/* With no like control beside it a private post's actions row is an
+            empty band, so the save button floats into the body instead and the
+            coffee tag / description flow around it. */}
+        {!post.is_public && (
+          <BookmarkButton post={post} onBookmark={onBookmark} floating />
+        )}
         <div className="feed-coffee-tag">
           <span className="feed-coffee-name">{post.coffee_id.replace(/_/g, ' ')}</span>
           <span className="feed-caffeine">{post.caffeine_mg}mg</span>
@@ -110,32 +115,48 @@ function PostCard({
         {post.description && <p className="feed-description">{post.description}</p>}
       </div>
 
-      <div className="feed-post-actions">
-        {/* Nobody can like a private post — it is visible to its owner alone —
-            so the count is meaningless and the control is left out entirely. */}
-        {!post.is_public ? null : isOwn ? (
-          <span className="feed-like-btn feed-like-static" aria-label="Likes">
-            <Icon name="heart" /> <span className="feed-like-count">{post.likes_count}</span>
-          </span>
-        ) : (
-          <button
-            className={`feed-like-btn${liked ? ' liked' : ''}`}
-            onClick={() => onLike(post.id, liked)}
-            aria-label={liked ? 'Unlike' : 'Like'}
-          >
-            <Icon name={liked ? 'heart' : 'heart-o'} /> <span className="feed-like-count">{post.likes_count}</span>
-          </button>
-        )}
+      {/* Nobody can like a private post — it is visible to its owner alone — so
+          the count is meaningless and the whole row goes with it; its save
+          button lives in the body above. */}
+      {post.is_public === 1 && (
+        <div className="feed-post-actions">
+          {isOwn ? (
+            <span className="feed-like-btn feed-like-static" aria-label="Likes">
+              <Icon name="heart" /> <span className="feed-like-count">{post.likes_count}</span>
+            </span>
+          ) : (
+            <button
+              className={`feed-like-btn${liked ? ' liked' : ''}`}
+              onClick={() => onLike(post.id, liked)}
+              aria-label={liked ? 'Unlike' : 'Like'}
+            >
+              <Icon name={liked ? 'heart' : 'heart-o'} /> <span className="feed-like-count">{post.likes_count}</span>
+            </button>
+          )}
 
-        <button
-          className={`feed-bookmark-btn${bookmarked ? ' saved' : ''}`}
-          onClick={() => onBookmark(post.id, bookmarked)}
-          aria-label={bookmarked ? 'Remove bookmark' : 'Save'}
-        >
-          <Icon name={bookmarked ? 'bookmark' : 'bookmark-o'} />
-        </button>
-      </div>
+          <BookmarkButton post={post} onBookmark={onBookmark} />
+        </div>
+      )}
     </article>
+  );
+}
+
+function BookmarkButton({
+  post, onBookmark, floating = false,
+}: {
+  post: FeedPost;
+  onBookmark: (id: string, bookmarked: boolean) => void;
+  floating?: boolean;
+}) {
+  const bookmarked = post.bookmarked_by_me;
+  return (
+    <button
+      className={`feed-bookmark-btn${bookmarked ? ' saved' : ''}${floating ? ' floating' : ''}`}
+      onClick={() => onBookmark(post.id, bookmarked)}
+      aria-label={bookmarked ? 'Remove bookmark' : 'Save'}
+    >
+      <Icon name={bookmarked ? 'bookmark' : 'bookmark-o'} />
+    </button>
   );
 }
 
