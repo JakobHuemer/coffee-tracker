@@ -141,6 +141,29 @@ function AutoJoinCard() {
   );
 }
 
+// Copy-to-clipboard with a short confirmation in place of the icon. The
+// clipboard API needs a secure context, so a failure is possible and must not
+// look like a success — the tick only appears once the write resolved.
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button className="cmp-copy-btn" onClick={copy} aria-label={copied ? 'Copied' : 'Copy invite code'}>
+      <Icon name={copied ? 'check' : 'copy'} size={15} />
+    </button>
+  );
+}
+
 function Avatar({ p }: { p: { avatar: string; profile_photo_url: string | null; username: string } }) {
   const url = uploadUrl(p.profile_photo_url);
   return url
@@ -519,6 +542,7 @@ function GroupTab() {
           <div className="cmp-code">
             <span className="cmp-code-label">Invite code</span>
             <span className="cmp-code-value">{group.join_code}</span>
+            <CopyButton value={group.join_code} />
           </div>
         )}
         <div className="field-hint">
