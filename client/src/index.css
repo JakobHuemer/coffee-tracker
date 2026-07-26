@@ -929,3 +929,32 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .buzz-fact-key { font-size: 0.62rem; color: var(--text-muted); }
 
 .buzz-note { margin-top: 12px; font-size: 0.72rem; line-height: 1.5; color: var(--text-muted); }
+
+/* Half-life control — collapsed by default; the button shows the current value. */
+.buzz-hl { margin-top: 10px; }
+.buzz-hl-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px solid var(--border); color: var(--text-sec);
+  border-radius: 8px; padding: 6px 10px; font-size: 0.72rem; font-weight: 600; cursor: pointer;
+}
+.buzz-hl-btn svg { width: 10px; height: 10px; }
+.buzz-hl-panel { margin-top: 10px; }
+.buzz-hl-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.buzz-hl-preset {
+  display: flex; flex-direction: column; gap: 2px; align-items: center; text-align: center;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 4px; cursor: pointer; color: var(--text-sec);
+}
+.buzz-hl-preset.active { background: var(--accent-bg); border-color: var(--accent); color: var(--accent); }
+.buzz-hl-preset:disabled { opacity: 0.5; cursor: default; }
+.buzz-hl-preset-label { font-size: 0.74rem; font-weight: 700; }
+.buzz-hl-preset-sub { font-size: 0.6rem; color: var(--text-muted); }
+.buzz-hl-exact {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  font-size: 0.7rem; color: var(--text-muted);
+}
+.buzz-hl-exact input {
+  width: 72px; padding: 5px 8px; font-size: 0.78rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-primary);
+}

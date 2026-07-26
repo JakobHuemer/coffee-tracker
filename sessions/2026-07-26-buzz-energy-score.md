@@ -37,3 +37,18 @@ topics: [buzz-energy-score, caffeine-pharmacokinetics, energy-endpoint, svg-char
   the localStorage key can't be abused against a production server.
 - `GET /api/coffees/dev-flags` exists so the Profile toggle only renders when
   the server honours it — a visible switch that does nothing is a VALUES 0.4 bug.
+
+# Per-user half-life
+
+- **Only `ke` is personal.** `ka` (absorption) is gastric emptying, not enzyme
+  activity — same for everyone. Don't make it a setting.
+- **Never store the default in the column.** `caffeine_half_life_h` is nullable;
+  NULL resolves to `DEFAULT_HALF_LIFE_H` at read time, so changing the default
+  later still reaches everyone who never picked a value.
+- **Horizons must be sized for the slowest metabolizer**, not the mean. This bit
+  once already: `DOSE_LIFETIME_H` 36 h is 7 half-lives at 5 h but under 4 at
+  9.5 h, silently truncating real caffeine off a slow user's left edge. Both it
+  and `FORECAST_MAX_H` are now 72 h. Any future PK constant needs the same check.
+- **Deliberately no health data.** Smoking / contraceptives / genotype all move
+  the half-life and were all rejected as inputs — special-category data for a
+  small accuracy gain. The user brings the resulting hours, we store a float.

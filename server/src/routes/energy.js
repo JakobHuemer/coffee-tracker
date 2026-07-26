@@ -28,7 +28,13 @@ router.get('/', requireAuth, (req, res) => {
     'SELECT id, coffee_id, caffeine_mg, logged_at FROM coffee_entries WHERE user_id = ? AND logged_at >= ? ORDER BY logged_at'
   ).all(req.user.id, since);
 
-  res.json(buildEnergy(doses, now, hours));
+  // NULL here means the user never set one; buildEnergy resolves it to the
+  // population default and returns whatever it actually used as `half_life_h`.
+  const { caffeine_half_life_h } = db.prepare(
+    'SELECT caffeine_half_life_h FROM users WHERE id = ?'
+  ).get(req.user.id) ?? {};
+
+  res.json(buildEnergy(doses, now, hours, caffeine_half_life_h));
 });
 
 module.exports = router;

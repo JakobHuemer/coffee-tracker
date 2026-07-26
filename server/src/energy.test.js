@@ -1,9 +1,11 @@
 import { test, expect } from 'bun:test';
 
 const {
-  HALF_LIFE_H, FULL_MG, MAX_POINTS,
-  activeFromDose, activeMgAt, levelFromMg, emptyAt, stepMsFor, buildEnergy,
+  DEFAULT_HALF_LIFE_H, MIN_HALF_LIFE_H, MAX_HALF_LIFE_H, FULL_MG, MAX_POINTS,
+  clampHalfLife, activeFromDose, activeMgAt, levelFromMg, emptyAt, stepMsFor, buildEnergy,
 } = require('./energy');
+
+const HALF_LIFE_H = DEFAULT_HALF_LIFE_H;
 
 const HOUR = 3600000;
 
@@ -130,4 +132,77 @@ test('zero-caffeine drinks do not move the battery', () => {
   const out = buildEnergy([{ logged_at: now - HOUR, caffeine_mg: 0 }], now, 24);
   expect(out.level).toBe(0);
   expect(out.state).toBe('empty');
+});
+
+// ── Per-user half-life ───────────────────────────────────────────────────────
+
+test('clampHalfLife falls back to the default for anything unusable', () => {
+  for (const bad of [null, undefined, '', 'abc', NaN, Infinity, 0, -3]) {
+    expect(clampHalfLife(bad)).toBe(DEFAULT_HALF_LIFE_H);
+  }
+});
+
+test('clampHalfLife clamps to the published range and keeps valid values', () => {
+  expect(clampHalfLife(0.5)).toBe(MIN_HALF_LIFE_H);
+  expect(clampHalfLife(99)).toBe(MAX_HALF_LIFE_H);
+  expect(clampHalfLife(3.5)).toBe(3.5);
+  expect(clampHalfLife('7')).toBe(7);
+});
+
+test('a shorter half-life decays faster than a longer one', () => {
+  const fast = activeFromDose(100, 8, 3.5);
+  const normal = activeFromDose(100, 8, 5);
+  const slow = activeFromDose(100, 8, 7);
+  expect(fast).toBeLessThan(normal);
+  expect(normal).toBeLessThan(slow);
+});
+
+test('decay tracks whichever half-life is passed', () => {
+  for (const hl of [2, 3.5, 5, 7, 9.5]) {
+    const a = activeFromDose(100, 6, hl);
+    const b = activeFromDose(100, 6 + hl, hl);
+    expect(b / a).toBeGreaterThan(0.48);
+    expect(b / a).toBeLessThan(0.52);
+  }
+});
+
+test('a personal half-life changes the curve, the level and empty_at', () => {
+  const now = Date.now();
+  const doses = [{ logged_at: now - 6 * HOUR, caffeine_mg: 150 }];
+  const fast = buildEnergy(doses, now, 24, 3.5);
+  const slow = buildEnergy(doses, now, 24, 7);
+  expect(fast.half_life_h).toBe(3.5);
+  expect(slow.half_life_h).toBe(7);
+  expect(fast.level).toBeLessThan(slow.level);
+  expect(fast.empty_at).toBeLessThan(slow.empty_at);
+});
+
+test('an unset (null) half-life reports and uses the population default', () => {
+  const now = Date.now();
+  const doses = [{ logged_at: now - 3 * HOUR, caffeine_mg: 95 }];
+  const unset = buildEnergy(doses, now, 24, null);
+  const explicit = buildEnergy(doses, now, 24, DEFAULT_HALF_LIFE_H);
+  expect(unset.half_life_h).toBe(DEFAULT_HALF_LIFE_H);
+  expect(unset.level).toBe(explicit.level);
+});
+
+test('an out-of-range stored value is clamped, not honoured', () => {
+  const now = Date.now();
+  expect(buildEnergy([], now, 24, 500).half_life_h).toBe(MAX_HALF_LIFE_H);
+  expect(buildEnergy([], now, 24, 0.1).half_life_h).toBe(MIN_HALF_LIFE_H);
+});
+
+test('the slowest metabolizer still gets a real empty_at, not null', () => {
+  const now = Date.now();
+  // A full battery at the slowest half-life is the worst case for the forecast
+  // horizon — it must still resolve rather than reporting "unknown".
+  const out = buildEnergy([{ logged_at: now - HOUR, caffeine_mg: 200 }], now, 24, MAX_HALF_LIFE_H);
+  expect(out.empty_at).not.toBeNull();
+});
+
+test('residual caffeine from a slow metabolizer is not truncated at the left edge', () => {
+  const now = Date.now();
+  // 40 h back is beyond the old 36 h lookback but still ~4% of the dose at 9.5 h.
+  const out = buildEnergy([{ logged_at: now - 40 * HOUR, caffeine_mg: 200 }], now, 24, MAX_HALF_LIFE_H);
+  expect(out.series[0].active_mg).toBeGreaterThan(0);
 });

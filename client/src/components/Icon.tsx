@@ -8,6 +8,7 @@ import {
   FaWandMagicSparkles, FaDiceTwo, FaDiceThree, FaCheck, FaCircleCheck,
   FaSkull, FaTriangleExclamation, FaUsers, FaCalendarDays, FaCamera,
   FaXmark, FaBookmark, FaRegBookmark, FaPlus, FaArrowRight,
+  FaChevronUp, FaChevronDown,
 } from 'react-icons/fa6';
 import type { IconType } from 'react-icons';
 
@@ -80,6 +81,8 @@ const ICONS: Record<string, IconType> = {
   'heart-o': FaRegHeart,
   plus: FaPlus,
   'arrow-right': FaArrowRight,
+  'chevron-up': FaChevronUp,
+  'chevron-down': FaChevronDown,
 };
 
 const FALLBACK: IconType = FaMugHot;

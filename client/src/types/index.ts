@@ -43,6 +43,9 @@ export interface User {
   profile_photo_url?: string | null;
   featured_badges: string[];
   timezone?: string;
+  // Personal caffeine half-life in hours, driving the Buzz decay curve. null
+  // means unset — the server falls back to the 5 h population default.
+  caffeine_half_life_h?: number | null;
   created_at: number;
 }
 
