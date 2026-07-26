@@ -152,6 +152,32 @@ keyword in the PR body: `Fixes #<N>` / `Closes #<N>` (one per issue if it spans
 several). Issue-less PRs are fine — a PR does **not** need an issue created for
 it; only reference an issue if one already exists.
 
+## Never kill a process you did not start
+
+The developer runs their own `bun run dev` (Vite) and API server in this repo.
+Agents have repeatedly killed those while cleaning up their own test servers.
+**A dev server dying mid-session is never acceptable collateral.**
+
+- **Never use a pattern-matching killer.** No `pkill -f …`, no
+  `kill $(pgrep …)`, no `killall bun`. Every one of these matches the
+  developer's processes — and often the agent's own shell, which is why these
+  commands keep exiting 144. `bun run dev`, `bun src/index.js` and the wrapper
+  shell all look alike to a pattern.
+- **Record the PID when you start something, and kill only that PID.**
+
+  ```bash
+  bun src/index.js > "$SCRATCH/srv.log" 2>&1 &
+  SRV=$!            # the only pid you are ever allowed to kill
+  kill -TERM $SRV
+  ```
+
+- **Get isolation from a fresh environment, not from killing things.** Every
+  test server gets its own **unused high port** and its own **`DB_DIR` under the
+  scratchpad**, never the repo's `server/data` and never the default 3001/5173.
+  Two servers coexisting is fine; that is the whole point.
+- Leave a stray test server running rather than risk a broad kill. Say so in the
+  summary and let the developer clear it.
+
 ## Guardrails
 
 - **Never reference a symbol that doesn't exist** — a CSS variable / design
