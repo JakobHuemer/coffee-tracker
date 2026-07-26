@@ -3,7 +3,7 @@ const { randomUUID } = require('crypto');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { BASE_RATING, K_BY_MODE, scorePoints } = require('../competition-core');
-const { groupOf, scoreFor, ratingOf } = require('../competitions');
+const { groupOf, scoresForMany, ratingsForMany } = require('../competitions');
 
 const router = express.Router();
 
@@ -29,6 +29,10 @@ function matchOr404(res, id) {
 // Participants with everything the UI needs. For a match that has not settled
 // yet, `score` is computed live from the window so far; for a settled one it is
 // the stored value, which is the number the deltas were actually derived from.
+//
+// The live path scores and rates the whole roster in two queries rather than
+// two per player: a match list is dozens of matches deep, so the per-user form
+// made one page load hundreds of round trips.
 function participantsOf(match) {
   const rows = db.prepare(`
     SELECT p.*, u.username, u.avatar, u.profile_photo
@@ -39,8 +43,14 @@ function participantsOf(match) {
   `).all(match.id);
 
   const settled = match.state === 'settled';
+  const userIds = rows.map((r) => r.user_id);
+  const liveScores = settled
+    ? new Map()
+    : scoresForMany(userIds, match.scope_start, Math.min(Date.now(), match.scope_end));
+  const liveRatings = settled ? new Map() : ratingsForMany(userIds);
+
   const enriched = rows.map((r) => {
-    const score = settled ? r.score : scoreFor(r.user_id, match.scope_start, Math.min(Date.now(), match.scope_end));
+    const score = settled ? r.score : (liveScores.get(r.user_id) ?? 0);
     return {
       user_id: r.user_id,
       username: r.username,
@@ -56,7 +66,7 @@ function participantsOf(match) {
       delta: r.delta,
       // A live match shows the rating a player is carrying INTO it; a settled
       // one shows what they had when it settled.
-      current_rating: settled ? r.rating_after : ratingOf(r.user_id),
+      current_rating: settled ? r.rating_after : (liveRatings.get(r.user_id) ?? BASE_RATING),
     };
   });
 
@@ -66,6 +76,7 @@ function participantsOf(match) {
 }
 
 function matchPayload(match, { withParticipants = true } = {}) {
+  const participants = withParticipants ? participantsOf(match) : null;
   const base = {
     id: match.id,
     group_id: match.group_id,
@@ -80,10 +91,11 @@ function matchPayload(match, { withParticipants = true } = {}) {
     team_size: match.team_size,
     created_at: match.created_at,
     settled_at: match.settled_at,
-    participant_count: db.prepare('SELECT COUNT(*) AS c FROM match_participants WHERE match_id = ?')
-      .get(match.id).c,
+    participant_count: participants
+      ? participants.length
+      : db.prepare('SELECT COUNT(*) AS c FROM match_participants WHERE match_id = ?').get(match.id).c,
   };
-  return withParticipants ? { ...base, participants: participantsOf(match) } : base;
+  return participants ? { ...base, participants } : base;
 }
 
 // GET /api/competitions — the caller's group's matches, plus their rating.

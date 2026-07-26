@@ -88,6 +88,36 @@ function scoreFor(userId, start, end) {
   return performanceScore(metricsFor(userId, start, end));
 }
 
+// Same thing for a whole roster, in ONE query instead of one per player.
+// Rendering a match list means scoring every participant of every match, so the
+// per-user form turns a page load into hundreds of round trips.
+// Returns Map(userId -> score); users with no entries are absent, so read it
+// with `?? 0`.
+function scoresForMany(userIds, start, end) {
+  if (userIds.length === 0) return new Map();
+  const holes = userIds.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT user_id,
+           COALESCE(SUM(caffeine_mg), 0) AS caffeine,
+           COUNT(*)                      AS cups,
+           COUNT(DISTINCT coffee_id)     AS variety
+    FROM coffee_entries
+    WHERE user_id IN (${holes}) AND logged_at >= ? AND logged_at <= ?
+    GROUP BY user_id
+  `).all(...userIds, start, end);
+  return new Map(rows.map((r) => [r.user_id, performanceScore(r)]));
+}
+
+// Ratings for a whole roster in one query. Absent users are unrated, so read
+// with `?? BASE_RATING`.
+function ratingsForMany(userIds) {
+  if (userIds.length === 0) return new Map();
+  const holes = userIds.map(() => '?').join(',');
+  const rows = db.prepare(`SELECT user_id, rating FROM user_ratings WHERE user_id IN (${holes})`)
+    .all(...userIds);
+  return new Map(rows.map((r) => [r.user_id, r.rating]));
+}
+
 // ── rating cache ─────────────────────────────────────────────────────────────
 
 function ratingOf(userId) {
@@ -327,7 +357,7 @@ function stopTicker() {
 module.exports = {
   TICK_MS, DAILY_LEAD_DAYS, WEEKLY_LEAD_DAYS,
   mondayOf, addDaysStr, dailyWindow, weeklyWindow, groupOf, autoJoinMemberIds,
-  metricsFor, scoreFor, ratingOf,
+  metricsFor, scoreFor, scoresForMany, ratingOf, ratingsForMany,
   ensureRecurringMatch, ensureRecurringMatches, rosterIsLegal, lockDueLobbies,
   settleMatch, settleDueMatches, tick, startTicker, stopTicker,
 };
