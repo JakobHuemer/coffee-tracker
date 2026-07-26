@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
+import { AppLogo } from '../components/AppLogo';
 import { Icon } from '../components/Icon';
 import type { User } from '../types';
 
@@ -36,7 +37,7 @@ export function Auth() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <img className="auth-logo" src="/favicon.svg" alt="Coffee Tracker" />
+        <AppLogo className="auth-logo" alt="Coffee Tracker" />
         <h1 className="auth-title">Coffee Tracker</h1>
         <p className="auth-sub">{mode === 'login' ? 'Sign in to continue' : 'Create your account'}</p>
 

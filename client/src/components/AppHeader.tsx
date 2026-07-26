@@ -1,4 +1,5 @@
 import { useThemeStore } from '../store/theme';
+import { AppLogo } from './AppLogo';
 import { Icon } from './Icon';
 
 // Single app header shared by every main page so the top bar looks identical
@@ -10,7 +11,7 @@ export function AppHeader() {
   return (
     <header className="app-header">
       <div className="header-brand">
-        <img className="logo" src="/favicon.svg" alt="Coffee Tracker" />
+        <AppLogo className="logo" alt="Coffee Tracker" />
         <div>
           <h1>Coffee Tracker</h1>
           <div className="date">{new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}</div>
