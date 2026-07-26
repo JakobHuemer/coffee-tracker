@@ -81,7 +81,7 @@ function PostCard({
       </div>
 
       {post.photo_url && (
-        // In the card the photo is capped at 1.5× its width; tapping it opens
+        // In the card the photo is capped at 1.2× its width; tapping it opens
         // the uncropped frame.
         <button className="feed-photo-wrap" onClick={() => setZoomed(true)} aria-label="View photo">
           <img className="feed-photo" src={uploadUrl(post.photo_url)} alt={post.coffee_id} loading="lazy" />

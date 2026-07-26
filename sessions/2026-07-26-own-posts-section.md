@@ -17,9 +17,9 @@ topics: [own-posts-section, feed-privacy, post-content-rule, bottom-nav]
 - Nav swap: Saved lost its bottom-nav slot to "Yours" (`/mine`) and is reachable
   only from the Profile page now. `/saved` route itself is unchanged.
 - Post photos: the old fixed `aspect-ratio: 4/3` cropped nearly everything. The
-  cap is now `max-height: 150cqw` on the img with `container-type: inline-size`
+  cap is now `max-height: 120cqw` on the img with `container-type: inline-size`
   on the wrapper — a ratio-relative cap is not expressible in plain CSS without
-  a size container. Measured in chromium at a 300px card: 1:3 → 450px (capped),
+  a size container. Measured in chromium at a 300px card: 1:3 → 360px (capped),
   1:1.2 → 360px (full), 4:3 → 225px (full). No container-query support just
   means no crop.
 - `components/PhotoLightbox.tsx` is shared by the feed and the Profile gallery;
