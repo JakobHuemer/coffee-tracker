@@ -9,7 +9,6 @@ import {
 } from '../components/PastTimePicker';
 import { getSkipSpacing } from '../devFlags';
 import type { Coffee, UnlockNotification } from '../types';
-type Step = 'photo' | 'details';
 
 export function LogCoffee() {
   const navigate = useNavigate();
@@ -22,7 +21,6 @@ export function LogCoffee() {
     staleTime: Infinity,
   });
 
-  const [step, setStep] = useState<Step>('photo');
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -36,7 +34,12 @@ export function LogCoffee() {
   const [submitting, setSubmitting] = useState(false);
   const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
 
-  const fileRef = useRef<HTMLInputElement>(null);
+  // Two inputs, not one. A single `accept="image/*"` input hands the choice to
+  // the platform, and on Android 13+ that means the system photo picker, which
+  // has no camera at all — the shot-a-fresh-photo path just disappears. Asking
+  // for each source explicitly is the only way to keep both reachable.
+  const galleryRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   // Mirrors photoPreview so the URL can be revoked without reading state.
   const previewRef = useRef<string | null>(null);
 
@@ -80,17 +83,19 @@ export function LogCoffee() {
     setPreview(URL.createObjectURL(file));
   }
 
-  // Clearing the input first is what makes "use another" work when the user
-  // re-picks the very same file — an unchanged value fires no change event.
-  function openPhotoPicker() {
-    if (fileRef.current) fileRef.current.value = '';
-    fileRef.current?.click();
+  // Clearing the input first is what makes re-picking work when the user
+  // chooses the very same file — an unchanged value fires no change event.
+  function openPicker(ref: React.RefObject<HTMLInputElement | null>) {
+    if (ref.current) ref.current.value = '';
+    ref.current?.click();
   }
 
-  function retakePhoto() {
+  function removePhoto() {
     setPhoto(null);
     setPreview(null);
-    if (fileRef.current) fileRef.current.value = '';
+    // Both inputs, or the cleared one still holds a stale file.
+    if (galleryRef.current) galleryRef.current.value = '';
+    if (cameraRef.current) cameraRef.current.value = '';
   }
 
   async function handleSubmit() {
@@ -156,145 +161,132 @@ export function LogCoffee() {
     <div className="page log-page">
       <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
 
-      {/* Lives outside both steps: the details step can reopen the picker, so
-          unmounting it with the photo step would break "Add a photo" there. */}
+      {/* `capture` is the whole reason these are separate elements: it is an
+          attribute, not an argument, so one input cannot offer both sources. */}
       <input
-        ref={fileRef}
+        ref={galleryRef}
         type="file"
         accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handlePhotoChange}
+      />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         style={{ display: 'none' }}
         onChange={handlePhotoChange}
       />
 
       <header className="log-header-bar">
         <button className="log-back-btn" onClick={() => navigate('/')} aria-label="Close"><Icon name="close" /></button>
-        <h2 className="log-title">{step === 'photo' ? 'Snap a photo' : 'New coffee'}</h2>
-        {step === 'photo' && (
-          <button className="log-skip-btn" onClick={() => setStep('details')}>Skip</button>
-        )}
-        {step === 'details' && <span />}
+        <h2 className="log-title">New coffee</h2>
+        <span />
       </header>
 
-      {step === 'photo' && (
-        <div className="log-photo-step">
-          {photoPreview ? (
-            <div className="log-photo-preview-wrap">
-              <img className="log-photo-preview" src={photoPreview} alt="Preview" />
-              <button className="log-retake-btn" onClick={retakePhoto}>Retake</button>
-              <button className="btn-primary log-next-btn" onClick={() => setStep('details')}>
-                Use this photo <Icon name="arrow-right" />
+      <div className="log-details-step">
+        {photoPreview ? (
+          <div className="log-details-thumb-wrap">
+            <img className="log-details-thumb" src={photoPreview} alt="Your coffee" />
+            <div className="log-thumb-actions">
+              <button className="log-thumb-btn" onClick={() => openPicker(cameraRef)}>
+                <Icon name="camera" size={15} /> Camera
+              </button>
+              <button className="log-thumb-btn" onClick={() => openPicker(galleryRef)}>
+                <Icon name="gallery" size={15} /> Gallery
+              </button>
+              <button className="log-thumb-btn danger" onClick={removePhoto}>
+                <Icon name="trash" size={15} /> Remove
               </button>
             </div>
-          ) : (
-            <div className="log-camera-area">
-              <div className="log-camera-icon"><Icon name="camera" size={44} /></div>
-              <p className="log-camera-hint">Add a photo of your coffee</p>
-              <button className="btn-primary log-camera-btn" onClick={openPhotoPicker}>
-                Add photo
-              </button>
-              <button className="btn-secondary log-skip-inline" onClick={() => setStep('details')}>
-                Skip photo
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {step === 'details' && (
-        <div className="log-details-step">
-          {photoPreview ? (
-            <div className="log-details-thumb-wrap">
-              <img className="log-details-thumb" src={photoPreview} alt="Your coffee" />
-              <div className="log-thumb-actions">
-                <button className="log-thumb-btn" onClick={openPhotoPicker}>
-                  <Icon name="camera" size={15} /> Use another
-                </button>
-                <button className="log-thumb-btn danger" onClick={retakePhoto}>
-                  <Icon name="close" size={15} /> Remove
-                </button>
-              </div>
-            </div>
-          ) : (
-            // Skipping the photo step is not final — a description-only entry is
-            // valid, but the photo has to stay one tap away from here.
-            <button className="log-add-photo-bar" onClick={openPhotoPicker}>
+          </div>
+        ) : (
+          // A photo is optional — a description-only entry is valid — but both
+          // ways of adding one stay a single tap from the form.
+          <div className="log-photo-actions">
+            <button className="log-photo-btn" onClick={() => openPicker(cameraRef)}>
               <Icon name="camera" size={18} />
-              <span>Add a photo</span>
+              <span>Take photo</span>
             </button>
-          )}
-
-          <div className="log-form">
-            <div className="section-label">Coffee type</div>
-            <div className="coffee-grid">
-              {coffees.map(c => (
-                <button
-                  key={c.id}
-                  className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
-                  onClick={() => setSelectedId(c.id)}
-                >
-                  <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
-                  <span className="cb-name">{c.name}</span>
-                  <span className="cb-mg">{c.caffeine}mg</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="field" style={{ marginTop: 16 }}>
-              <label>Time</label>
-              <PastTimePicker
-                value={pastTime}
-                resolved={resolvedTime}
-                now={now}
-                onChange={setPastTime}
-              />
-            </div>
-
-            <div className="field">
-              <label>
-                Description{' '}
-                <span className="field-hint">
-                  {hasPhoto || !isPublic ? '(optional)' : '(required unless you add a photo)'}
-                </span>
-              </label>
-              <textarea
-                className="log-textarea"
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                placeholder="What made this coffee special?"
-                rows={2}
-                maxLength={280}
-              />
-            </div>
-
-            <div className="log-share-row">
-              <div>
-                <div className="log-share-label">Share with everyone</div>
-                <div className="log-share-sub">Visible in the public feed</div>
-              </div>
-              <button
-                className={`log-toggle${isPublic ? ' on' : ''}`}
-                onClick={() => setIsPublic(v => !v)}
-                aria-pressed={isPublic}
-              >
-                <span className="log-toggle-knob" />
-              </button>
-            </div>
-
-            {error && <div className="auth-error">{error}</div>}
-
-            {!selectedId && (
-              <div className="log-requirement-hint">Pick a coffee type to continue.</div>
-            )}
-            {selectedId && !meetsContentRule && (
-              <div className="log-requirement-hint">Add a photo or write a description to post publicly.</div>
-            )}
-
-            <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId || !meetsContentRule || resolvedTime.timestamp === null}>
-              {submitting ? 'Posting…' : 'Post coffee'}
+            <button className="log-photo-btn" onClick={() => openPicker(galleryRef)}>
+              <Icon name="gallery" size={18} />
+              <span>Choose photo</span>
             </button>
           </div>
+        )}
+
+        <div className="log-form">
+          <div className="section-label">Coffee type</div>
+          <div className="coffee-grid">
+            {coffees.map(c => (
+              <button
+                key={c.id}
+                className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
+                onClick={() => setSelectedId(c.id)}
+              >
+                <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
+                <span className="cb-name">{c.name}</span>
+                <span className="cb-mg">{c.caffeine}mg</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="field" style={{ marginTop: 16 }}>
+            <label>Time</label>
+            <PastTimePicker
+              value={pastTime}
+              resolved={resolvedTime}
+              now={now}
+              onChange={setPastTime}
+            />
+          </div>
+
+          <div className="field">
+            <label>
+              Description{' '}
+              <span className="field-hint">
+                {hasPhoto || !isPublic ? '(optional)' : '(required unless you add a photo)'}
+              </span>
+            </label>
+            <textarea
+              className="log-textarea"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="What made this coffee special?"
+              rows={2}
+              maxLength={280}
+            />
+          </div>
+
+          <div className="log-share-row">
+            <div>
+              <div className="log-share-label">Share with everyone</div>
+              <div className="log-share-sub">Visible in the public feed</div>
+            </div>
+            <button
+              className={`log-toggle${isPublic ? ' on' : ''}`}
+              onClick={() => setIsPublic(v => !v)}
+              aria-pressed={isPublic}
+            >
+              <span className="log-toggle-knob" />
+            </button>
+          </div>
+
+          {error && <div className="auth-error">{error}</div>}
+
+          {!selectedId && (
+            <div className="log-requirement-hint">Pick a coffee type to continue.</div>
+          )}
+          {selectedId && !meetsContentRule && (
+            <div className="log-requirement-hint">Add a photo or write a description to post publicly.</div>
+          )}
+
+          <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId || !meetsContentRule || resolvedTime.timestamp === null}>
+            {submitting ? 'Posting…' : 'Post coffee'}
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

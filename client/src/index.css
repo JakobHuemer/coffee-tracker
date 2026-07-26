@@ -368,32 +368,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .log-back-btn:hover { border-color: var(--accent); color: var(--accent); }
 .log-title { font-size: 1rem; font-weight: 700; }
-.log-skip-btn {
-  background: none; border: none; cursor: pointer; font-size: 0.85rem;
-  color: var(--accent); font-weight: 600; padding: 4px 8px;
-}
-
-.log-photo-step {
-  flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px 20px;
-}
-.log-camera-area {
-  display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 320px; width: 100%;
-}
-.log-camera-icon { font-size: 4rem; }
-.log-camera-hint { font-size: 0.88rem; color: var(--text-sec); text-align: center; }
-.log-camera-btn { max-width: 200px; }
-.log-skip-inline { margin-top: 4px; }
-.log-photo-preview-wrap {
-  display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 400px; width: 100%;
-}
-.log-photo-preview { width: 100%; border-radius: 12px; max-height: 340px; object-fit: cover; }
-.log-retake-btn {
-  background: none; border: 1.5px solid var(--border); border-radius: 8px;
-  cursor: pointer; padding: 7px 20px; font-size: 0.82rem; color: var(--text-muted);
-}
-.log-retake-btn:hover { border-color: var(--accent); color: var(--accent); }
-.log-next-btn { max-width: 200px; }
-
 .log-details-step { flex: 1; overflow-y: auto; }
 .log-details-thumb-wrap { padding: 16px 16px 0; }
 .log-details-thumb {
@@ -408,16 +382,29 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   cursor: pointer; transition: border-color 0.15s, color 0.15s;
 }
 .log-thumb-btn:hover { border-color: var(--accent); color: var(--accent); }
-.log-thumb-btn.danger:hover { border-color: var(--danger-bd); color: var(--danger-fg); }
+/* Tinted, not neutral: red text on the same surface as its two neutral
+   siblings reads as an accident. Hover must restate every colour, or the
+   generic .log-thumb-btn:hover repaints this one accent. */
+.log-thumb-btn.danger {
+  background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd);
+}
+.log-thumb-btn.danger:hover {
+  background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-fg);
+}
 
-.log-add-photo-bar {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: calc(100% - 32px); margin: 16px 16px 0; padding: 11px 14px;
+/* Two equal buttons — camera and gallery are separate destinations, so neither
+   gets to look like the primary one. */
+.log-photo-actions {
+  display: flex; gap: 8px; margin: 16px 16px 0;
+}
+.log-photo-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1;
+  padding: 11px 14px;
   border: 1.5px dashed var(--border); border-radius: 10px; background: var(--surface2);
   color: var(--text-sec); font-size: 0.85rem; font-weight: 600; font-family: inherit;
   cursor: pointer; transition: border-color 0.15s, color 0.15s;
 }
-.log-add-photo-bar:hover { border-color: var(--accent); color: var(--accent); }
+.log-photo-btn:hover { border-color: var(--accent); color: var(--accent); }
 .log-form { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-width: 640px; margin: 0 auto; }
 .log-textarea {
   padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
