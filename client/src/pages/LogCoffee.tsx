@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/auth';
 import { UnlockToast } from '../components/UnlockToast';
 import { Icon } from '../components/Icon';
+import { PastTimePicker, type PastTimeState } from '../components/PastTimePicker';
 import type { UnlockNotification } from '../types';
 
 const COFFEES = [
@@ -35,15 +36,16 @@ export function LogCoffee() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(true);
-  const [timeValue, setTimeValue] = useState(() => {
-    const d = new Date();
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  });
+  // The picker owns the time/day pair and hands back a full timestamp, or null
+  // while the value sits outside the rolling 24-hour window.
+  const [time, setTime] = useState<PastTimeState>({ timestamp: Date.now(), hint: null });
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
 
   const fileRef = useRef<HTMLInputElement>(null);
+  // Mirrors photoPreview so the URL can be revoked without reading state.
+  const previewRef = useRef<string | null>(null);
 
   // A coffee entry must carry a photo or a description — mirrors the server's
   // POST /coffees/entries rule. Keep every label/hint here in sync with that
@@ -52,40 +54,64 @@ export function LogCoffee() {
   const hasDescription = description.trim().length > 0;
   const meetsContentRule = hasPhoto || hasDescription;
 
+  // Object URLs are entries in the document's blob URL store, which holds a
+  // strong reference to the File. Dropping the string does not free the image —
+  // only revoking does, and this is an SPA, so nothing unloads the document to
+  // clear the store for us. Every URL created here is revoked through this one
+  // setter (and on unmount below), so the photo can be swapped freely.
+  //
+  // Deliberately not done inside a state updater: React may invoke an updater
+  // twice, which would mint a second URL and orphan the first.
+  function setPreview(next: string | null) {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = next;
+    setPhotoPreview(next);
+  }
+
+  // Abandoning the form (back out, navigate away, post and redirect) must not
+  // strand the last preview. Revoke straight off the ref — no state update on
+  // an unmounted component.
+  useEffect(() => () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+    previewRef.current = null;
+  }, []);
+
   function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setPhoto(file);
-    setPhotoPreview(URL.createObjectURL(file));
+    setPreview(URL.createObjectURL(file));
+  }
+
+  // Clearing the input first is what makes "use another" work when the user
+  // re-picks the very same file — an unchanged value fires no change event.
+  function openPhotoPicker() {
+    if (fileRef.current) fileRef.current.value = '';
+    fileRef.current?.click();
   }
 
   function retakePhoto() {
     setPhoto(null);
-    setPhotoPreview(null);
+    setPreview(null);
     if (fileRef.current) fileRef.current.value = '';
   }
 
   async function handleSubmit() {
     if (!selectedId) { setError('Please select a coffee type.'); return; }
     if (!meetsContentRule) { setError('Add a photo or write a description.'); return; }
+    // No future logs, nothing older than 24h — the picker already flags both
+    // inline, so this only catches a submit that races the window's edge.
+    // (See docs/time-and-timezones.md.)
+    if (time.timestamp === null) {
+      setError('Pick a time within the last 24 hours.');
+      return;
+    }
     setError(null);
     setSubmitting(true);
 
-    const [h, m] = timeValue.split(':').map(Number);
-    const ts = new Date();
-    ts.setHours(h, m, 0, 0);
-
-    // No future logs — a later time-of-day would land in the future and show as
-    // "just now" until the clock caught up. (See docs/time-and-timezones.md.)
-    if (ts.getTime() > Date.now() + 60_000) {
-      setError("Can't post a coffee in the future — pick a time up to now.");
-      setSubmitting(false);
-      return;
-    }
-
     const fd = new FormData();
     fd.append('coffeeId', selectedId);
-    fd.append('timestamp', String(ts.getTime()));
+    fd.append('timestamp', String(time.timestamp));
     fd.append('is_public', isPublic ? '1' : '0');
     if (description.trim()) fd.append('description', description.trim());
     if (photo) fd.append('photo', photo);
@@ -126,6 +152,16 @@ export function LogCoffee() {
     <div className="page log-page">
       <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
 
+      {/* Lives outside both steps: the details step can reopen the picker, so
+          unmounting it with the photo step would break "Add a photo" there. */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        style={{ display: 'none' }}
+        onChange={handlePhotoChange}
+      />
+
       <header className="log-header-bar">
         <button className="log-back-btn" onClick={() => navigate('/')} aria-label="Close"><Icon name="close" /></button>
         <h2 className="log-title">{step === 'photo' ? 'Snap a photo' : 'New coffee'}</h2>
@@ -155,13 +191,6 @@ export function LogCoffee() {
               <button className="btn-secondary log-skip-inline" onClick={() => setStep('details')}>
                 Skip photo
               </button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={handlePhotoChange}
-              />
             </div>
           )}
         </div>
@@ -169,10 +198,25 @@ export function LogCoffee() {
 
       {step === 'details' && (
         <div className="log-details-step">
-          {photoPreview && (
+          {photoPreview ? (
             <div className="log-details-thumb-wrap">
               <img className="log-details-thumb" src={photoPreview} alt="Your coffee" />
+              <div className="log-thumb-actions">
+                <button className="log-thumb-btn" onClick={openPhotoPicker}>
+                  <Icon name="camera" size={15} /> Use another
+                </button>
+                <button className="log-thumb-btn danger" onClick={retakePhoto}>
+                  <Icon name="close" size={15} /> Remove
+                </button>
+              </div>
             </div>
+          ) : (
+            // Skipping the photo step is not final — a description-only entry is
+            // valid, but the photo has to stay one tap away from here.
+            <button className="log-add-photo-bar" onClick={openPhotoPicker}>
+              <Icon name="camera" size={18} />
+              <span>Add a photo</span>
+            </button>
           )}
 
           <div className="log-form">
@@ -193,7 +237,7 @@ export function LogCoffee() {
 
             <div className="field" style={{ marginTop: 16 }}>
               <label>Time</label>
-              <input type="time" value={timeValue} onChange={e => setTimeValue(e.target.value)} />
+              <PastTimePicker onChange={setTime} />
             </div>
 
             <div className="field">
@@ -236,7 +280,7 @@ export function LogCoffee() {
               <div className="log-requirement-hint">Add a photo or write a description to post.</div>
             )}
 
-            <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId || !meetsContentRule}>
+            <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId || !meetsContentRule || time.timestamp === null}>
               {submitting ? 'Posting…' : 'Post coffee'}
             </button>
           </div>
