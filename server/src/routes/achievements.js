@@ -20,7 +20,7 @@ router.get('/', requireAuth, (req, res) => {
         id: a.id,
         name: '???',
         description: 'Keep exploring to discover this secret achievement',
-        icon: '🔒',
+        icon: 'lock',
         secret: true,
         category: a.category,
         unlocked: false,

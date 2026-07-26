@@ -2,7 +2,6 @@ const { randomUUID } = require('crypto');
 const db = require('./db');
 const { ACHIEVEMENTS } = require('./data/achievements');
 const { BADGES } = require('./data/badges');
-const { COFFEES } = require('./data/coffees');
 const { getUserTz, localDateStr, localTodayStr, localParts } = require('./time');
 
 // Civil day/hour for streaks and time-of-day achievements are evaluated in the
@@ -26,6 +25,21 @@ function unlockAchievement(userId, achievementId) {
 
   const badges = checkBadgesForAchievement(userId, achievementId);
   return { def, badges };
+}
+
+// Unlock every counter milestone whose threshold the supplied running totals
+// have reached. `values` maps a `progress.metric` name to the user's current
+// figure; metrics absent from it are simply not evaluated on this pass, which
+// is how the goal-streak milestones stay out of the coffee-logging path.
+function checkCounterMilestones(userId, values) {
+  const unlocked = [];
+  for (const a of ACHIEVEMENTS) {
+    if (!a.progress) continue;
+    const current = values[a.progress.metric];
+    if (current === undefined) continue;
+    if (current >= a.progress.target) unlocked.push(..._try(userId, a.id));
+  }
+  return unlocked;
 }
 
 function unlockBadge(userId, badgeId) {
@@ -86,25 +100,21 @@ function checkAfterCoffeeLog(userId) {
   const latestTs      = allEntries[allEntries.length - 1]?.logged_at;
   const latestHour    = latestTs !== undefined ? localParts(latestTs, tz).hour : -1;
 
-  // Volume
-  if (totalCups >= 1)   unlocked.push(..._try(userId, 'first_sip'));
-  if (totalCups >= 10)  unlocked.push(..._try(userId, 'ten_cups'));
-  if (totalCups >= 50)  unlocked.push(..._try(userId, 'fifty_cups'));
-  if (totalCups >= 100) unlocked.push(..._try(userId, 'hundred_cups'));
-  if (totalCups >= 500) unlocked.push(..._try(userId, 'five_hundred_cups'));
+  // Volume, caffeine total and variety are all plain "running total reached a
+  // threshold" milestones, so they come straight off the `progress` metadata
+  // rather than being restated here. The client draws its bars from the same
+  // numbers, which is what stops the two from drifting apart.
+  unlocked.push(...checkCounterMilestones(userId, {
+    total_cups: totalCups,
+    total_caffeine: totalCaffeine,
+    unique_types: seenTypes.size,
+  }));
 
-  // Caffeine total
-  if (totalCaffeine >= 1000)  unlocked.push(..._try(userId, 'caffeine_1000'));
-  if (totalCaffeine >= 10000) unlocked.push(..._try(userId, 'caffeine_10000'));
+  if (totalCups >= 1) unlocked.push(..._try(userId, 'first_sip'));
 
   // Daily caffeine thresholds
   if (todayCaffeine >= 500)  unlocked.push(..._try(userId, 'overdrive_day'));
   if (todayCaffeine >= 1000) unlocked.push(..._try(userId, 'gone_day'));
-
-  // Variety
-  if (seenTypes.size >= 3)               unlocked.push(..._try(userId, 'variety_3'));
-  if (seenTypes.size >= 7)               unlocked.push(..._try(userId, 'variety_7'));
-  if (seenTypes.size >= COFFEES.length)  unlocked.push(..._try(userId, 'variety_all'));
 
   // Time of day
   if (latestHour < 7 && latestHour >= 0) unlocked.push(..._try(userId, 'early_bird'));
@@ -217,9 +227,7 @@ function checkAfterGoalsComplete(userId) {
       'UPDATE user_streaks SET current_streak = ?, longest_streak = ?, last_goal_date = ?, goals_completed = ? WHERE user_id = ?'
     ).run(newStreak, longest, today, total + 1, userId);
 
-    if (newStreak >= 3)  unlocked.push(..._try(userId, 'streak_3'));
-    if (newStreak >= 7)  unlocked.push(..._try(userId, 'streak_7'));
-    if (newStreak >= 30) unlocked.push(..._try(userId, 'streak_30'));
+    unlocked.push(...checkCounterMilestones(userId, { goal_streak: newStreak }));
   }
 
   const newTotal = total + 1;

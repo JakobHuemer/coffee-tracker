@@ -8,7 +8,7 @@ import {
   FaWandMagicSparkles, FaDiceTwo, FaDiceThree, FaCheck, FaCircleCheck,
   FaSkull, FaTriangleExclamation, FaUsers, FaCalendarDays, FaCamera,
   FaXmark, FaBookmark, FaRegBookmark, FaPlus, FaArrowRight, FaLock, FaTrash,
-  FaLayerGroup,
+  FaLayerGroup, FaImages,
   FaChevronUp, FaChevronDown,
 } from 'react-icons/fa6';
 import type { IconType } from 'react-icons';
@@ -74,6 +74,7 @@ const ICONS: Record<string, IconType> = {
   users: FaUsers,
   calendar: FaCalendarDays,
   camera: FaCamera,
+  gallery: FaImages,
   close: FaXmark,
   sun: FaSun,
   moon: FaMoon,

@@ -19,7 +19,7 @@ router.get('/', requireAuth, (req, res) => {
         id: b.id,
         name: '???',
         description: 'A hidden badge. Keep playing to discover it.',
-        icon: '🔒',
+        icon: 'lock',
         rarity: 'secret',
         secret: true,
         unlocked: false,

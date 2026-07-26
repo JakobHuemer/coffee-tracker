@@ -18,6 +18,9 @@
 
   /* Semantic feedback + tag colors (theme-aware so they adapt in dark mode). */
   --danger-bg:    #FDECEC; --danger-bd:  #F0BCBC; --danger-fg:  #C0392B;
+  /* Filled destructive buttons need their own solid red: --danger-fg is tuned
+     for text on the page background and does not carry white text safely. */
+  --danger-solid: #E53935; --danger-solid-hv: #C62828;
   --warn-bg:      #FFF6E5; --warn-bd:    #F0D9A8; --warn-fg:    #8A6D1B;
   --success-bg:   #E8F5E9; --success-bd: #A5D6A7; --success-fg: #2E7D32;
   --tag-community-bg: #E3F2FD; --tag-community-fg: #1565C0;
@@ -48,6 +51,7 @@
   --shadow:       0 1px 3px rgba(0,0,0,.5), 0 4px 12px rgba(0,0,0,.35);
 
   --danger-bg:    #3A1414; --danger-bd:  #5E2222; --danger-fg:  #FF9A90;
+  --danger-solid: #E53935; --danger-solid-hv: #EF5350;
   --warn-bg:      #3A2E12; --warn-bd:    #5A4620; --warn-fg:    #F0C674;
   --success-bg:   #14301B; --success-bd: #245A32; --success-fg: #8FD69C;
   --tag-community-bg: #0D2A45; --tag-community-fg: #8AC4FF;
@@ -179,13 +183,15 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .li-dot  { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .li-name { flex: 1; font-size: 0.85rem; font-weight: 500; }
 .li-mg   { font-size: 0.7rem; color: var(--text-muted); }
+/* Destructive from the moment it is visible, not only once hovered — the row
+   reveal already uses opacity, so hover feedback here is the tinted background. */
 .li-del  {
-  background: none; border: none; cursor: pointer; color: var(--text-muted);
+  background: none; border: none; cursor: pointer; color: var(--danger-fg);
   font-size: 0.75rem; padding: 3px 5px; border-radius: 4px;
-  opacity: 0; transition: opacity 0.15s, color 0.15s; line-height: 1;
+  opacity: 0; transition: opacity 0.15s, background 0.15s; line-height: 1;
 }
 .log-item:hover .li-del { opacity: 1; }
-.li-del:hover { color: var(--danger-fg); }
+.li-del:hover { background: var(--danger-bg); }
 
 /* ── Charts ──────────────────────────────────────────────────────────────── */
 .charts-grid { display: grid; gap: 16px; padding: 0 16px; }
@@ -368,32 +374,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .log-back-btn:hover { border-color: var(--accent); color: var(--accent); }
 .log-title { font-size: 1rem; font-weight: 700; }
-.log-skip-btn {
-  background: none; border: none; cursor: pointer; font-size: 0.85rem;
-  color: var(--accent); font-weight: 600; padding: 4px 8px;
-}
-
-.log-photo-step {
-  flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px 20px;
-}
-.log-camera-area {
-  display: flex; flex-direction: column; align-items: center; gap: 16px; max-width: 320px; width: 100%;
-}
-.log-camera-icon { font-size: 4rem; }
-.log-camera-hint { font-size: 0.88rem; color: var(--text-sec); text-align: center; }
-.log-camera-btn { max-width: 200px; }
-.log-skip-inline { margin-top: 4px; }
-.log-photo-preview-wrap {
-  display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 400px; width: 100%;
-}
-.log-photo-preview { width: 100%; border-radius: 12px; max-height: 340px; object-fit: cover; }
-.log-retake-btn {
-  background: none; border: 1.5px solid var(--border); border-radius: 8px;
-  cursor: pointer; padding: 7px 20px; font-size: 0.82rem; color: var(--text-muted);
-}
-.log-retake-btn:hover { border-color: var(--accent); color: var(--accent); }
-.log-next-btn { max-width: 200px; }
-
 .log-details-step { flex: 1; overflow-y: auto; }
 .log-details-thumb-wrap { padding: 16px 16px 0; }
 .log-details-thumb {
@@ -408,16 +388,29 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   cursor: pointer; transition: border-color 0.15s, color 0.15s;
 }
 .log-thumb-btn:hover { border-color: var(--accent); color: var(--accent); }
-.log-thumb-btn.danger:hover { border-color: var(--danger-bd); color: var(--danger-fg); }
+/* Tinted, not neutral: red text on the same surface as its two neutral
+   siblings reads as an accident. Hover must restate every colour, or the
+   generic .log-thumb-btn:hover repaints this one accent. */
+.log-thumb-btn.danger {
+  background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-bd);
+}
+.log-thumb-btn.danger:hover {
+  background: var(--danger-bg); color: var(--danger-fg); border-color: var(--danger-fg);
+}
 
-.log-add-photo-bar {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  width: calc(100% - 32px); margin: 16px 16px 0; padding: 11px 14px;
+/* Two equal buttons — camera and gallery are separate destinations, so neither
+   gets to look like the primary one. */
+.log-photo-actions {
+  display: flex; gap: 8px; margin: 16px 16px 0;
+}
+.log-photo-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1;
+  padding: 11px 14px;
   border: 1.5px dashed var(--border); border-radius: 10px; background: var(--surface2);
   color: var(--text-sec); font-size: 0.85rem; font-weight: 600; font-family: inherit;
   cursor: pointer; transition: border-color 0.15s, color 0.15s;
 }
-.log-add-photo-bar:hover { border-color: var(--accent); color: var(--accent); }
+.log-photo-btn:hover { border-color: var(--accent); color: var(--accent); }
 .log-form { padding: 16px; display: flex; flex-direction: column; gap: 16px; max-width: 640px; margin: 0 auto; }
 .log-textarea {
   padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px;
@@ -551,7 +544,13 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   border-radius: 8px; cursor: pointer; padding: 8px 16px; font-size: 0.82rem; font-weight: 600; transition: all 0.15s;
 }
 .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
-.btn-danger { background: #E53935; color: white; border: none; border-radius: 8px; cursor: pointer; padding: 10px 18px; font-size: 0.85rem; font-weight: 600; width: 100%; }
+.btn-danger {
+  background: var(--danger-solid); color: #fff; border: none; border-radius: 8px;
+  cursor: pointer; padding: 10px 18px; font-size: 0.85rem; font-weight: 600;
+  width: 100%; font-family: inherit; transition: background 0.15s;
+}
+.btn-danger:hover { background: var(--danger-solid-hv); }
+.btn-danger:disabled { opacity: 0.6; cursor: default; }
 .account-actions-card { display: flex; flex-direction: column; gap: 0; }
 /* A whole card acting as one nav row (Profile → Saved). */
 .profile-link-card {
@@ -914,11 +913,11 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .profile-avatar-upload-btn:hover { background: var(--chart-hover); }
 .profile-remove-photo {
   background: none; border: none;
-  color: var(--text-muted); font-size: 0.75rem;
+  color: var(--danger-fg); font-size: 0.75rem;
   cursor: pointer; text-decoration: underline;
-  padding: 0; margin-top: 2px;
+  padding: 0; margin-top: 2px; transition: opacity 0.15s;
 }
-.profile-remove-photo:hover { color: var(--text-primary); }
+.profile-remove-photo:hover { opacity: 0.7; }
 
 /* ── Feed profile photo ──────────────────────────────────────────────────── */
 .feed-avatar-img {

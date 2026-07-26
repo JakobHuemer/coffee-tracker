@@ -2,16 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { Icon } from '../components/Icon';
 import type { Achievement, Badge } from '../types';
-
-const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'secret'];
-const RARITY_COLORS: Record<string, string> = {
-  common: '#9E9E9E', uncommon: '#4CAF50', rare: '#2196F3',
-  epic: '#9C27B0', legendary: '#FF9800', secret: '#FF1744',
-};
-
-function rarityLabel(r: string) {
-  return { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', epic: 'Epic', legendary: 'Legendary', secret: '???' }[r] || r;
-}
+import { rarityColor, rarityLabel, byUnlockedThenRarity } from '../rarity';
 
 export function Achievements() {
   const { data: achievements = [] } = useQuery<Achievement[]>({
@@ -38,12 +29,12 @@ export function Achievements() {
           <div className="badges-grid">
             {badges
               .slice()
-              .sort((a, b) => (b.unlocked ? 1 : 0) - (a.unlocked ? 1 : 0) || RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity))
+              .sort(byUnlockedThenRarity)
               .map(b => (
                 <div key={b.id} className={`badge-card ${b.unlocked ? 'unlocked' : 'locked'}`} title={b.description}>
                   <div className="badge-icon"><Icon name={b.icon} size={28} /></div>
                   <div className="badge-name">{b.name}</div>
-                  <div className="badge-rarity" style={{ color: RARITY_COLORS[b.rarity] || '#999' }}>
+                  <div className="badge-rarity" style={{ color: rarityColor(b.rarity) }}>
                     {rarityLabel(b.rarity)}
                   </div>
                   {b.unlocked && b.unlocked_at && (

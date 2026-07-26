@@ -49,6 +49,10 @@ export interface User {
   created_at: number;
 }
 
+// Which running total a milestone counts toward. Server-defined — see the
+// `progress` block in server/src/data/achievements.js.
+export type ProgressMetric = 'total_cups' | 'total_caffeine' | 'unique_types' | 'goal_streak';
+
 export interface Achievement {
   id: string;
   name: string;
@@ -58,6 +62,9 @@ export interface Achievement {
   category: string;
   unlocked: boolean;
   unlocked_at: number | null;
+  // Present only on counter milestones; event achievements get no bar. The
+  // target is the server's, never restated here (see issue #30).
+  progress?: { metric: ProgressMetric; target: number };
 }
 
 export interface Badge {
@@ -84,6 +91,14 @@ export interface Combo {
   highest_combo: number;
   last_coffee_at: number | null;
   active: number;
+}
+
+// GET /streaks returns both, nested — not a flat streak object. Typing it
+// inline as flat is what made the streak read `undefined` and every streak
+// figure render as 0.
+export interface StreaksResponse {
+  streak: Streak;
+  combo: Combo;
 }
 
 export interface Task {

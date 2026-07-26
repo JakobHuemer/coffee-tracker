@@ -9,6 +9,7 @@ import { BuzzWidget } from '../components/BuzzWidget';
 import { PhotoLightbox } from '../components/PhotoLightbox';
 import { getSkipSpacing, setSkipSpacing } from '../devFlags';
 import type { User, Badge } from '../types';
+import { RARITY_COLORS } from '../rarity';
 
 interface PhotoEntry {
   id: string;
@@ -209,11 +210,6 @@ function DeleteAccountSection({ onDeleted }: { onDeleted: () => void }) {
 }
 
 const AVATARS = ['☕', '🥛', '🧋', '🍫', '🍨', '🍵', '⚡', '🔥', '💀', '🏆', '🎯', '👑', '🤖', '👍', '😎', '🐸', '🦊', '🐼', '🚀', '🌟'];
-
-const RARITY_COLORS: Record<string, string> = {
-  common: '#9E9E9E', uncommon: '#4CAF50', rare: '#2196F3',
-  epic: '#9C27B0', legendary: '#FF9800', secret: '#FF1744',
-};
 
 export function Profile() {
   const { user, setAuth, logout } = useAuthStore();
