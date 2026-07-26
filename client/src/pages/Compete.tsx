@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, uploadUrl } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
@@ -141,26 +141,77 @@ function AutoJoinCard() {
   );
 }
 
-// Copy-to-clipboard with a short confirmation in place of the icon. The
-// clipboard API needs a secure context, so a failure is possible and must not
-// look like a success — the tick only appears once the write resolved.
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
+// Copy `text`, reporting whether it actually worked.
+//
+// navigator.clipboard only exists in a SECURE CONTEXT. Served over plain http
+// on a LAN address — which is how this app gets opened on a phone during
+// development — it is undefined, so it cannot be the only path. The deprecated
+// execCommand route still works there and is the fallback.
+async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch { /* blocked or unavailable — try the fallback */ }
+  }
+  try {
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    // Off-screen but still focusable: display:none or visibility:hidden would
+    // make the selection (and so the copy) fail.
+    field.style.position = 'fixed';
+    field.style.top = '0';
+    field.style.opacity = '0';
+    document.body.appendChild(field);
+    field.focus();
+    field.select();
+    field.setSelectionRange(0, text.length); // iOS ignores select() alone
+    const ok = document.execCommand('copy');
+    document.body.removeChild(field);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function selectElementText(el: HTMLElement) {
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+}
+
+// The invite code, with a copy button. State is never assumed: the tick only
+// appears once a copy actually succeeded, and if both routes fail the code is
+// selected instead so it can still be copied by hand.
+function InviteCode({ code }: { code: string }) {
+  const valueRef = useRef<HTMLSpanElement>(null);
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   async function copy() {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
-    }
+    const ok = await copyText(code);
+    if (!ok && valueRef.current) selectElementText(valueRef.current);
+    setState(ok ? 'copied' : 'failed');
+    setTimeout(() => setState('idle'), 2500);
   }
 
   return (
-    <button className="cmp-copy-btn" onClick={copy} aria-label={copied ? 'Copied' : 'Copy invite code'}>
-      <Icon name={copied ? 'check' : 'copy'} size={15} />
-    </button>
+    <>
+      <div className="cmp-code">
+        <span className="cmp-code-label">Invite code</span>
+        <span className="cmp-code-value" ref={valueRef}>{code}</span>
+        <button
+          className="cmp-copy-btn"
+          onClick={copy}
+          aria-label={state === 'copied' ? 'Copied' : 'Copy invite code'}
+        >
+          <Icon name={state === 'copied' ? 'check' : 'copy'} size={15} />
+        </button>
+      </div>
+      {state === 'failed' && <div className="field-hint">Selected — long-press to copy.</div>}
+    </>
   );
 }
 
@@ -539,11 +590,7 @@ function GroupTab() {
           <span>{group.is_public ? 'Public' : <><Icon name="lock" size={12} /> Private</>}</span>
         </div>
         {group.join_code && (
-          <div className="cmp-code">
-            <span className="cmp-code-label">Invite code</span>
-            <span className="cmp-code-value">{group.join_code}</span>
-            <CopyButton value={group.join_code} />
-          </div>
+          <InviteCode code={group.join_code} />
         )}
         <div className="field-hint">
           Days and weeks run on {group.timezone}. One group at a time — joining
