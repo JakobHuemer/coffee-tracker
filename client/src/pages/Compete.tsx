@@ -648,6 +648,18 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
   const [isPublic, setIsPublic] = useState(group.is_public === 1);
   const [error, setError] = useState<string | null>(null);
 
+  // The form stays mounted while closed, so its state outlives a cancel unless
+  // it is put back deliberately. Called on cancel AND on open: the second one
+  // also picks up a change made elsewhere (or by another member) while the form
+  // sat closed, so what is shown is always what the server holds.
+  function resetToServer() {
+    setName(group.name);
+    setDescription(group.description ?? '');
+    setTimezone(group.timezone);
+    setIsPublic(group.is_public === 1);
+    setError(null);
+  }
+
   const save = useMutation({
     mutationFn: () => api.patch<GroupDetailResponse>(`/groups/${group.id}`, {
       name, description: description.trim() || null, timezone, is_public: isPublic,
@@ -662,7 +674,7 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
 
   if (!open) {
     return (
-      <button className="btn-secondary cmp-settings-btn" onClick={() => setOpen(true)}>
+      <button className="btn-secondary cmp-settings-btn" onClick={() => { resetToServer(); setOpen(true); }}>
         Group settings
       </button>
     );
@@ -696,7 +708,7 @@ function GroupSettings({ group }: { group: NonNullable<GroupDetailResponse['grou
         <button className="btn-primary" disabled={save.isPending} onClick={() => { setError(null); save.mutate(); }}>
           {save.isPending ? 'Saving…' : 'Save'}
         </button>
-        <button className="btn-secondary" onClick={() => setOpen(false)}>Cancel</button>
+        <button className="btn-secondary" onClick={() => { resetToServer(); setOpen(false); }}>Cancel</button>
       </div>
     </div>
   );
