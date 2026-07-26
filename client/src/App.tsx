@@ -9,6 +9,7 @@ import { BottomNav } from './components/BottomNav';
 import { Auth } from './pages/Auth';
 import { Feed } from './pages/Feed';
 import { Saved } from './pages/Saved';
+import { MyPosts } from './pages/MyPosts';
 import { LogCoffee } from './pages/LogCoffee';
 import { Stats } from './pages/Stats';
 import { Compare } from './pages/Compare';
@@ -65,6 +66,8 @@ export function App() {
         <Routes>
           <Route path="/auth" element={<Auth />} />
           <Route path="/" element={<RequireAuth><Feed /></RequireAuth>} />
+          <Route path="/mine" element={<RequireAuth><MyPosts /></RequireAuth>} />
+          {/* Saved lost its nav slot to /mine and now lives under Profile. */}
           <Route path="/saved" element={<RequireAuth><Saved /></RequireAuth>} />
           <Route path="/log" element={<RequireAuth><LogCoffee /></RequireAuth>} />
           <Route path="/stats" element={<RequireAuth><Stats /></RequireAuth>} />

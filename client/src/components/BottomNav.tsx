@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { FaChartBar, FaUser, FaRegBookmark } from 'react-icons/fa';
+import { FaChartBar, FaUser, FaLayerGroup } from 'react-icons/fa';
 
 const itemClass = ({ isActive }: { isActive: boolean }) => 'bn-item' + (isActive ? ' active' : '');
 const ICON = 22; // one size for every nav icon
@@ -15,9 +15,10 @@ export function BottomNav() {
         <span className="bn-label">Feed</span>
       </NavLink>
 
-      <NavLink to="/saved" className={itemClass}>
-        <span className="bn-icon"><FaRegBookmark size={ICON} /></span>
-        <span className="bn-label">Saved</span>
+      {/* Saved moved under Profile — this slot is the user's own posts. */}
+      <NavLink to="/mine" className={itemClass}>
+        <span className="bn-icon"><FaLayerGroup size={ICON} /></span>
+        <span className="bn-label">Yours</span>
       </NavLink>
 
       <div className="bn-add-wrap">

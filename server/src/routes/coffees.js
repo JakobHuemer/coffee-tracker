@@ -136,8 +136,16 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), (req,
     }
   }
 
-  // A coffee entry must carry a photo or a description — never neither.
-  if (!req.file && !description?.trim()) {
+  // Public only when explicitly opted in. Accepts the multipart string '1'/'true'
+  // and the JSON boolean true / number 1; anything else (including an absent
+  // field, e.g. the Dashboard quick-log) stays private.
+  const is_public =
+    rawPublic === true || rawPublic === 1 || rawPublic === '1' || rawPublic === 'true' ? 1 : 0;
+
+  // A *public* post must carry a photo or a description — an empty card in the
+  // feed says nothing to anyone else. A private entry is a log for the owner
+  // only, so the coffee type alone is enough (issue #20).
+  if (is_public && !req.file && !description?.trim()) {
     return res.status(400).json({ error: 'Add a photo or a description.' });
   }
 
@@ -168,11 +176,6 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), (req,
   }
 
   const photo_path = req.file ? req.file.filename : null;
-  // Public only when explicitly opted in. Accepts the multipart string '1'/'true'
-  // and the JSON boolean true / number 1; anything else (including an absent
-  // field, e.g. the Dashboard quick-log) stays private.
-  const is_public =
-    rawPublic === true || rawPublic === 1 || rawPublic === '1' || rawPublic === 'true' ? 1 : 0;
   const desc = description?.trim() || null;
 
   db.prepare(

@@ -71,6 +71,11 @@ function PostCard({
           <span className="feed-username">{post.username}</span>
           <span className="feed-time">{timeAgo(post.logged_at)}</span>
         </div>
+        {/* Only the owner's own list can contain private posts, but the badge is
+            driven by the flag rather than the list so it can never mislabel. */}
+        {!post.is_public && (
+          <span className="feed-private-tag"><Icon name="lock" size={11} /> Private</span>
+        )}
       </div>
 
       {post.photo_url && (
@@ -102,13 +107,17 @@ function PostCard({
           </button>
         )}
 
-        <button
-          className={`feed-bookmark-btn${bookmarked ? ' saved' : ''}`}
-          onClick={() => onBookmark(post.id, bookmarked)}
-          aria-label={bookmarked ? 'Remove bookmark' : 'Save'}
-        >
-          <Icon name={bookmarked ? 'bookmark' : 'bookmark-o'} />
-        </button>
+        {/* Bookmarks only exist for public posts — the server rejects the rest,
+            so no button may offer it (VALUES.md 0.4). */}
+        {post.is_public === 1 && (
+          <button
+            className={`feed-bookmark-btn${bookmarked ? ' saved' : ''}`}
+            onClick={() => onBookmark(post.id, bookmarked)}
+            aria-label={bookmarked ? 'Remove bookmark' : 'Save'}
+          >
+            <Icon name={bookmarked ? 'bookmark' : 'bookmark-o'} />
+          </button>
+        )}
       </div>
     </article>
   );
@@ -179,8 +188,9 @@ export function FeedList({
       if (ctx?.prev) qc.setQueryData(queryKey, ctx.prev);
     },
     onSuccess: () => {
-      // Keep the other list (feed vs saved) consistent with the toggle.
+      // Keep the other lists (feed / saved / mine) consistent with the toggle.
       qc.invalidateQueries({ queryKey: ['feed', 'saved'] });
+      qc.invalidateQueries({ queryKey: ['feed', 'mine'] });
       qc.invalidateQueries({ queryKey: ['feed'], exact: true });
     },
   });

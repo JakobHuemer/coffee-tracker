@@ -403,6 +403,14 @@ export function Profile() {
 
         <BuzzWidget />
 
+        {/* Saved gave up its bottom-nav slot to "Yours"; this is now the only
+            way in. */}
+        <button className="card profile-link-card" onClick={() => navigate('/saved')}>
+          <span className="profile-link-icon"><Icon name="bookmark-o" size={18} /></span>
+          <span className="profile-link-label">Saved posts</span>
+          <Icon name="arrow-right" size={14} />
+        </button>
+
         <GalleryCard />
 
         <ChangePasswordCard />

@@ -65,6 +65,27 @@ router.get('/saved', requireAuth, (req, res) => {
   res.json(posts.map(mapPost));
 });
 
+// Everything the current user has posted, newest coffee first — public and
+// private alike. This is the only list that shows a user their own private
+// entries, which is why it filters on user_id instead of is_public.
+router.get('/mine', requireAuth, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 50);
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+  const posts = db.prepare(`
+    SELECT ${POST_COLUMNS}
+    FROM coffee_entries e
+    JOIN users u ON e.user_id = u.id
+    LEFT JOIN post_likes pl ON pl.entry_id = e.id
+    WHERE e.user_id = ?
+    GROUP BY e.id
+    ORDER BY e.logged_at DESC
+    LIMIT ? OFFSET ?
+  `).all(req.user.id, req.user.id, req.user.id, limit, offset);
+
+  res.json(posts.map(mapPost));
+});
+
 router.post('/:entryId/like', requireAuth, (req, res) => {
   const entry = db.prepare(
     'SELECT id, user_id FROM coffee_entries WHERE id = ? AND is_public = 1'
