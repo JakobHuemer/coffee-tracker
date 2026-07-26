@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/auth';
 import { UnlockToast } from '../components/UnlockToast';
 import { Icon } from '../components/Icon';
@@ -8,30 +8,19 @@ import {
   PastTimePicker, currentPastTime, resolvePastTime, useNow, type PastTime,
 } from '../components/PastTimePicker';
 import { getSkipSpacing } from '../devFlags';
-import type { UnlockNotification } from '../types';
-
-const COFFEES = [
-  { id: 'espresso',        name: 'Espresso',        caffeine: 63,  icon: 'coffee' },
-  { id: 'espresso_mac',   name: 'Espresso Mac.',   caffeine: 63,  icon: 'coffee' },
-  { id: 'doppio',          name: 'Doppio',           caffeine: 128, icon: 'coffee' },
-  { id: 'lungo',           name: 'Lungo',            caffeine: 60,  icon: 'coffee' },
-  { id: 'americano',       name: 'Americano',        caffeine: 95,  icon: 'coffee' },
-  { id: 'cappuccino',      name: 'Cappuccino',       caffeine: 75,  icon: 'coffee' },
-  { id: 'flat_white',      name: 'Flat White',       caffeine: 130, icon: 'coffee' },
-  { id: 'latte',           name: 'Latte',            caffeine: 75,  icon: 'milk' },
-  { id: 'latte_macchiato', name: 'Latte Macchiato',  caffeine: 75,  icon: 'milk' },
-  { id: 'affogato',        name: 'Affogato',         caffeine: 63,  icon: 'ice-cream' },
-  { id: 'frappuccino',     name: 'Frappuccino',      caffeine: 95,  icon: 'blended' },
-  { id: 'chocochino',      name: 'Chocochino',       caffeine: 30,  icon: 'chocolate' },
-  { id: 'hot_chocolate',   name: 'Hot Chocolate',    caffeine: 25,  icon: 'chocolate' },
-];
-
+import type { Coffee, UnlockNotification } from '../types';
 type Step = 'photo' | 'details';
 
 export function LogCoffee() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const token = useAuthStore(s => s.token);
+
+  const { data: coffees = [] } = useQuery<Coffee[]>({
+    queryKey: ['coffees'],
+    queryFn: () => fetch('/api/coffees', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+    staleTime: Infinity,
+  });
 
   const [step, setStep] = useState<Step>('photo');
   const [photo, setPhoto] = useState<File | null>(null);
@@ -237,7 +226,7 @@ export function LogCoffee() {
           <div className="log-form">
             <div className="section-label">Coffee type</div>
             <div className="coffee-grid">
-              {COFFEES.map(c => (
+              {coffees.map(c => (
                 <button
                   key={c.id}
                   className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}

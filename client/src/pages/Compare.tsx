@@ -6,6 +6,7 @@ import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import type { CompareUserProfile, CompareUserStats, FeaturedBadge, UnlockNotification } from '../types';
+import { RARITY_COLORS } from '../rarity';
 
 interface CompareResponse {
   me: CompareUserProfile;
@@ -25,11 +26,6 @@ const STAT_DEFS: { key: keyof CompareUserStats; label: string; suffix?: string }
   { key: 'achievements_count', label: 'Achievements' },
   { key: 'badges_count', label: 'Badges' },
 ];
-
-const RARITY_COLORS: Record<string, string> = {
-  common: '#9E9E9E', uncommon: '#4CAF50', rare: '#2196F3',
-  epic: '#9C27B0', legendary: '#FF9800', secret: '#FF1744',
-};
 
 function FeaturedBadges({ badges }: { badges: FeaturedBadge[] }) {
   if (badges.length === 0) return null;

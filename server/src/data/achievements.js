@@ -1,3 +1,13 @@
+const { COFFEES } = require('./coffees');
+
+// `progress` is the single source of truth for a milestone's threshold: the
+// unlock engine (server/src/achievements.js) tests against it and the client
+// draws its progress bar from it, so the two can never drift. Achievements
+// without it are events, not counters, and get no bar.
+//   metric — which running total to compare against, resolved client-side from
+//            /coffees/stats and /streaks.
+//   target — the number to reach. Derived at runtime where it depends on data
+//            that changes (the menu), never typed out as a literal.
 const ACHIEVEMENTS = [
   // ── Volume milestones ──────────────────────────────────────────────────────
   {
@@ -15,6 +25,7 @@ const ACHIEVEMENTS = [
     icon: 'seedling',
     secret: false,
     category: 'milestone',
+    progress: { metric: 'total_cups', target: 10 },
   },
   {
     id: 'fifty_cups',
@@ -23,6 +34,7 @@ const ACHIEVEMENTS = [
     icon: 'chart-line',
     secret: false,
     category: 'milestone',
+    progress: { metric: 'total_cups', target: 50 },
   },
   {
     id: 'hundred_cups',
@@ -31,6 +43,7 @@ const ACHIEVEMENTS = [
     icon: 'century',
     secret: false,
     category: 'milestone',
+    progress: { metric: 'total_cups', target: 100 },
   },
   {
     id: 'five_hundred_cups',
@@ -39,6 +52,7 @@ const ACHIEVEMENTS = [
     icon: 'trophy',
     secret: false,
     category: 'milestone',
+    progress: { metric: 'total_cups', target: 500 },
   },
 
   // ── Caffeine milestones ────────────────────────────────────────────────────
@@ -49,6 +63,7 @@ const ACHIEVEMENTS = [
     icon: 'bolt',
     secret: false,
     category: 'caffeine',
+    progress: { metric: 'total_caffeine', target: 1000 },
   },
   {
     id: 'caffeine_10000',
@@ -57,6 +72,7 @@ const ACHIEVEMENTS = [
     icon: 'battery',
     secret: false,
     category: 'caffeine',
+    progress: { metric: 'total_caffeine', target: 10000 },
   },
   {
     id: 'overdrive_day',
@@ -83,6 +99,7 @@ const ACHIEVEMENTS = [
     icon: 'map',
     secret: false,
     category: 'variety',
+    progress: { metric: 'unique_types', target: 3 },
   },
   {
     id: 'variety_7',
@@ -91,6 +108,7 @@ const ACHIEVEMENTS = [
     icon: 'hat',
     secret: false,
     category: 'variety',
+    progress: { metric: 'unique_types', target: 7 },
   },
   {
     id: 'variety_all',
@@ -99,6 +117,7 @@ const ACHIEVEMENTS = [
     icon: 'list',
     secret: false,
     category: 'variety',
+    progress: { metric: 'unique_types', target: COFFEES.length },
   },
 
   // ── Time of day ────────────────────────────────────────────────────────────
@@ -135,6 +154,7 @@ const ACHIEVEMENTS = [
     icon: 'fire',
     secret: false,
     category: 'streak',
+    progress: { metric: 'goal_streak', target: 3 },
   },
   {
     id: 'streak_7',
@@ -143,6 +163,7 @@ const ACHIEVEMENTS = [
     icon: 'fire',
     secret: false,
     category: 'streak',
+    progress: { metric: 'goal_streak', target: 7 },
   },
   {
     id: 'streak_30',
@@ -151,6 +172,7 @@ const ACHIEVEMENTS = [
     icon: 'fire',
     secret: false,
     category: 'streak',
+    progress: { metric: 'goal_streak', target: 30 },
   },
 
   // ── Combos ─────────────────────────────────────────────────────────────────

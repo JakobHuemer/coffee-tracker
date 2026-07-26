@@ -7,21 +7,13 @@ import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { CompareContent } from './Compare';
+import { rarityColor, rarityLabel, byUnlockedThenRarity } from '../rarity';
 import type {
-  Achievement, Badge, Challenge, GoalsResponse,
+  Achievement, Badge, Challenge, GoalsResponse, ProgressMetric, StreaksResponse,
   RankingEntry, Stats as StatsData, Streak, Task, UnlockNotification,
 } from '../types';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
-
-const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'secret'];
-const RARITY_COLORS: Record<string, string> = {
-  common: '#9E9E9E', uncommon: '#4CAF50', rare: '#2196F3',
-  epic: '#9C27B0', legendary: '#FF9800', secret: '#FF1744',
-};
-function rarityLabel(r: string) {
-  return { common: 'Common', uncommon: 'Uncommon', rare: 'Rare', epic: 'Epic', legendary: 'Legendary', secret: '???' }[r] || r;
-}
 
 const METRICS = [
   { value: 'total_cups', label: 'Total Cups' },
@@ -116,12 +108,12 @@ function BadgesTab() {
         <div className="badges-grid">
           {badges
             .slice()
-            .sort((a, b) => (b.unlocked ? 1 : 0) - (a.unlocked ? 1 : 0) || RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity))
+            .sort(byUnlockedThenRarity)
             .map(b => (
               <div key={b.id} className={`badge-card${b.unlocked ? ' unlocked' : ' locked'}`} title={b.description}>
                 <div className="badge-icon"><Icon name={b.icon} size={28} /></div>
                 <div className="badge-name">{b.name}</div>
-                <div className="badge-rarity" style={{ color: RARITY_COLORS[b.rarity] || '#999' }}>{rarityLabel(b.rarity)}</div>
+                <div className="badge-rarity" style={{ color: rarityColor(b.rarity) }}>{rarityLabel(b.rarity)}</div>
                 {b.unlocked && b.unlocked_at && <div className="badge-date">{new Date(b.unlocked_at).toLocaleDateString()}</div>}
               </div>
             ))}
@@ -245,21 +237,6 @@ function RankingsTab() {
 
 // ── Tab: Challenges ───────────────────────────────────────────────────────────
 
-const MILESTONE_DEFS = [
-  { id: 'ten_cups',          label: 'Drink 10 coffees',          key: 'cups'    as const, target: 10 },
-  { id: 'fifty_cups',        label: 'Drink 50 coffees',          key: 'cups'    as const, target: 50 },
-  { id: 'hundred_cups',      label: 'Drink 100 coffees',         key: 'cups'    as const, target: 100 },
-  { id: 'five_hundred_cups', label: 'Drink 500 coffees',         key: 'cups'    as const, target: 500 },
-  { id: 'caffeine_1000',     label: 'Consume 1,000mg caffeine',  key: 'caf'     as const, target: 1000 },
-  { id: 'caffeine_10000',    label: 'Consume 10,000mg caffeine', key: 'caf'     as const, target: 10000 },
-  { id: 'variety_3',         label: 'Try 3 coffee types',        key: 'variety' as const, target: 3 },
-  { id: 'variety_7',         label: 'Try 7 coffee types',        key: 'variety' as const, target: 7 },
-  { id: 'variety_all',       label: 'Try all 13 coffee types',   key: 'variety' as const, target: 13 },
-  { id: 'streak_3',          label: '3-day goal streak',         key: 'streak'  as const, target: 3 },
-  { id: 'streak_7',          label: '7-day goal streak',         key: 'streak'  as const, target: 7 },
-  { id: 'streak_30',         label: '30-day goal streak',        key: 'streak'  as const, target: 30 },
-];
-
 function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotification[]) => void }) {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
@@ -271,7 +248,7 @@ function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotif
   const { data: stats } = useQuery<StatsData>({
     queryKey: ['stats'], queryFn: () => api.get('/coffees/stats'),
   });
-  const { data: streaks } = useQuery<{ current_streak: number; longest_streak: number }>({
+  const { data: streaks } = useQuery<StreaksResponse>({
     queryKey: ['streaks'], queryFn: () => api.get('/streaks'),
   });
   const { data: achievements = [] } = useQuery<Achievement[]>({
@@ -281,14 +258,26 @@ function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotif
   const uniqueTypes = Object.keys(stats?.by_type ?? {}).length;
   const cupsTotal = stats?.total_cups ?? 0;
   const cafTotal = stats?.total_caffeine ?? 0;
-  const streak = streaks?.current_streak ?? 0;
+  const streak = streaks?.streak.current_streak ?? 0;
 
-  const milestones = MILESTONE_DEFS.map(m => {
-    const current = m.key === 'cups' ? cupsTotal : m.key === 'caf' ? cafTotal : m.key === 'variety' ? uniqueTypes : streak;
-    const unlocked = achievements.find(a => a.id === m.id)?.unlocked ?? false;
-    const pct = Math.min(100, Math.round((current / m.target) * 100));
-    return { ...m, current, unlocked, pct };
-  });
+  // Milestones, their thresholds and their wording all come from the server —
+  // the client only supplies the running totals to measure against. Anything
+  // restated here would be a second copy free to drift (issue #30).
+  const metricValues: Record<ProgressMetric, number> = {
+    total_cups: cupsTotal,
+    total_caffeine: cafTotal,
+    unique_types: uniqueTypes,
+    goal_streak: streak,
+  };
+
+  const milestones = achievements
+    .filter(a => a.progress)
+    .map(a => {
+      const { metric, target } = a.progress!;
+      const current = metricValues[metric] ?? 0;
+      const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+      return { id: a.id, label: a.description, target, current, unlocked: a.unlocked, pct };
+    });
 
   const joinMutation = useMutation({
     mutationFn: (id: string) => api.post<{ ok: boolean; unlocked: UnlockNotification[] }>(`/challenges/${id}/join`),
@@ -432,7 +421,7 @@ export function Stats() {
   const { data: stats } = useQuery<StatsData>({
     queryKey: ['stats'], queryFn: () => api.get('/coffees/stats'), refetchInterval: 30000,
   });
-  const { data: streaks } = useQuery<{ current_streak: number; longest_streak: number }>({
+  const { data: streaks } = useQuery<StreaksResponse>({
     queryKey: ['streaks'], queryFn: () => api.get('/streaks'),
   });
   const { data: alltimeRank } = useQuery<RankingsResponse>({
@@ -471,7 +460,7 @@ export function Stats() {
             <div className="stats-rank-label">Global Rank</div>
           </div>
           <div className="stats-streak-tile">
-            <div className="stats-streak-num">{streaks?.current_streak ?? 0} <Icon name="fire" /></div>
+            <div className="stats-streak-num">{streaks?.streak.current_streak ?? 0} <Icon name="fire" /></div>
             <div className="stats-streak-label">Day Streak</div>
           </div>
         </div>

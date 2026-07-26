@@ -7,6 +7,7 @@ const {
   checkAfterFirstChallenge,
 } = require('../achievements');
 const { todayStr, DATE_RE } = require('./_helpers');
+const { COFFEES } = require('../data/coffees');
 
 const router = express.Router();
 
@@ -67,7 +68,9 @@ function seedCommunityChallenges() {
   const challenges = [
     { id: randomUUID(), name: 'Espresso Week', description: 'As a community, drink 500 espressos this week!', metric: 'espresso_cups', target: 500, end: weekEnd },
     { id: randomUUID(), name: 'Caffeine Collective', description: 'Reach 100,000mg of caffeine together this month!', metric: 'caffeine', target: 100000, end: monthEnd },
-    { id: randomUUID(), name: 'Variety Show', description: 'Try all 13 coffee types as a community this week!', metric: 'unique_types', target: 13, end: weekEnd },
+    // Target tracks the menu — adding a coffee type must not silently leave
+    // this challenge completable without trying the new one.
+    { id: randomUUID(), name: 'Variety Show', description: `Try all ${COFFEES.length} coffee types as a community this week!`, metric: 'unique_types', target: COFFEES.length, end: weekEnd },
   ];
 
   const insert = db.prepare(
