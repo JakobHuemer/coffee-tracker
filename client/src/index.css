@@ -275,7 +275,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   color: var(--text-muted); text-transform: uppercase;
 }
 
-/* The photo keeps its own aspect ratio until it is taller than 1.2× the card
+/* The photo keeps its own aspect ratio until it is taller than 1.1× the card
    width; only past that does it crop (max-height in cqw, hence the container).
    A browser without container queries simply shows the full frame. */
 .feed-photo-wrap {
@@ -283,7 +283,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   display: block; width: 100%; padding: 0; border: 0;
   overflow: hidden; background: var(--surface2); cursor: pointer;
 }
-.feed-photo { width: 100%; height: auto; max-height: 120cqw; object-fit: cover; display: block; }
+.feed-photo { width: 100%; height: auto; max-height: 110cqw; object-fit: cover; display: block; }
 
 .feed-post-body { padding: 10px 14px 4px; }
 .feed-coffee-tag { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
