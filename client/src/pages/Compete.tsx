@@ -373,12 +373,12 @@ function MatchesTab({ data }: { data: CompetitionsResponse }) {
 
       <div className="section-label">Live now</div>
       {data.live.length === 0
-        ? <div className="empty-state">No match running. The daily and weekly ones open automatically once your group has two members.</div>
+        ? <div className="cmp-empty">No match running. The daily and weekly ones open automatically once your group has two members.</div>
         : data.live.map(m => <MatchCard key={m.id} match={m} />)}
 
       <div className="section-label">Waiting to start</div>
       {data.open.length === 0
-        ? <div className="empty-state">No open lobbies.</div>
+        ? <div className="cmp-empty">No open lobbies. Start one with “New match” above.</div>
         : data.open.map(m => (
           <MatchCard
             key={m.id} match={m} busy={busy}
@@ -389,7 +389,7 @@ function MatchesTab({ data }: { data: CompetitionsResponse }) {
 
       <div className="section-label">Finished</div>
       {data.settled.length === 0
-        ? <div className="empty-state">Nothing settled yet.</div>
+        ? <div className="cmp-empty">Nothing settled yet.</div>
         : data.settled.map(m => <MatchCard key={m.id} match={m} />)}
     </>
   );
@@ -419,7 +419,7 @@ function RankingTab() {
           <span className="lb-caf">{fmtRating(r.rating)}</span>
         </div>
       ))}
-      {rows.length === 0 && <div className="empty-state">No members yet.</div>}
+      {rows.length === 0 && <div className="cmp-empty">No members yet.</div>}
     </div>
   );
 }
@@ -447,7 +447,7 @@ function GroupTab() {
 
   if (isLoading) return <div className="page-loading">Loading…</div>;
   const group = data?.group;
-  if (!group) return <div className="empty-state">You are not in a group.</div>;
+  if (!group) return <div className="cmp-empty">You are not in a group.</div>;
 
   const isOwner = group.owner_id === userId;
 
@@ -672,7 +672,7 @@ function GroupGate() {
 
       <div className="section-label">Public groups</div>
       {(data?.groups ?? []).length === 0
-        ? <div className="empty-state">No public groups yet — make the first one.</div>
+        ? <div className="cmp-empty">No public groups yet — make the first one.</div>
         : (data?.groups ?? []).map(g => (
           <div key={g.id} className="card cmp-group-row">
             <div>

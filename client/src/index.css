@@ -1044,14 +1044,34 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 /* ── Compete page ────────────────────────────────────────────────────────── */
 /* Scoped to .cmp-body so the shared .stats-tab-body layout used by Stats keeps
    its existing spacing untouched. */
-.cmp-body > .section-label,
 .cmp-body > .empty-state,
 .cmp-body > .leaderboard,
 .cmp-body > .auth-error { padding-left: 16px; padding-right: 16px; }
-.cmp-body > .section-label { margin-bottom: 0; }
+
+/* Section headings carry the divider that separates one run of match cards
+   from the next — without it "Live now", "Waiting to start" and "Finished"
+   read as one undifferentiated column. Margins (not padding) so the hairline
+   lines up with the card edges instead of running to the screen edge. */
+.cmp-body > .section-label {
+  margin: 10px 16px 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* Full-width buttons are already width: 100%, so a horizontal margin on top of
+   that overflows the viewport and gives the whole page a horizontal scrollbar.
+   Same fix the Profile link card uses. */
 .cmp-body > .btn-primary,
 .cmp-body > .btn-secondary,
-.cmp-body > .btn-danger { margin: 0 16px; }
+.cmp-body > .btn-danger { margin: 0 16px; width: calc(100% - 32px); }
+
+/* An empty section still needs to read as that section's body, not as text
+   floating between two headings. */
+.cmp-empty {
+  margin: 0 16px; padding: 16px; border-radius: 10px;
+  background: var(--surface2); border: 1px dashed var(--border);
+  font-size: 0.8rem; color: var(--text-muted); text-align: center;
+}
 
 .cmp-avatar { font-size: 1rem; }
 .cmp-avatar-img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
@@ -1147,7 +1167,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   margin-left: 6px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.06em; color: var(--text-muted);
 }
-.cmp-settings-btn, .cmp-leave-btn { margin: 0 16px; }
+.cmp-settings-btn, .cmp-leave-btn { margin: 0 16px; width: calc(100% - 32px); }
 
 /* Two rosters side by side need roughly a tablet's width before the standings
    rows stop wrapping mid-cell; below that the sides stack. */
