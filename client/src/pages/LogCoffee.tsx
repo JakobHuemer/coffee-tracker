@@ -7,6 +7,7 @@ import { Icon } from '../components/Icon';
 import {
   PastTimePicker, currentPastTime, resolvePastTime, useNow, type PastTime,
 } from '../components/PastTimePicker';
+import { getSkipSpacing } from '../devFlags';
 import type { UnlockNotification } from '../types';
 
 const COFFEES = [
@@ -124,6 +125,9 @@ export function LogCoffee() {
     fd.append('is_public', isPublic ? '1' : '0');
     if (description.trim()) fd.append('description', description.trim());
     if (photo) fd.append('photo', photo);
+    // Debug switch from the Profile page. Ignored unless the server itself runs
+    // with DEV_OVERRIDES=1 (see server/src/routes/coffees.js).
+    if (getSkipSpacing()) fd.append('skip_spacing', '1');
 
     try {
       const res = await fetch('/api/coffees/entries', {
@@ -138,10 +142,11 @@ export function LogCoffee() {
         return;
       }
       // A new coffee can move every derived surface (unlocks, tasks, streaks,
-      // casualties, rankings), so invalidate all of them — not just the feed —
-      // to keep every page consistent with the just-logged entry.
+      // casualties, rankings, Buzz), so invalidate all of them — not just the
+      // feed — to keep every page consistent with the just-logged entry.
       for (const key of ['feed', 'entries', 'stats', 'streaks', 'goals',
-        'badges', 'achievements', 'casualties', 'challenges', 'rankings']) {
+        'badges', 'achievements', 'casualties', 'challenges', 'rankings',
+        'energy']) {
         qc.invalidateQueries({ queryKey: [key] });
       }
       if (data.unlocked?.length) {

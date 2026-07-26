@@ -94,6 +94,7 @@ app.get('/uploads/:filename', (req, res) => {
 app.use('/api/auth',        require('./routes/auth'));
 app.use('/api/coffees',     require('./routes/coffees'));
 app.use('/api/feed',        require('./routes/feed'));
+app.use('/api/energy',      require('./routes/energy'));
 app.use('/api/goals',       require('./routes/goals'));
 app.use('/api/achievements',require('./routes/achievements'));
 app.use('/api/badges',      require('./routes/badges'));

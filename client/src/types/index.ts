@@ -43,6 +43,9 @@ export interface User {
   profile_photo_url?: string | null;
   featured_badges: string[];
   timezone?: string;
+  // Personal caffeine half-life in hours, driving the Buzz decay curve. null
+  // means unset — the server falls back to the 5 h population default.
+  caffeine_half_life_h?: number | null;
   created_at: number;
 }
 
@@ -213,4 +216,36 @@ export interface CompareResponse {
   me: CompareUserProfile;
   them: CompareUserProfile;
   unlocked: UnlockNotification[];
+}
+
+/* ── Buzz (energy score) ─────────────────────────────────────────────────────
+ * GET /api/energy — derived, never stored. See server/src/energy.js. All `t`
+ * values are UTC epoch ms (instant domain). */
+
+export interface EnergyPoint {
+  t: number;
+  level: number;
+  active_mg: number;
+}
+
+export interface EnergyDose {
+  id: string;
+  coffee_id: string;
+  caffeine_mg: number;
+  logged_at: number;
+}
+
+export interface EnergyResponse {
+  level: number;
+  active_mg: number;
+  full_mg: number;
+  state: 'charging' | 'draining' | 'empty';
+  half_life_h: number;
+  window_hours: number;
+  step_ms: number;
+  now: number;
+  peak: EnergyPoint;
+  empty_at: number | null;
+  series: EnergyPoint[];
+  doses: EnergyDose[];
 }

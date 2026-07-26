@@ -62,8 +62,27 @@ function validTimestamp(ts) {
   return typeof ts === 'number' && Number.isFinite(ts) && ts >= MIN_TS && ts <= Date.now() + SKEW_MS;
 }
 
+// Dev-only escape hatch for the 5-minute spacing rule below, so seeding a day's
+// worth of test coffees doesn't need fake timestamps 5 minutes apart.
+//
+// Opt-in and off by default: a production container that simply never sets the
+// variable keeps the rule enforced. It is deliberately NOT derived from
+// NODE_ENV — nothing in this repo sets NODE_ENV, so "absent means dev" would
+// silently disable a data-integrity rule in production.
+const DEV_OVERRIDES = process.env.DEV_OVERRIDES === '1';
+if (DEV_OVERRIDES) {
+  console.warn('DEV_OVERRIDES=1 — the 5-minute coffee spacing rule can be bypassed per request. Never set this in production.');
+}
+
 router.get('/', (req, res) => {
   res.json(COFFEES);
+});
+
+// Which debug overrides this server actually honours. The client uses this to
+// decide whether to show the toggle at all, so the UI can never offer a switch
+// that does nothing (VALUES.md 0.4).
+router.get('/dev-flags', requireAuth, (req, res) => {
+  res.json({ spacing_override: DEV_OVERRIDES });
 });
 
 router.get('/entries', requireAuth, (req, res) => {
@@ -101,7 +120,7 @@ router.get('/photos', requireAuth, (req, res) => {
 // Accepts multipart/form-data (photo optional) or falls back to JSON-parsed
 // body when no file part is present. The photo field must be named "photo".
 router.post('/entries', requireAuth, handleUpload(upload.single('photo')), (req, res) => {
-  const { coffeeId, timestamp: rawTs, is_public: rawPublic, description } = req.body;
+  const { coffeeId, timestamp: rawTs, is_public: rawPublic, description, skip_spacing: rawSkip } = req.body;
   const coffee = COFFEES.find(c => c.id === coffeeId);
   if (!coffee) {
     if (req.file) fs.unlink(req.file.path, () => {});
@@ -132,12 +151,20 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), (req,
   // one's logged_at. Because the constraint is on logged_at (not wall-clock
   // insert time), a user can still backfill several past coffees in one sitting
   // as long as each is 5+ minutes apart.
-  const clash = db.prepare(
-    'SELECT id FROM coffee_entries WHERE user_id = ? AND ABS(logged_at - ?) < ? LIMIT 1'
-  ).get(req.user.id, logged_at, 5 * 60 * 1000);
-  if (clash) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(409).json({ error: 'Another coffee is already logged within 5 minutes of this time.' });
+  //
+  // The client may ask to skip it, but only a server started with
+  // DEV_OVERRIDES=1 honours that — the request flag alone can never disable the
+  // rule. Accepts the multipart string '1'/'true' and the JSON boolean/number.
+  const skipSpacing = DEV_OVERRIDES &&
+    (rawSkip === true || rawSkip === 1 || rawSkip === '1' || rawSkip === 'true');
+  if (!skipSpacing) {
+    const clash = db.prepare(
+      'SELECT id FROM coffee_entries WHERE user_id = ? AND ABS(logged_at - ?) < ? LIMIT 1'
+    ).get(req.user.id, logged_at, 5 * 60 * 1000);
+    if (clash) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return res.status(409).json({ error: 'Another coffee is already logged within 5 minutes of this time.' });
+    }
   }
 
   const photo_path = req.file ? req.file.filename : null;

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { queryClient } from '../queryClient';
 import type { User } from '../types';
 
 interface AuthState {
@@ -18,5 +19,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     localStorage.removeItem('token');
     set({ user: null, token: null });
+    // Every cached response belongs to the account that just left. Dropping the
+    // cache here (rather than at each call site) is what keeps the next sign-in
+    // from rendering the previous account's data — callers used to have to
+    // remember, and the Sign Out button didn't.
+    queryClient.clear();
   },
 }));

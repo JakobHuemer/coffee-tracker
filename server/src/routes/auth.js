@@ -9,6 +9,7 @@ const multer   = require('multer');
 const db       = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { isValidTz, DEFAULT_TZ } = require('../time');
+const { clampHalfLife } = require('../energy');
 
 const UPLOAD_DIR = process.env.DB_DIR
   ? path.join(process.env.DB_DIR, 'uploads')
@@ -46,7 +47,7 @@ function handleUpload(mw) {
 
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous
@@ -125,9 +126,23 @@ router.get('/me', requireAuth, (req, res) => {
 });
 
 router.patch('/me', requireAuth, (req, res) => {
-  const { username, avatar, featured_badges, password, timezone } = req.body;
+  const { username, avatar, featured_badges, password, timezone, caffeine_half_life_h } = req.body;
   if (username && !USERNAME_RE.test(username)) {
     return res.status(400).json({ error: 'Invalid username' });
+  }
+  // Personal caffeine half-life (hours) for the Buzz score. null clears it back
+  // to the population default. Out-of-range numbers are clamped rather than
+  // rejected — the client offers a free-text box, and a typo should give a
+  // sane curve, not an error. Anything non-numeric is a client bug: 400.
+  if (caffeine_half_life_h !== undefined) {
+    if (caffeine_half_life_h === null) {
+      db.prepare('UPDATE users SET caffeine_half_life_h = NULL WHERE id = ?').run(req.user.id);
+    } else if (typeof caffeine_half_life_h === 'number' && Number.isFinite(caffeine_half_life_h)) {
+      db.prepare('UPDATE users SET caffeine_half_life_h = ? WHERE id = ?')
+        .run(clampHalfLife(caffeine_half_life_h), req.user.id);
+    } else {
+      return res.status(400).json({ error: 'caffeine_half_life_h must be a number or null' });
+    }
   }
   // Timezone: accept only a valid IANA name; silently ignore anything else so a
   // stale/garbage client value can't overwrite a good one.
