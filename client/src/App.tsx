@@ -1,6 +1,6 @@
 import { useEffect, type JSX } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { api } from './api/client';
 import { useAuthStore } from './store/auth';
 // Animated caffeine background disabled for now — kept in the tree for later.
@@ -26,7 +26,6 @@ export function App() {
   const user = useAuthStore(s => s.user);
   const setAuth = useAuthStore(s => s.setAuth);
   const logout = useAuthStore(s => s.logout);
-  const qc = useQueryClient();
   const location = useLocation();
 
   const { data: meData, isError: meError } = useQuery({
@@ -43,8 +42,8 @@ export function App() {
     if (meData && token) setAuth(meData, token);
   }, [meData, token, setAuth]);
   useEffect(() => {
-    if (meError) { logout(); qc.clear(); }
-  }, [meError, logout, qc]);
+    if (meError) logout(); // logout() clears the query cache itself.
+  }, [meError, logout]);
 
   // Keep the stored IANA timezone in sync with the current browser zone (the
   // user may have travelled). Fire-and-forget on the next interaction; the
