@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { FaChartBar, FaUser, FaLayerGroup } from 'react-icons/fa';
+import { FaTrophy, FaUser, FaLayerGroup } from 'react-icons/fa';
 
 const itemClass = ({ isActive }: { isActive: boolean }) => 'bn-item' + (isActive ? ' active' : '');
 const ICON = 22; // one size for every nav icon
@@ -27,9 +27,11 @@ export function BottomNav() {
         </button>
       </div>
 
-      <NavLink to="/stats" className={itemClass}>
-        <span className="bn-icon"><FaChartBar size={ICON} /></span>
-        <span className="bn-label">Stats</span>
+      {/* Stats gave up this slot to Compete and now lives under Profile, the
+          same way Saved posts does. */}
+      <NavLink to="/compete" className={itemClass}>
+        <span className="bn-icon"><FaTrophy size={ICON} /></span>
+        <span className="bn-label">Compete</span>
       </NavLink>
 
       <NavLink to="/profile" className={itemClass}>
