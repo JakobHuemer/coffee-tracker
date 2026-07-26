@@ -68,24 +68,56 @@ function membersOf(groupId) {
   }));
 }
 
-// Leaving must never destroy a group: settled matches hang off it and are the
-// rating ledger. So the row survives an empty roster, and ownership passes to
-// the longest-standing remaining member instead.
-function reassignOwnerIfNeeded(group, leavingUserId) {
-  if (group.owner_id !== leavingUserId) return;
-  const next = db.prepare(
+// Everything that has to happen when `leavingUserId` walks out of `group`.
+// Call INSIDE the transaction, after their group_members row is gone.
+//
+// Leaving must never destroy a group that has a rating ledger: settled matches
+// hang off it and are the record those ratings were derived from. So ownership
+// passes to the longest-standing remaining member instead of the row dying.
+//
+// A group that empties with nothing on it is a different thing — it is litter.
+// Left alone it would sit in the public directory forever with zero members, an
+// owner_id of NULL that no PATCH can ever match (so it can never be unlisted or
+// renamed), and a UNIQUE name nobody can reuse. Those get deleted.
+function handleDeparture(group, leavingUserId) {
+  const remaining = db.prepare(
     'SELECT user_id FROM group_members WHERE group_id = ? ORDER BY joined_at LIMIT 1'
   ).get(group.id);
+
+  if (!remaining && !mustPreserve(group.id)) {
+    // Nothing here but empty/cancelled lobbies; the FK cascade takes them.
+    db.prepare('DELETE FROM competition_groups WHERE id = ?').run(group.id);
+    return;
+  }
+  if (group.owner_id !== leavingUserId) return;
   db.prepare('UPDATE competition_groups SET owner_id = ? WHERE id = ?')
-    .run(next ? next.user_id : null, group.id);
+    .run(remaining ? remaining.user_id : null, group.id);
+}
+
+// Does this group hold anything that makes an empty row worth keeping?
+//
+// 'settled' is the rating ledger — the record those ratings were derived from.
+// 'pending' is a match still owed a settlement: its roster froze when it
+// started, so it settles whether or not anyone is still in the group. Deleting
+// the group would cascade that match away and hand everyone on it a way to
+// dodge a bad day by walking out together.
+function mustPreserve(groupId) {
+  return !!db.prepare(
+    "SELECT 1 FROM matches WHERE group_id = ? AND state IN ('settled', 'pending') LIMIT 1"
+  ).get(groupId);
 }
 
 // GET /api/groups — the public directory plus the caller's own group.
 router.get('/', requireAuth, (req, res) => {
   const mine = groupOf(req.user.id);
-  const rows = db.prepare(
-    'SELECT * FROM competition_groups WHERE is_public = 1 ORDER BY created_at DESC LIMIT 100'
-  ).all();
+  // Empty groups are hidden: the only ones that survive an empty roster are
+  // those holding a ledger, and there is nothing to join in those.
+  const rows = db.prepare(`
+    SELECT * FROM competition_groups g
+    WHERE g.is_public = 1
+      AND EXISTS (SELECT 1 FROM group_members m WHERE m.group_id = g.id)
+    ORDER BY g.created_at DESC LIMIT 100
+  `).all();
   res.json({
     groups: rows.map((g) => publicGroup(g)),
     my_group: mine ? publicGroup(mine, { includeCode: true }) : null,
@@ -132,7 +164,7 @@ router.post('/', requireAuth, (req, res) => {
 
     if (previous) {
       db.prepare('DELETE FROM group_members WHERE user_id = ?').run(req.user.id);
-      reassignOwnerIfNeeded(previous, req.user.id);
+      handleDeparture(previous, req.user.id);
     }
     db.prepare('INSERT INTO group_members (id, group_id, user_id, joined_at) VALUES (?, ?, ?, ?)')
       .run(randomUUID(), id, req.user.id, now);
@@ -173,7 +205,7 @@ router.post('/join', requireAuth, (req, res) => {
   db.transaction(() => {
     if (previous) {
       db.prepare('DELETE FROM group_members WHERE user_id = ?').run(req.user.id);
-      reassignOwnerIfNeeded(previous, req.user.id);
+      handleDeparture(previous, req.user.id);
     }
     db.prepare('INSERT INTO group_members (id, group_id, user_id, joined_at) VALUES (?, ?, ?, ?)')
       .run(randomUUID(), group.id, req.user.id, now);
@@ -200,7 +232,7 @@ router.post('/leave', requireAuth, (req, res) => {
   // it follows the user out of the group either way.
   db.transaction(() => {
     db.prepare('DELETE FROM group_members WHERE user_id = ?').run(req.user.id);
-    reassignOwnerIfNeeded(group, req.user.id);
+    handleDeparture(group, req.user.id);
   })();
 
   res.json({ ok: true, left_group: { id: group.id, name: group.name } });
