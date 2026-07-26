@@ -11,9 +11,12 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
 // time this picker accepts is never rejected by POST /coffees/entries.
 const SKEW_MS = 2 * 60 * 1000;
 
-type Day = 'today' | 'yesterday';
+export type Day = 'today' | 'yesterday';
 
-export type PastTimeState = {
+/** What the user typed. The timestamp is derived from it, never stored. */
+export type PastTime = { time: string; day: Day };
+
+export type ResolvedTime = {
   /** Full timestamp in ms, or null while the value is unusable. */
   timestamp: number | null;
   /** Inline hint to show; null when the value is inside the window. */
@@ -24,28 +27,69 @@ function pad(n: number) {
   return String(n).padStart(2, '0');
 }
 
-function nowHHMM() {
+export function currentPastTime(): PastTime {
   const d = new Date();
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return { time: `${pad(d.getHours())}:${pad(d.getMinutes())}`, day: 'today' };
 }
 
 /**
- * Combine an HH:MM value and a day choice into a timestamp.
+ * Resolve what the user typed against a given instant.
  *
- * "Yesterday" shifts one calendar day, not 24 hours: on a DST boundary those
- * differ by an hour, and the user means the day label, not the elapsed span.
+ * Pure and takes `now` as an argument so the caller decides which instant to
+ * judge against — the render pass uses a ticking clock, submit uses a fresh
+ * `Date.now()`. Nothing derives this into state, so no copy of it can go stale.
  */
-function combine(time: string, day: Day): number | null {
+export function resolvePastTime({ time, day }: PastTime, now: number): ResolvedTime {
   const m = /^(\d{2}):(\d{2})$/.exec(time);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
+  const h = m ? Number(m[1]) : NaN;
+  const min = m ? Number(m[2]) : NaN;
+  if (!m || h > 23 || min > 59) {
+    return { timestamp: null, hint: 'Enter a time as HH:MM.' };
+  }
 
-  const d = new Date();
+  // "Yesterday" shifts one calendar day, not 24 hours: on a DST boundary those
+  // differ by an hour, and the user means the day label, not the elapsed span.
+  //
+  // setHours/setDate resolve in the runtime's zone, which in the browser is the
+  // user's own zone — that is exactly what a time they just typed means. The
+  // ban on these in docs/time-and-timezones.md is scoped to the server, where
+  // the process zone is unpinned and unrelated to any user.
+  const d = new Date(now);
   if (day === 'yesterday') d.setDate(d.getDate() - 1);
   d.setHours(h, min, 0, 0);
-  return d.getTime();
+  const timestamp = d.getTime();
+
+  if (timestamp > now + SKEW_MS) {
+    return {
+      timestamp: null,
+      hint: day === 'today'
+        ? "That's still ahead — did you mean yesterday?"
+        : "That's in the future.",
+    };
+  }
+  if (timestamp < now - WINDOW_MS) {
+    return {
+      timestamp: null,
+      hint: day === 'yesterday'
+        ? 'More than 24h ago — did you mean today?'
+        : 'More than 24h ago.',
+    };
+  }
+  return { timestamp, hint: null };
+}
+
+/**
+ * A clock that re-renders the caller on an interval, so anything derived from
+ * "now" stays truthful while the form sits open — the elapsed line, and a value
+ * that was inside the window at 23:59 and is not at 00:00.
+ */
+export function useNow(intervalMs: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
 }
 
 function formatElapsed(ms: number) {
@@ -58,71 +102,44 @@ function formatElapsed(ms: number) {
   return `${h}h ${m}m ago`;
 }
 
-export function PastTimePicker({ onChange }: { onChange: (s: PastTimeState) => void }) {
-  const [time, setTime] = useState(nowHHMM);
-  const [day, setDay] = useState<Day>('today');
-  // Re-render on a timer so the elapsed line stays truthful while the form is
-  // open, and so a value that was valid at 23:59 turns into a hint at 00:00.
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const now = Date.now();
-  const ts = combine(time, day);
-
-  let hint: string | null = null;
-  if (ts === null) {
-    hint = 'Enter a time as HH:MM.';
-  } else if (ts > now + SKEW_MS) {
-    hint = day === 'today'
-      ? "That's still ahead — did you mean yesterday?"
-      : "That's in the future.";
-  } else if (ts < now - WINDOW_MS) {
-    hint = day === 'yesterday'
-      ? 'More than 24h ago — did you mean today?'
-      : 'More than 24h ago.';
-  }
-
-  const valid = ts !== null && hint === null;
-
-  useEffect(() => {
-    onChange({ timestamp: valid ? ts : null, hint });
-    // `tick` is a dependency because validity is time-dependent: the same
-    // time + day pair can fall out of the window with no user input at all.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ts, hint, valid, tick]);
-
+/**
+ * Presentational: the owner holds the value and the resolution, so the two can
+ * never disagree. Nothing is pushed upward from an effect.
+ */
+export function PastTimePicker({ value, resolved, now, onChange }: {
+  value: PastTime;
+  resolved: ResolvedTime;
+  now: number;
+  onChange: (v: PastTime) => void;
+}) {
   return (
     <div className="ptp">
       <div className="ptp-row">
         <input
           className="ptp-time"
           type="time"
-          value={time}
-          onChange={e => setTime(e.target.value)}
+          value={value.time}
+          onChange={e => onChange({ ...value, time: e.target.value })}
           aria-label="Time"
-          aria-invalid={hint !== null}
+          aria-invalid={resolved.hint !== null}
         />
         <div className="ptp-days" role="group" aria-label="Day">
           {(['today', 'yesterday'] as Day[]).map(d => (
             <button
               key={d}
               type="button"
-              className={`ptp-day${day === d ? ' on' : ''}`}
-              onClick={() => setDay(d)}
-              aria-pressed={day === d}
+              className={`ptp-day${value.day === d ? ' on' : ''}`}
+              onClick={() => onChange({ ...value, day: d })}
+              aria-pressed={value.day === d}
             >
               {d === 'today' ? 'Today' : 'Yesterday'}
             </button>
           ))}
         </div>
       </div>
-      {hint
-        ? <div className="ptp-hint">{hint}</div>
-        : <div className="ptp-elapsed">{formatElapsed(now - (ts as number))}</div>}
+      {resolved.hint
+        ? <div className="ptp-hint">{resolved.hint}</div>
+        : <div className="ptp-elapsed">{formatElapsed(now - (resolved.timestamp as number))}</div>}
     </div>
   );
 }

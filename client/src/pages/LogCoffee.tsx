@@ -4,7 +4,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/auth';
 import { UnlockToast } from '../components/UnlockToast';
 import { Icon } from '../components/Icon';
-import { PastTimePicker, type PastTimeState } from '../components/PastTimePicker';
+import {
+  PastTimePicker, currentPastTime, resolvePastTime, useNow, type PastTime,
+} from '../components/PastTimePicker';
 import type { UnlockNotification } from '../types';
 
 const COFFEES = [
@@ -36,9 +38,10 @@ export function LogCoffee() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [isPublic, setIsPublic] = useState(true);
-  // The picker owns the time/day pair and hands back a full timestamp, or null
-  // while the value sits outside the rolling 24-hour window.
-  const [time, setTime] = useState<PastTimeState>({ timestamp: Date.now(), hint: null });
+  // What the user typed into the picker. The timestamp is derived from it on
+  // every render rather than stored, so there is no second copy to fall out of
+  // date — and `now` ticks, so a value can leave the 24h window on its own.
+  const [pastTime, setPastTime] = useState<PastTime>(currentPastTime);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
@@ -46,6 +49,9 @@ export function LogCoffee() {
   const fileRef = useRef<HTMLInputElement>(null);
   // Mirrors photoPreview so the URL can be revoked without reading state.
   const previewRef = useRef<string | null>(null);
+
+  const now = useNow(30_000);
+  const resolvedTime = resolvePastTime(pastTime, now);
 
   // A coffee entry must carry a photo or a description — mirrors the server's
   // POST /coffees/entries rule. Keep every label/hint here in sync with that
@@ -99,10 +105,13 @@ export function LogCoffee() {
   async function handleSubmit() {
     if (!selectedId) { setError('Please select a coffee type.'); return; }
     if (!meetsContentRule) { setError('Add a photo or write a description.'); return; }
-    // No future logs, nothing older than 24h — the picker already flags both
-    // inline, so this only catches a submit that races the window's edge.
+    // No future logs, nothing older than 24h — the picker flags both inline, so
+    // this only catches a submit that races the window's edge. Re-resolved
+    // against a fresh Date.now() rather than the render's ticking clock, since
+    // that is the instant the server will judge it by.
     // (See docs/time-and-timezones.md.)
-    if (time.timestamp === null) {
+    const { timestamp } = resolvePastTime(pastTime, Date.now());
+    if (timestamp === null) {
       setError('Pick a time within the last 24 hours.');
       return;
     }
@@ -111,7 +120,7 @@ export function LogCoffee() {
 
     const fd = new FormData();
     fd.append('coffeeId', selectedId);
-    fd.append('timestamp', String(time.timestamp));
+    fd.append('timestamp', String(timestamp));
     fd.append('is_public', isPublic ? '1' : '0');
     if (description.trim()) fd.append('description', description.trim());
     if (photo) fd.append('photo', photo);
@@ -185,7 +194,7 @@ export function LogCoffee() {
             <div className="log-camera-area">
               <div className="log-camera-icon"><Icon name="camera" size={44} /></div>
               <p className="log-camera-hint">Add a photo of your coffee</p>
-              <button className="btn-primary log-camera-btn" onClick={() => fileRef.current?.click()}>
+              <button className="btn-primary log-camera-btn" onClick={openPhotoPicker}>
                 Add photo
               </button>
               <button className="btn-secondary log-skip-inline" onClick={() => setStep('details')}>
@@ -237,7 +246,12 @@ export function LogCoffee() {
 
             <div className="field" style={{ marginTop: 16 }}>
               <label>Time</label>
-              <PastTimePicker onChange={setTime} />
+              <PastTimePicker
+                value={pastTime}
+                resolved={resolvedTime}
+                now={now}
+                onChange={setPastTime}
+              />
             </div>
 
             <div className="field">
@@ -280,7 +294,7 @@ export function LogCoffee() {
               <div className="log-requirement-hint">Add a photo or write a description to post.</div>
             )}
 
-            <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId || !meetsContentRule || time.timestamp === null}>
+            <button className="btn-primary" onClick={handleSubmit} disabled={submitting || !selectedId || !meetsContentRule || resolvedTime.timestamp === null}>
               {submitting ? 'Posting…' : 'Post coffee'}
             </button>
           </div>
