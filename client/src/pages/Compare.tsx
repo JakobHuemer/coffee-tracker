@@ -6,7 +6,7 @@ import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import type { CompareUserProfile, CompareUserStats, FeaturedBadge, UnlockNotification } from '../types';
-import { RARITY_COLORS } from '../rarity';
+import { rarityColor } from '../rarity';
 
 interface CompareResponse {
   me: CompareUserProfile;
@@ -32,7 +32,7 @@ function FeaturedBadges({ badges }: { badges: FeaturedBadge[] }) {
   return (
     <div className="vs-featured-badges">
       {badges.map(b => (
-        <div key={b.id} className="vs-feat-badge" title={b.name} style={{ borderColor: RARITY_COLORS[b.rarity] }}>
+        <div key={b.id} className="vs-feat-badge" title={b.name} style={{ borderColor: rarityColor(b.rarity) }}>
           <span className="vs-feat-icon"><Icon name={b.icon} /></span>
         </div>
       ))}

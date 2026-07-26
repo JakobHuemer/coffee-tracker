@@ -258,7 +258,7 @@ function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotif
   const uniqueTypes = Object.keys(stats?.by_type ?? {}).length;
   const cupsTotal = stats?.total_cups ?? 0;
   const cafTotal = stats?.total_caffeine ?? 0;
-  const streak = streaks?.streak.current_streak ?? 0;
+  const streak = streaks?.streak?.current_streak ?? 0;
 
   // Milestones, their thresholds and their wording all come from the server —
   // the client only supplies the running totals to measure against. Anything
@@ -460,7 +460,7 @@ export function Stats() {
             <div className="stats-rank-label">Global Rank</div>
           </div>
           <div className="stats-streak-tile">
-            <div className="stats-streak-num">{streaks?.streak.current_streak ?? 0} <Icon name="fire" /></div>
+            <div className="stats-streak-num">{streaks?.streak?.current_streak ?? 0} <Icon name="fire" /></div>
             <div className="stats-streak-label">Day Streak</div>
           </div>
         </div>
