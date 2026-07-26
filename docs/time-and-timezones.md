@@ -96,12 +96,26 @@ sameDay = todayLocal === activityLocal
 - **Temporal:** reached Stage 4 / ES2026 and ships in Firefox & Chrome, but
   **Node/Bun support is "expected in a future release"** — do not rely on it
   server-side yet. Revisit later.
-- Never use `Date.setHours()` / `Date.getHours()` for civil logic: they operate
-  in the *runtime's* zone, not the user's. That was the original bug source.
+- **Never use `Date.setHours()` / `Date.getHours()` server-side.** They operate
+  in the process zone, which nothing in this repo pins — neither
+  `server/Dockerfile` nor `docker-compose.yaml` sets `TZ`, so it is whatever the
+  base image and host happen to give, and a base image bump can change it. Use
+  `server/src/time.js`, which passes an explicit IANA zone to
+  `Intl.DateTimeFormat`. That was the original bug source.
+- **In the browser they are correct and preferred.** There the runtime zone *is*
+  the user's zone, which is the whole meaning of a time they just typed into a
+  field. `client/src/components/PastTimePicker.tsx` uses `setHours`/`setDate` to
+  turn the time field and the today/yesterday toggle into an instant, then sends
+  epoch ms. Wrapping that in a tz library would convert the user's wall clock
+  into their *stored* zone and get a traveller's input wrong.
+  - Known gap: if the device zone differs from the stored zone (travel, VPN,
+    stale profile), the picker resolves against the device while streaks and
+    goals resolve against the stored zone, so the two can disagree by a day.
+    Accepted for now — the input is what the user sees on their own clock.
 
 ## Code layering (how this maps to our code)
 
-- **UTC-only modules:** storage, feed post ages, the `instant <= now`
+- **UTC-only modules:** storage, feed post ages, the `instant <= now + SKEW_MS`
   future-guard. Never import a tz here.
 - **One translation boundary:** a single function `(instant, userTz) → { localDate,
   localHour, ... }`. This is the *only* place both domains meet.
