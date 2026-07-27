@@ -9,7 +9,7 @@ import {
   FaSkull, FaTriangleExclamation, FaUsers, FaCalendarDays, FaCamera,
   FaXmark, FaBookmark, FaRegBookmark, FaPlus, FaArrowRight, FaLock, FaTrash, FaRegCopy,
   FaLayerGroup, FaImages,
-  FaChevronUp, FaChevronDown, FaGithub,
+  FaChevronUp, FaChevronDown, FaGithub, FaGlobe,
 } from 'react-icons/fa6';
 import type { IconType } from 'react-icons';
 
@@ -90,6 +90,7 @@ const ICONS: Record<string, IconType> = {
   'chevron-up': FaChevronUp,
   'chevron-down': FaChevronDown,
   github: FaGithub,
+  globe: FaGlobe,
 };
 
 const FALLBACK: IconType = FaMugHot;

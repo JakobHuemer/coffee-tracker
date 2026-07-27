@@ -98,27 +98,41 @@ function matchPayload(match, { withParticipants = true } = {}) {
   return participants ? { ...base, participants } : base;
 }
 
-// GET /api/competitions — the caller's group's matches, plus their rating.
+// GET /api/competitions — the caller's group's matches (if any) and the global
+// (group-less) matches, plus their rating. The group buckets stay empty for a
+// user in no group; the global buckets are populated for everyone (issue #35).
 router.get('/', requireAuth, (req, res) => {
   const rating = db.prepare('SELECT rating, matches FROM user_ratings WHERE user_id = ?').get(req.user.id);
   const group = groupOf(req.user.id);
-  if (!group) {
-    return res.json({
-      group: null,
-      open: [], live: [], settled: [],
-      my_rating: rating ? rating.rating : BASE_RATING,
-      my_matches: rating ? rating.matches : 0,
-    });
+
+  const groupBuckets = { group: null, open: [], live: [], settled: [] };
+  if (group) {
+    const rows = db.prepare('SELECT * FROM matches WHERE group_id = ? ORDER BY scope_start DESC LIMIT 60')
+      .all(group.id);
+    groupBuckets.group = { id: group.id, name: group.name, timezone: group.timezone };
+    groupBuckets.open = rows.filter((m) => m.state === 'open').map((m) => matchPayload(m));
+    groupBuckets.live = rows.filter((m) => m.state === 'pending').map((m) => matchPayload(m));
+    groupBuckets.settled = rows.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m));
   }
 
-  const rows = db.prepare('SELECT * FROM matches WHERE group_id = ? ORDER BY scope_start DESC LIMIT 60')
-    .all(group.id);
+  // Open global lobbies are browsable by anyone; a caller's running/finished
+  // global matches follow them regardless of any group they are or aren't in.
+  const globalOpen = db.prepare("SELECT * FROM matches WHERE group_id IS NULL AND state = 'open' ORDER BY scope_start DESC LIMIT 60")
+    .all();
+  const globalMine = db.prepare(`
+    SELECT m.* FROM matches m
+    JOIN match_participants p ON p.match_id = m.id
+    WHERE m.group_id IS NULL AND p.user_id = ? AND m.state != 'open'
+    ORDER BY m.scope_start DESC LIMIT 60
+  `).all(req.user.id);
 
   res.json({
-    group: { id: group.id, name: group.name, timezone: group.timezone },
-    open: rows.filter((m) => m.state === 'open').map((m) => matchPayload(m)),
-    live: rows.filter((m) => m.state === 'pending').map((m) => matchPayload(m)),
-    settled: rows.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m)),
+    ...groupBuckets,
+    global: {
+      open: globalOpen.map((m) => matchPayload(m)),
+      live: globalMine.filter((m) => m.state === 'pending').map((m) => matchPayload(m)),
+      settled: globalMine.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m)),
+    },
     my_rating: rating ? rating.rating : BASE_RATING,
     my_matches: rating ? rating.matches : 0,
   });
@@ -161,12 +175,16 @@ router.get('/leaderboard', requireAuth, (req, res) => {
   });
 });
 
-// POST /api/competitions — open a user-created match in the caller's group.
+// POST /api/competitions — open a user-created match. Without `global: true` it
+// lives in the caller's group (members-only); with it the match belongs to no
+// group and anyone may join (issue #35). Either way it is a user-created lobby.
 router.post('/', requireAuth, (req, res) => {
-  const group = groupOf(req.user.id);
-  if (!group) return res.status(400).json({ error: 'Join a group before starting a match' });
-
   const { mode, title = null, scope_start, scope_end, team_size = null, side = 'A' } = req.body || {};
+  const isGlobal = (req.body && req.body.global) === true;
+
+  const group = isGlobal ? null : groupOf(req.user.id);
+  if (!isGlobal && !group) return res.status(400).json({ error: 'Join a group before starting a match' });
+  const groupId = isGlobal ? null : group.id;
 
   if (!USER_MODES.includes(mode)) {
     return res.status(400).json({ error: `Mode must be one of: ${USER_MODES.join(', ')}` });
@@ -206,7 +224,7 @@ router.post('/', requireAuth, (req, res) => {
       INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
                            scope_start, scope_end, state, k_factor, team_size, created_at)
       VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'open', ?, ?, ?)
-    `).run(id, group.id, mode, title ? title.trim() : null, req.user.id,
+    `).run(id, groupId, mode, title ? title.trim() : null, req.user.id,
       scope_start, scope_end, K_BY_MODE[mode], teamSize, now);
 
     db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, ?, ?)')
@@ -223,9 +241,12 @@ router.post('/:id/join', requireAuth, (req, res) => {
   if (match.state !== 'open') return res.status(409).json({ error: 'This match is no longer open to join' });
   if (match.scope_start <= Date.now()) return res.status(409).json({ error: 'This match has already started' });
 
-  const group = groupOf(req.user.id);
-  if (!group || group.id !== match.group_id) {
-    return res.status(403).json({ error: 'This match belongs to another group' });
+  // A group match is members-only; a global match (no group) is open to anyone.
+  if (match.group_id !== null) {
+    const group = groupOf(req.user.id);
+    if (!group || group.id !== match.group_id) {
+      return res.status(403).json({ error: 'This match belongs to another group' });
+    }
   }
 
   const already = db.prepare('SELECT 1 FROM match_participants WHERE match_id = ? AND user_id = ?')
@@ -289,13 +310,15 @@ router.get('/:id', requireAuth, (req, res) => {
   const match = matchOr404(res, req.params.id);
   if (!match) return;
 
-  // Matches are group business: only members of the owning group can read one,
-  // whether or not they are on its roster.
-  const group = groupOf(req.user.id);
-  const onRoster = db.prepare('SELECT 1 FROM match_participants WHERE match_id = ? AND user_id = ?')
-    .get(match.id, req.user.id);
-  if ((!group || group.id !== match.group_id) && !onRoster) {
-    return res.status(403).json({ error: 'This match belongs to another group' });
+  // A group match is group business: only members of the owning group (or anyone
+  // already on its roster) can read one. A global match (no group) is public.
+  if (match.group_id !== null) {
+    const group = groupOf(req.user.id);
+    const onRoster = db.prepare('SELECT 1 FROM match_participants WHERE match_id = ? AND user_id = ?')
+      .get(match.id, req.user.id);
+    if ((!group || group.id !== match.group_id) && !onRoster) {
+      return res.status(403).json({ error: 'This match belongs to another group' });
+    }
   }
 
   res.json({ match: matchPayload(match) });
