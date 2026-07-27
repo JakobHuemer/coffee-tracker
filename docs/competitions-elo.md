@@ -286,12 +286,20 @@ half a point settles at 0 for everyone. Nobody's rating moves, which is the
 honest outcome — there was nothing there to win. Whole-point Elo behaves this
 way wherever it is used, FIDE included.
 
-Stored ratings are not themselves rounded: `rating_before`/`rating_after`/
-`delta` stay `REAL`, and rows settled before this change keep the fractional
-values they were settled with — the ledger is immutable and re-rounding it
-per user would not conserve the pool total. A rating that starts whole
-(`BASE_RATING = 1000`) stays whole from here on, since every delta applied to it
-is whole.
+The columns stay `REAL` (`rating_before`/`rating_after`/`delta`), but nothing
+fractional survives: migration `015_resettle_whole_point_elo.js` **re-evaluates
+the whole match history** into whole points so the ledger does not tell two
+stories. It replays every settled match in `(settled_at, id)` order through the
+same `settleFfa`/`settleTeams`, feeding each match the running rating the
+previous ones left — the stored per-participant `score` is reused unchanged
+(only the rating layer moved, and the score is the immutable record of that
+window; it is *not* re-derived from `coffee_entries`). The `user_ratings` cache
+is rebuilt wholesale from the replay afterwards. From there on every delta is
+whole, so a rating that starts at `BASE_RATING = 1000` stays whole forever.
+
+Re-rounding each stored delta on its own would not have worked — it would break
+the zero-sum the deltas were derived from — which is exactly why the migration
+replays through `apportion` rather than rounding rows in place.
 
 ## Match lifecycle
 

@@ -17,7 +17,7 @@ const {
   ensureRecurringMatch, ensureRecurringMatches, rosterIsLegal,
   lockDueLobbies, settleMatch, settleDueMatches, tick,
 } = require('./competitions');
-const { BASE_RATING, K_BY_MODE, performanceScore } = require('./competition-core');
+const { BASE_RATING, K_BY_MODE, performanceScore, settleFfa } = require('./competition-core');
 
 const DAY = 86400000;
 
@@ -580,4 +580,105 @@ test('groupOf returns the one group a user is in', () => {
   expect(groupOf(a)).toBeNull(); // bun:sqlite .get() misses as null, not undefined
   const group = makeGroup('UTC', [a]);
   expect(groupOf(a).id).toBe(group.id);
+});
+
+// ── migration 015: re-evaluate history into whole points (#49) ───────────────
+
+const resettle = require('./migrations/015_resettle_whole_point_elo');
+
+// A match already in the 'settled' state carrying a deliberately fractional
+// ledger, the way pre-#49 data looks. Scores are what settlement reads back;
+// the rating_* / delta / share values are junk the migration must overwrite.
+function seedSettledMatch({ group, mode = 'daily', settledAt, parts }) {
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
+                         scope_start, scope_end, state, k_factor, team_size, created_at, settled_at)
+    VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, 'settled', ?, ?, ?, ?)
+  `).run(id, group.id, mode, settledAt - DAY, settledAt - 1, K_BY_MODE[mode],
+    mode === 'team' ? 2 : null, settledAt - DAY, settledAt);
+  let joinedAt = settledAt - DAY;
+  for (const p of parts) {
+    db.prepare(`
+      INSERT INTO match_participants
+        (id, match_id, user_id, side, joined_at, score, contribution_share, rating_before, rating_after, delta)
+      VALUES (?, ?, ?, ?, ?, ?, 0.123, 1000.5, 1007.7, 7.2)
+    `).run(randomUUID(), id, p.userId, p.side ?? null, joinedAt++, p.score);
+  }
+  return id;
+}
+
+test('migration 015 re-evaluates settled matches into whole, zero-sum, compounding deltas', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = makeGroup('UTC', [a, b]);
+  const t1 = Date.parse('2026-07-26T10:00:00Z');
+  const t2 = Date.parse('2026-07-27T10:00:00Z');
+
+  const m1 = seedSettledMatch({ group, settledAt: t1, parts: [{ userId: a, score: 0.4 }, { userId: b, score: 0 }] });
+  const m2 = seedSettledMatch({ group, settledAt: t2, parts: [{ userId: a, score: 0.1 }, { userId: b, score: 0.6 }] });
+
+  resettle.up(db);
+
+  const p1 = participants(m1);
+  const p2 = participants(m2);
+  for (const r of [...p1, ...p2]) expect(Number.isInteger(r.delta)).toBe(true);
+  expect(p1.reduce((s, r) => s + r.delta, 0)).toBe(0);
+  expect(p2.reduce((s, r) => s + r.delta, 0)).toBe(0);
+
+  // The re-evaluated deltas are exactly what a fresh settlement produces.
+  const fresh = settleFfa([{ userId: a, rating: BASE_RATING, score: 0.4 }, { userId: b, rating: BASE_RATING, score: 0 }], K_BY_MODE.daily);
+  const a1 = p1.find((r) => r.user_id === a);
+  expect(a1.delta).toBe(fresh.find((r) => r.userId === a).delta);
+
+  // First match settles from the base rating; the second compounds off the first.
+  for (const r of p1) expect(r.rating_before).toBe(BASE_RATING);
+  const a2 = p2.find((r) => r.user_id === a);
+  expect(a2.rating_before).toBe(a1.rating_after);
+
+  // The derived cache is rebuilt whole, counts both matches, and stamps the last settle.
+  const ra = db.prepare('SELECT * FROM user_ratings WHERE user_id = ?').get(a);
+  expect(Number.isInteger(ra.rating)).toBe(true);
+  expect(ra.rating).toBe(a2.rating_after);
+  expect(ra.matches).toBe(2);
+  expect(ra.updated_at).toBe(t2);
+});
+
+test('migration 015 leaves a team match zero-sum with whole deltas and a fresh share', () => {
+  const users = ['a1', 'a2', 'b1', 'b2'].map((n) => makeUser(n));
+  const group = makeGroup('UTC', users);
+  const m = seedSettledMatch({
+    group, mode: 'team', settledAt: Date.parse('2026-07-26T10:00:00Z'),
+    parts: [
+      { userId: users[0], side: 'A', score: 0.7 }, { userId: users[1], side: 'A', score: 0.2 },
+      { userId: users[2], side: 'B', score: 0.3 }, { userId: users[3], side: 'B', score: 0.1 },
+    ],
+  });
+
+  resettle.up(db);
+
+  const rows = participants(m);
+  for (const r of rows) expect(Number.isInteger(r.delta)).toBe(true);
+  expect(rows.reduce((s, r) => s + r.delta, 0)).toBe(0);
+  for (const r of rows) expect(r.contribution_share).toBeGreaterThan(0);
+  expect(rows.filter((r) => r.side === 'A').reduce((s, r) => s + r.delta, 0))
+    .toBe(-rows.filter((r) => r.side === 'B').reduce((s, r) => s + r.delta, 0));
+});
+
+test('migration 015 is a no-op on a match-less database', () => {
+  expect(() => resettle.up(db)).not.toThrow();
+  expect(db.prepare('SELECT COUNT(*) AS c FROM user_ratings').get().c).toBe(0);
+});
+
+test('migration 015 is idempotent — a second pass reproduces the same ledger', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = makeGroup('UTC', [a, b]);
+  const m = seedSettledMatch({ group, settledAt: Date.parse('2026-07-26T10:00:00Z'), parts: [{ userId: a, score: 0.5 }, { userId: b, score: 0.1 }] });
+
+  resettle.up(db);
+  const first = participants(m).map((r) => r.delta).sort((x, y) => x - y);
+  resettle.up(db);
+  const second = participants(m).map((r) => r.delta).sort((x, y) => x - y);
+  expect(second).toEqual(first);
 });

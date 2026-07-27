@@ -35,11 +35,21 @@ rather than float-precision** — it got stronger, not weaker.
 - Existing tests that asserted `toBeCloseTo(..., 9)` on deltas were tightened to
   `toBe` (VALUES 0.4). They pass only because the values really are exact now.
 
-## Deliberately not done
-- **No data migration.** Rows settled before this keep fractional values; the
-  ledger is immutable and re-rounding per user would not conserve the pool
-  total. A rating that starts at `BASE_RATING = 1000` stays whole from here.
-- **Client untouched.** `fmtDelta`'s `Math.round(delta * 10) / 10` still renders
+## Data migration (015) — added on PR #56 review
+Owner (JakobHuemer) requested changes: "re-evaluate all previous games and
+reassign elo gain/loss". So the earlier "no migration, keep old fractional
+rows" call was reversed. `015_resettle_whole_point_elo.js` replays every
+settled match in `(settled_at, id)` order through the live
+`settleFfa`/`settleTeams`, using the **stored `score`** (score layer didn't
+change; do NOT re-derive from `coffee_entries` — rows may have been edited),
+feeding each match the running rating the previous ones produced, then rebuilds
+`user_ratings` wholesale. Re-rounding stored deltas in place was rejected: it
+breaks the zero-sum they were derived from. Migration is idempotent (scores are
+fixed; a second pass reproduces the ledger). Updated the "immutable, never
+recomputed" comment in migration 011 to name 015 as the one exception.
+
+## Client untouched
+- `fmtDelta`'s `Math.round(delta * 10) / 10` still renders
   legacy fractional rows correctly and renders whole deltas whole. Simplifying
   it would regress display of old matches.
 - Ties on the leaderboard get more common with whole ratings, and
