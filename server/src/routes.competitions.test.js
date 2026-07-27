@@ -92,7 +92,7 @@ test('every competitions endpoint refuses an unauthenticated caller', async () =
     ['GET', '/api/groups'], ['GET', '/api/groups/mine'], ['POST', '/api/groups'],
     ['POST', '/api/groups/join'], ['POST', '/api/groups/leave'],
     ['GET', '/api/competitions'], ['GET', '/api/competitions/leaderboard'],
-    ['POST', '/api/competitions'],
+    ['GET', '/api/competitions/history'], ['POST', '/api/competitions'],
   ]) {
     const res = await call(null, method, url, method === 'GET' ? undefined : {});
     expect({ url, status: res.status }).toEqual({ url, status: 401 });
@@ -603,6 +603,89 @@ test('a live match reports scores from the window so far, a settled one the stor
   expect(sa.delta).toBe(16);
   expect(sa.current_rating).toBe(1016);
   expect(sa.points).toBe(500); // straight from the stored score, not recomputed
+});
+
+/* ── match history (issue #34) ─────────────────────────────────────────────── */
+
+// A settled match with its ledger already written, so the history endpoint has
+// something to read without driving a whole match through the scheduler.
+// `parts` is [{ user, before, after, delta }].
+function settledMatch({ group_id = null, mode = 'ondemand', title = null, settled_at, parts }) {
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
+                         scope_start, scope_end, state, k_factor, team_size, created_at, settled_at)
+    VALUES (?, ?, ?, NULL, ?, NULL, ?, ?, 'settled', 32, NULL, ?, ?)
+  `).run(id, group_id, mode, title, settled_at - HOUR, settled_at, settled_at - HOUR, settled_at);
+  for (const p of parts) {
+    db.prepare(`
+      INSERT INTO match_participants
+        (id, match_id, user_id, side, joined_at, score, contribution_share, rating_before, rating_after, delta)
+      VALUES (?, ?, ?, NULL, ?, 0.5, NULL, ?, ?, ?)
+    `).run(randomUUID(), id, p.user.id, settled_at - HOUR, p.before, p.after, p.delta);
+  }
+  return id;
+}
+
+test('history lists the caller\'s settled matches newest first, with the elo deltas', async () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const now = Date.now();
+  settledMatch({ settled_at: now - 2 * HOUR, parts: [
+    { user: a, before: 1000, after: 1016, delta: 16 },
+    { user: b, before: 1000, after: 984, delta: -16 },
+  ] });
+  settledMatch({ settled_at: now - HOUR, parts: [{ user: a, before: 1016, after: 1010, delta: -6 }] });
+
+  const res = await get(a, '/api/competitions/history');
+  expect(res.status).toBe(200);
+  // Newest first; only the caller's own rows, not the opponent's.
+  expect(res.body.personal.map((e) => e.delta)).toEqual([-6, 16]);
+  expect(res.body.personal[0].rating_after).toBe(1010);
+});
+
+test('history excludes cancelled matches — they moved no rating', async () => {
+  const a = makeUser('a');
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
+                         scope_start, scope_end, state, k_factor, team_size, created_at, settled_at)
+    VALUES (?, NULL, 'ondemand', NULL, NULL, NULL, 0, 1, 'cancelled', 32, NULL, 0, ?)
+  `).run(id, Date.now());
+  db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
+    .run(randomUUID(), id, a.id, Date.now());
+
+  expect((await get(a, '/api/competitions/history')).body.personal).toEqual([]);
+});
+
+test('personal history spans global matches too, but group_history is only the group\'s', async () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = await createGroup(a);
+  await post(b, '/api/groups/join', { group_id: group.id });
+  const now = Date.now();
+
+  const grp = settledMatch({ group_id: group.id, settled_at: now - 2 * HOUR, parts: [
+    { user: a, before: 1000, after: 1010, delta: 10 },
+    { user: b, before: 1000, after: 990, delta: -10 },
+  ] });
+  const glob = settledMatch({ group_id: null, settled_at: now - HOUR, parts: [
+    { user: a, before: 1010, after: 1004, delta: -6 },
+  ] });
+
+  const res = await get(a, '/api/competitions/history');
+  // The rating is one global number, so both matches are in the personal ledger.
+  expect(res.body.personal.map((e) => e.match_id)).toEqual([glob, grp]);
+  // The public pill is the group's own finished matches — the global one is not.
+  expect(res.body.group_history.map((m) => m.id)).toEqual([grp]);
+  expect(res.body.group_history[0].participants).toHaveLength(2);
+});
+
+test('group_history is empty for a caller in no group', async () => {
+  const drifter = makeUser('drifter');
+  const res = await get(drifter, '/api/competitions/history');
+  expect(res.body.group).toBeNull();
+  expect(res.body.group_history).toEqual([]);
 });
 
 /* ── the auto-join preference ──────────────────────────────────────────────── */

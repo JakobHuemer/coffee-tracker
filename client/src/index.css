@@ -1144,6 +1144,28 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .cmp-delta.up { color: var(--success-fg); }
 .cmp-delta.down { color: var(--danger-fg); }
 
+/* ── history (issue #34) ─────────────────────────────────────────────────── */
+.cmp-hist-figure { display: flex; align-items: baseline; justify-content: space-between; margin-top: 12px; }
+.cmp-hist-now { font-size: 1.9rem; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.cmp-hist-list { display: flex; flex-direction: column; gap: 6px; }
+.cmp-hist-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.cmp-hist-mode {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
+  background: var(--accent-bg); color: var(--accent);
+}
+.cmp-hist-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cmp-hist-title {
+  font-size: 0.82rem; font-weight: 600; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cmp-hist-when { font-size: 0.7rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.cmp-hist-rating { font-size: 0.8rem; font-weight: 600; color: var(--accent); min-width: 42px; text-align: right; }
+
 .cmp-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .cmp-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .cmp-side-head {

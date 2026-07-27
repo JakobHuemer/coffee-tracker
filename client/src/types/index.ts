@@ -391,3 +391,29 @@ export interface LeaderboardResponse {
   group: { id: string; name: string } | null;
   leaderboard: LeaderboardEntry[];
 }
+
+// One settled match the caller played, as an elo-change event (issue #34). Only
+// settled matches appear, so rating_before/after/delta are always present here
+// (a cancelled match, which moves no rating, is never in this list).
+export interface PersonalHistoryEntry {
+  match_id: string;
+  mode: MatchMode;
+  title: string | null;
+  group_id: string | null;
+  scope_start: number;
+  scope_end: number;
+  settled_at: number;
+  rating_before: number;
+  rating_after: number;
+  delta: number;
+}
+
+// GET /api/competitions/history — the caller's rating timeline (personal) and
+// their group's finished matches (public). The graph windows `personal`
+// client-side into 30d/7d/24h.
+export interface CompetitionHistoryResponse {
+  group: { id: string; name: string } | null;
+  my_rating: number;
+  personal: PersonalHistoryEntry[];
+  group_history: Match[];
+}
