@@ -3,6 +3,9 @@ export interface Coffee {
   name: string;
   caffeine: number;
   icon: string;
+  // Drink class/kind (issue #11): 'coffee' | 'tea' | 'energy' | 'chocolate'.
+  // A semantic key like `icon` — the client owns the display label.
+  class: string;
 }
 
 export interface CoffeeEntry {

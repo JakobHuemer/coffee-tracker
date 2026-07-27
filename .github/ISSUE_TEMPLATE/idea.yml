@@ -1,0 +1,38 @@
+name: Idea
+description: Suggest a feature or improvement.
+title: "<short title>"
+labels: ["type:feature", "priority:standard"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Keep it short — a maintainer will triage priority/effort labels.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What
+      description: The idea in one or two lines.
+      placeholder: Let users tag a drink with a custom note.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Why
+      description: The problem it solves or the value it adds.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed approach
+      description: How it might work. Optional — leave blank if unsure.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other options you weighed, if any.
+    validations:
+      required: false
