@@ -175,6 +175,51 @@ router.get('/leaderboard', requireAuth, (req, res) => {
   });
 });
 
+// GET /api/competitions/history — the caller's rating history and the group's
+// finished matches (issue #34).
+//
+// `personal` is every settled match the caller played, group OR global, since
+// the rating is one global number and every settlement moved it. It carries the
+// before/after/delta the graph is drawn from; the client windows it into
+// 30d/7d/24h rather than the server pre-slicing, so one payload feeds all three.
+// Cancelled matches are excluded — they moved nobody's rating, so they are not
+// history in the sense this pill means.
+//
+// `group_history` is the caller's group's finished matches as full end-match
+// cards (the public history), newest first and capped so an old group does not
+// ship hundreds of cards in one response.
+router.get('/history', requireAuth, (req, res) => {
+  const personal = db.prepare(`
+    SELECT m.id AS match_id, m.mode, m.title, m.group_id,
+           m.scope_start, m.scope_end, m.settled_at,
+           p.rating_before, p.rating_after, p.delta
+    FROM match_participants p
+    JOIN matches m ON m.id = p.match_id
+    WHERE p.user_id = ? AND m.state = 'settled'
+    ORDER BY m.settled_at DESC
+  `).all(req.user.id);
+
+  const rating = db.prepare('SELECT rating FROM user_ratings WHERE user_id = ?').get(req.user.id);
+  const group = groupOf(req.user.id);
+
+  let groupHistory = [];
+  if (group) {
+    const rows = db.prepare(`
+      SELECT * FROM matches
+      WHERE group_id = ? AND state = 'settled'
+      ORDER BY settled_at DESC LIMIT 40
+    `).all(group.id);
+    groupHistory = rows.map((m) => matchPayload(m));
+  }
+
+  res.json({
+    group: group ? { id: group.id, name: group.name } : null,
+    my_rating: rating ? rating.rating : BASE_RATING,
+    personal,
+    group_history: groupHistory,
+  });
+});
+
 // POST /api/competitions — open a user-created match. Without `global: true` it
 // lives in the caller's group (members-only); with it the match belongs to no
 // group and anyone may join (issue #35). Either way it is a user-created lobby.

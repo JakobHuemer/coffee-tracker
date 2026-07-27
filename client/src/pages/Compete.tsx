@@ -7,11 +7,11 @@ import { Icon } from '../components/Icon';
 import { TimezonePicker } from '../components/TimezonePicker';
 import { useAuthStore } from '../store/auth';
 import type {
-  CompetitionsResponse, GroupsResponse, GroupDetailResponse, LeaderboardResponse,
-  Match, MatchMode, MatchParticipant, User,
+  CompetitionsResponse, CompetitionHistoryResponse, GroupsResponse, GroupDetailResponse,
+  LeaderboardResponse, Match, MatchMode, MatchParticipant, PersonalHistoryEntry, User,
 } from '../types';
 
-type Tab = 'matches' | 'ranking' | 'global' | 'group';
+type Tab = 'matches' | 'ranking' | 'history' | 'global' | 'group';
 
 const MODE_LABEL: Record<MatchMode, string> = {
   daily: 'Daily', weekly: 'Weekly', ondemand: 'Free-for-all', '1v1': '1v1', team: 'Team',
@@ -480,8 +480,12 @@ function RatingCard({ rating, matches }: { rating: number; matches: number }) {
 // The open/live/settled match columns, shared by the group tab and the global
 // tab. `global` only changes the creation flag and the empty-state copy —
 // join/leave and the rating cache are the same for both (issue #35).
-function MatchList({ open, live, settled, global = false }: {
-  open: Match[]; live: Match[]; settled: Match[]; global?: boolean;
+//
+// `finished` shows the settled column. The group tab turns it off because its
+// finished matches live in the History tab instead (issue #34); the global tab
+// has no history pill, so it keeps its own finished list inline.
+function MatchList({ open, live, settled, global = false, finished = true }: {
+  open: Match[]; live: Match[]; settled: Match[]; global?: boolean; finished?: boolean;
 }) {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
@@ -542,10 +546,14 @@ function MatchList({ open, live, settled, global = false }: {
         /* Soonest first. */
         : upcoming.map(joinCard)}
 
-      <div className="section-label">Finished</div>
-      {settled.length === 0
-        ? <div className="cmp-empty">Nothing settled yet.</div>
-        : settled.map(m => <MatchCard key={m.id} match={m} />)}
+      {finished && (
+        <>
+          <div className="section-label">Finished</div>
+          {settled.length === 0
+            ? <div className="cmp-empty">Nothing settled yet.</div>
+            : settled.map(m => <MatchCard key={m.id} match={m} />)}
+        </>
+      )}
     </>
   );
 }
@@ -554,7 +562,8 @@ function MatchesTab({ data }: { data: CompetitionsResponse }) {
   return (
     <>
       <RatingCard rating={data.my_rating} matches={data.my_matches} />
-      <MatchList open={data.open} live={data.live} settled={data.settled} />
+      {/* Finished matches live in the History tab (issue #34), not here. */}
+      <MatchList open={data.open} live={data.live} settled={data.settled} finished={false} />
     </>
   );
 }
@@ -597,6 +606,165 @@ function RankingTab() {
       ))}
       {rows.length === 0 && <div className="cmp-empty">No members yet.</div>}
     </div>
+  );
+}
+
+/* ── history (issue #34) ─────────────────────────────────────────────────────── */
+
+const HISTORY_WINDOWS = [
+  { days: 1, label: '24h' },
+  { days: 7, label: '7d' },
+  { days: 30, label: '30d' },
+];
+
+// SVG user units, stretched to the card width — strokes use
+// vector-effect="non-scaling-stroke" to stay even, same as the Buzz chart.
+const GRAPH_VB_W = 300;
+const GRAPH_VB_H = 100;
+
+// A window's end labels: clock time inside a day, calendar date beyond it.
+function fmtAxis(t: number, days: number) {
+  const d = new Date(t);
+  return days <= 1
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// Rating over time for the selected window. The line runs from the rating the
+// player carried INTO the window, through every settlement inside it, to the
+// current rating at "now". The whole personal list is windowed here rather than
+// on the server, so one payload feeds 24h/7d/30d.
+function RatingGraph({ personal, currentRating }: {
+  personal: PersonalHistoryEntry[]; currentRating: number;
+}) {
+  const [days, setDays] = useState(7);
+  const now = Date.now();
+  const start = now - days * 24 * HOUR;
+
+  const asc = [...personal].sort((a, b) => a.settled_at - b.settled_at);
+  const windowEntries = asc.filter(e => e.settled_at >= start);
+  const prior = asc.filter(e => e.settled_at < start);
+
+  // The rating entering the window: the last settlement before it, or — when the
+  // window reaches back past the player's first ever match — the rating they took
+  // into that first match (stored on the entry, so there is no 1000 literal to
+  // drift from the server's BASE_RATING). With no matches at all it is just the
+  // current rating, giving a flat line.
+  const startRating = prior.length
+    ? prior[prior.length - 1].rating_after
+    : windowEntries.length
+      ? windowEntries[0].rating_before
+      : currentRating;
+
+  const points = [
+    { t: start, r: startRating },
+    ...windowEntries.map(e => ({ t: e.settled_at, r: e.rating_after })),
+    { t: now, r: currentRating },
+  ];
+
+  const ratings = points.map(p => p.r);
+  const min = Math.min(...ratings);
+  const max = Math.max(...ratings);
+  // A flat line would divide by zero without a fixed pad; otherwise pad the range
+  // so the curve never rides the top or bottom edge.
+  const pad = max === min ? 10 : (max - min) * 0.15;
+  const lo = min - pad;
+  const hi = max + pad;
+
+  const span = now - start;
+  const x = (t: number) => ((t - start) / span) * GRAPH_VB_W;
+  const y = (r: number) => GRAPH_VB_H - ((r - lo) / (hi - lo)) * GRAPH_VB_H;
+
+  const line = points.map(p => `${x(p.t).toFixed(2)},${y(p.r).toFixed(2)}`).join(' ');
+  const area = `${x(start).toFixed(2)},${GRAPH_VB_H} ${line} ${GRAPH_VB_W},${GRAPH_VB_H}`;
+
+  const net = currentRating - startRating;
+  const windowLabel = HISTORY_WINDOWS.find(w => w.days === days)!.label;
+
+  return (
+    <div className="card buzz-card">
+      <div className="buzz-head">
+        <div className="section-label">Rating</div>
+        <div className="buzz-range">
+          {HISTORY_WINDOWS.map(w => (
+            <button key={w.days}
+              className={`buzz-range-btn${days === w.days ? ' active' : ''}`}
+              onClick={() => setDays(w.days)}>{w.label}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="cmp-hist-figure">
+        <span className="cmp-hist-now">{fmtRating(currentRating)}</span>
+        <span className={deltaClass(net)}>{fmtDelta(net)} · {windowLabel}</span>
+      </div>
+
+      <div className="buzz-chart">
+        <div className="buzz-plot">
+          <svg viewBox={`0 0 ${GRAPH_VB_W} ${GRAPH_VB_H}`} preserveAspectRatio="none" role="img"
+            aria-label={`Rating over the last ${days === 1 ? '24 hours' : `${days} days`}`}>
+            <defs>
+              <linearGradient id="cmp-hist-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.03" />
+              </linearGradient>
+            </defs>
+            <polygon points={area} fill="url(#cmp-hist-fill)" />
+            <polyline points={line} fill="none" stroke="var(--accent)" strokeWidth="1.5"
+              strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+          </svg>
+        </div>
+        <div className="buzz-axis">
+          <span className="buzz-axis-label" style={{ left: 0 }}>{fmtAxis(start, days)}</span>
+          <span className="buzz-axis-label" style={{ right: 0 }}>{fmtAxis(now, days)}</span>
+        </div>
+      </div>
+
+      {windowEntries.length === 0 && <p className="buzz-note">No rated matches in this window.</p>}
+    </div>
+  );
+}
+
+// One settled match the caller played, as an elo-change row.
+function HistoryRow({ e }: { e: PersonalHistoryEntry }) {
+  return (
+    <div className="cmp-hist-row">
+      <span className="cmp-hist-mode"><Icon name={MODE_ICON[e.mode]} size={13} /></span>
+      <div className="cmp-hist-main">
+        <span className="cmp-hist-title">{e.title || MODE_LABEL[e.mode]}</span>
+        <span className="cmp-hist-when">{fmtDateTime(e.settled_at)}</span>
+      </div>
+      <span className="cmp-hist-rating">{fmtRating(e.rating_after)}</span>
+      <span className={deltaClass(e.delta)}>{fmtDelta(e.delta)}</span>
+    </div>
+  );
+}
+
+// Personal rating history (graph + elo-change list) and the group's finished
+// matches as end-match cards (issue #34).
+function HistoryTab() {
+  const { data, isLoading } = useQuery<CompetitionHistoryResponse>({
+    queryKey: ['competitions', 'history'],
+    queryFn: () => api.get('/competitions/history'),
+    refetchInterval: 60000,
+  });
+
+  if (isLoading || !data) return <div className="page-loading">Loading…</div>;
+
+  return (
+    <>
+      <RatingGraph personal={data.personal} currentRating={data.my_rating} />
+
+      <div className="section-label">Your elo changes</div>
+      {data.personal.length === 0
+        ? <div className="cmp-empty">No settled matches yet.</div>
+        : <div className="cmp-hist-list">{data.personal.map(e => <HistoryRow key={e.match_id} e={e} />)}</div>}
+
+      <div className="section-label">Group history</div>
+      {data.group_history.length === 0
+        ? <div className="cmp-empty">No finished matches yet.</div>
+        : data.group_history.map(m => <MatchCard key={m.id} match={m} />)}
+    </>
   );
 }
 
@@ -883,6 +1051,7 @@ export function Compete() {
     ...(hasGroup ? [
       { id: 'matches' as Tab, label: 'Matches', icon: 'trophy' },
       { id: 'ranking' as Tab, label: 'Ranking', icon: 'medal' },
+      { id: 'history' as Tab, label: 'History', icon: 'chart-line' },
     ] : []),
     { id: 'global', label: 'Global', icon: 'globe' },
     { id: 'group', label: 'Group', icon: 'users' },
@@ -922,6 +1091,7 @@ export function Compete() {
           <div className="stats-tab-body cmp-body">
             {activeTab === 'matches' && <MatchesTab data={data} />}
             {activeTab === 'ranking' && <RankingTab />}
+            {activeTab === 'history' && <HistoryTab />}
             {activeTab === 'global' && <GlobalTab data={data} />}
             {activeTab === 'group' && (hasGroup ? <GroupTab /> : <GroupGate />)}
           </div>
