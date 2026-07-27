@@ -448,6 +448,62 @@ test('a 404 for a match id that does not exist', async () => {
   expect((await post(a, `/api/competitions/${randomUUID()}/join`)).status).toBe(404);
 });
 
+/* ── global (cross-group) matches (issue #35) ──────────────────────────────── */
+
+async function globalLobby(user, over = {}) {
+  const start = Date.now() + HOUR;
+  const res = await post(user, '/api/competitions', {
+    mode: 'ondemand', global: true, scope_start: start, scope_end: start + HOUR, ...over,
+  });
+  expect(res.status).toBe(201);
+  return res.body.match;
+}
+
+test('a global match needs no group, carries a null group_id, and rosters its creator', async () => {
+  const a = makeUser('a'); // deliberately in no group
+  const match = await globalLobby(a);
+  expect(match.group_id).toBeNull();
+  expect(match.participants.map((p) => p.user_id)).toEqual([a.id]);
+});
+
+test('anyone may read and join a global match, whatever group they are in', async () => {
+  const a = makeUser('a');
+  const drifter = makeUser('drifter');   // no group at all
+  const outsider = makeUser('outsider');
+  await createGroup(outsider);           // in an unrelated group
+
+  const match = await globalLobby(a);
+  // The group-match gate that 403s an outsider (see above) does not apply here.
+  expect((await get(drifter, `/api/competitions/${match.id}`)).status).toBe(200);
+  expect((await post(drifter, `/api/competitions/${match.id}/join`)).status).toBe(200);
+  expect((await post(outsider, `/api/competitions/${match.id}/join`)).status).toBe(200);
+});
+
+test('global matches surface in the global bucket: open to all, live only to participants', async () => {
+  const a = makeUser('a');
+  const drifter = makeUser('drifter');
+  const match = await globalLobby(a);
+
+  // A caller in no group still sees every open global lobby to browse...
+  const seen = await get(drifter, '/api/competitions');
+  expect(seen.body.global.open.map((m) => m.id)).toContain(match.id);
+  // ...but a lobby they have not joined is not in their live bucket.
+  expect(seen.body.global.live).toEqual([]);
+
+  // Once running it shows in the live bucket of everyone on its roster.
+  await post(drifter, `/api/competitions/${match.id}/join`);
+  db.prepare("UPDATE matches SET state = 'pending' WHERE id = ?").run(match.id);
+  expect((await get(drifter, '/api/competitions')).body.global.live.map((m) => m.id)).toContain(match.id);
+  expect((await get(a, '/api/competitions')).body.global.live.map((m) => m.id)).toContain(match.id);
+});
+
+test('the last player out cancels a global lobby', async () => {
+  const a = makeUser('a');
+  const match = await globalLobby(a);
+  expect((await post(a, `/api/competitions/${match.id}/leave`)).status).toBe(200);
+  expect(db.prepare('SELECT state FROM matches WHERE id = ?').get(match.id).state).toBe('cancelled');
+});
+
 /* ── listings ──────────────────────────────────────────────────────────────── */
 
 test('the match list buckets by state and a groupless caller gets empty buckets', async () => {

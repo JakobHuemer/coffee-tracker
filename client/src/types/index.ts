@@ -3,6 +3,9 @@ export interface Coffee {
   name: string;
   caffeine: number;
   icon: string;
+  // Drink class/kind (issue #11): 'coffee' | 'tea' | 'energy' | 'chocolate'.
+  // A semantic key like `icon` — the client owns the display label.
+  class: string;
 }
 
 export interface CoffeeEntry {
@@ -324,7 +327,8 @@ export interface MatchParticipant {
 
 export interface Match {
   id: string;
-  group_id: string;
+  // null for a global (cross-group) match that belongs to no group (issue #35).
+  group_id: string | null;
   mode: MatchMode;
   // Civil period for the recurring modes, null for user-created ones.
   period_key: string | null;
@@ -346,6 +350,9 @@ export interface CompetitionsResponse {
   open: Match[];
   live: Match[];
   settled: Match[];
+  // Group-less matches anyone can join (issue #35). `open` is every open global
+  // lobby; `live`/`settled` are only the ones the caller is in.
+  global: { open: Match[]; live: Match[]; settled: Match[] };
   my_rating: number;
   my_matches: number;
 }

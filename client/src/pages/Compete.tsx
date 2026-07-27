@@ -11,7 +11,7 @@ import type {
   Match, MatchMode, MatchParticipant, User,
 } from '../types';
 
-type Tab = 'matches' | 'ranking' | 'group';
+type Tab = 'matches' | 'ranking' | 'global' | 'group';
 
 const MODE_LABEL: Record<MatchMode, string> = {
   daily: 'Daily', weekly: 'Weekly', ondemand: 'Free-for-all', '1v1': '1v1', team: 'Team',
@@ -358,7 +358,7 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
 
 /* ── new match form ────────────────────────────────────────────────────────── */
 
-function NewMatchForm({ onDone }: { onDone: () => void }) {
+function NewMatchForm({ onDone, global = false }: { onDone: () => void; global?: boolean }) {
   const qc = useQueryClient();
   const [mode, setMode] = useState<MatchMode>('1v1');
   const [title, setTitle] = useState('');
@@ -376,6 +376,7 @@ function NewMatchForm({ onDone }: { onDone: () => void }) {
       title: title.trim() || null,
       scope_start: new Date(start).getTime(),
       scope_end: new Date(end).getTime(),
+      ...(global ? { global: true } : {}),
       ...(mode === 'team' ? { team_size: teamSize, side } : {}),
     }),
     onSuccess: () => {
@@ -458,7 +459,23 @@ function NewMatchForm({ onDone }: { onDone: () => void }) {
 
 /* ── tabs ──────────────────────────────────────────────────────────────────── */
 
-function MatchesTab({ data }: { data: CompetitionsResponse }) {
+function RatingCard({ rating, matches }: { rating: number; matches: number }) {
+  return (
+    <div className="cmp-rating-card card">
+      <div className="cmp-rating-num">{fmtRating(rating)}</div>
+      <div className="cmp-rating-label">
+        Your rating · {matches} {matches === 1 ? 'match' : 'matches'} settled
+      </div>
+    </div>
+  );
+}
+
+// The open/live/settled match columns, shared by the group tab and the global
+// tab. `global` only changes the creation flag and the empty-state copy —
+// join/leave and the rating cache are the same for both (issue #35).
+function MatchList({ open, live, settled, global = false }: {
+  open: Match[]; live: Match[]; settled: Match[]; global?: boolean;
+}) {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -481,17 +498,10 @@ function MatchesTab({ data }: { data: CompetitionsResponse }) {
 
   return (
     <>
-      <div className="cmp-rating-card card">
-        <div className="cmp-rating-num">{fmtRating(data.my_rating)}</div>
-        <div className="cmp-rating-label">
-          Your rating · {data.my_matches} {data.my_matches === 1 ? 'match' : 'matches'} settled
-        </div>
-      </div>
-
       {error && <div className="auth-error">{error}</div>}
 
       {creating
-        ? <NewMatchForm onDone={() => setCreating(false)} />
+        ? <NewMatchForm global={global} onDone={() => setCreating(false)} />
         : (
           <button className="btn-primary cmp-new-btn" onClick={() => setCreating(true)}>
             <Icon name="plus" size={14} /> New match
@@ -499,16 +509,16 @@ function MatchesTab({ data }: { data: CompetitionsResponse }) {
         )}
 
       <div className="section-label">Live now</div>
-      {data.live.length === 0
-        ? <div className="cmp-empty">Nothing running. Join tomorrow’s daily below.</div>
-        : data.live.map(m => <MatchCard key={m.id} match={m} />)}
+      {live.length === 0
+        ? <div className="cmp-empty">{global ? 'No global matches running.' : 'Nothing running. Join tomorrow’s daily below.'}</div>
+        : live.map(m => <MatchCard key={m.id} match={m} />)}
 
-      <div className="section-label">Waiting to start</div>
-      {data.open.length === 0
-        ? <div className="cmp-empty">Nothing open. Daily opens a day ahead, weekly two.</div>
+      <div className="section-label">{global ? 'Open lobbies' : 'Waiting to start'}</div>
+      {open.length === 0
+        ? <div className="cmp-empty">{global ? 'No open global matches — create one.' : 'Nothing open. Daily opens a day ahead, weekly two.'}</div>
         /* Soonest first: the API orders by start descending, which puts the
            match that starts last at the top of a list of upcoming ones. */
-        : [...data.open].sort((a, b) => a.scope_start - b.scope_start).map(m => (
+        : [...open].sort((a, b) => a.scope_start - b.scope_start).map(m => (
           <MatchCard
             key={m.id} match={m} busy={busy}
             onJoin={side => { setError(null); join.mutate({ id: m.id, side }); }}
@@ -517,9 +527,30 @@ function MatchesTab({ data }: { data: CompetitionsResponse }) {
         ))}
 
       <div className="section-label">Finished</div>
-      {data.settled.length === 0
+      {settled.length === 0
         ? <div className="cmp-empty">Nothing settled yet.</div>
-        : data.settled.map(m => <MatchCard key={m.id} match={m} />)}
+        : settled.map(m => <MatchCard key={m.id} match={m} />)}
+    </>
+  );
+}
+
+function MatchesTab({ data }: { data: CompetitionsResponse }) {
+  return (
+    <>
+      <RatingCard rating={data.my_rating} matches={data.my_matches} />
+      <MatchList open={data.open} live={data.live} settled={data.settled} />
+    </>
+  );
+}
+
+// Group-less matches, open to everyone. Reachable with or without a group, so
+// it carries its own rating card (issue #35).
+function GlobalTab({ data }: { data: CompetitionsResponse }) {
+  return (
+    <>
+      <RatingCard rating={data.my_rating} matches={data.my_matches} />
+      <div className="field-hint">Open to anyone — no group needed.</div>
+      <MatchList open={data.global.open} live={data.global.live} settled={data.global.settled} global />
     </>
   );
 }
@@ -828,11 +859,22 @@ export function Compete() {
     refetchInterval: 60000,
   });
 
+  const hasGroup = !!data?.group;
+
+  // Global and Group are always reachable; the group-scoped Matches/Ranking tabs
+  // only exist once the user is in a group (issue #35).
   const TABS: { id: Tab; label: string; icon: string }[] = [
-    { id: 'matches', label: 'Matches', icon: 'trophy' },
-    { id: 'ranking', label: 'Ranking', icon: 'medal' },
+    ...(hasGroup ? [
+      { id: 'matches' as Tab, label: 'Matches', icon: 'trophy' },
+      { id: 'ranking' as Tab, label: 'Ranking', icon: 'medal' },
+    ] : []),
+    { id: 'global', label: 'Global', icon: 'globe' },
     { id: 'group', label: 'Group', icon: 'users' },
   ];
+
+  // `tab` is user state and can name a tab that no longer exists (e.g. after
+  // leaving a group), so fall back to the first available tab for rendering.
+  const activeTab = TABS.some(t => t.id === tab) ? tab : TABS[0].id;
 
   return (
     <div className="page">
@@ -841,21 +883,19 @@ export function Compete() {
       <div className="page-header">
         <h2>Compete</h2>
         <p className="page-sub">
-          {data?.group ? data.group.name : 'Group matches, rated'}
+          {data?.group ? data.group.name : 'Rated matches'}
         </p>
       </div>
 
-      {isLoading ? (
+      {isLoading || !data ? (
         <div className="page-loading">Loading…</div>
-      ) : !data?.group ? (
-        <div className="stats-tab-body cmp-body"><GroupGate /></div>
       ) : (
         <>
           <div className="stats-tabs">
             {TABS.map(t => (
               <button
                 key={t.id}
-                className={`stats-tab-btn${tab === t.id ? ' active' : ''}`}
+                className={`stats-tab-btn${activeTab === t.id ? ' active' : ''}`}
                 onClick={() => setTab(t.id)}
               >
                 <span><Icon name={t.icon} /></span> {t.label}
@@ -864,9 +904,10 @@ export function Compete() {
           </div>
 
           <div className="stats-tab-body cmp-body">
-            {tab === 'matches' && <MatchesTab data={data} />}
-            {tab === 'ranking' && <RankingTab />}
-            {tab === 'group' && <GroupTab />}
+            {activeTab === 'matches' && <MatchesTab data={data} />}
+            {activeTab === 'ranking' && <RankingTab />}
+            {activeTab === 'global' && <GlobalTab data={data} />}
+            {activeTab === 'group' && (hasGroup ? <GroupTab /> : <GroupGate />)}
           </div>
         </>
       )}

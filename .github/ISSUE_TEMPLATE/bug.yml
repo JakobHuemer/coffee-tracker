@@ -1,0 +1,42 @@
+name: Bug
+description: Report something that is broken or behaves unexpectedly.
+title: "[Bug] <short title>"
+labels: ["type:bug", "priority:standard"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A maintainer will triage priority/effort labels.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What went wrong, in one or two lines.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact steps that trigger it.
+      placeholder: |
+        1. Go to Log Coffee
+        2. Pick Latte
+        3. Save
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser / device / OS where you saw it.
+      placeholder: Firefox 128, desktop, Linux
+    validations:
+      required: false

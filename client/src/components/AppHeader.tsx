@@ -18,6 +18,16 @@ export function AppHeader() {
         </div>
       </div>
       <div className="header-actions">
+        <a
+          className="header-btn"
+          href="https://github.com/JakobHuemer/coffee-tracker"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="View on GitHub"
+          aria-label="View project on GitHub"
+        >
+          <Icon name="github" />
+        </a>
         <button
           className="header-btn"
           onClick={toggleDark}

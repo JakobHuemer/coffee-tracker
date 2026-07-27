@@ -165,6 +165,13 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .cb-name { font-size: 0.67rem; font-weight: 600; text-align: center; line-height: 1.25; }
 .cb-mg   { font-size: 0.62rem; color: var(--text-muted); }
 
+/* Drinks are grouped by class (issue #11); each group gets a small header. */
+.coffee-classes { display: flex; flex-direction: column; gap: 16px; }
+.coffee-class-label {
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+}
+
 /* ── Log ─────────────────────────────────────────────────────────────────── */
 .log-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .log-count-pill { background: var(--accent-bg); color: var(--accent); font-size: 0.7rem; font-weight: 600; border-radius: 20px; padding: 3px 9px; }
@@ -379,7 +386,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .log-back-btn:hover { border-color: var(--accent); color: var(--accent); }
 .log-title { font-size: 1rem; font-weight: 700; }
 .log-details-step { flex: 1; overflow-y: auto; }
-.log-details-thumb-wrap { padding: 16px 16px 0; }
+.log-details-thumb-wrap { padding: 16px 16px 0; max-width: 640px; margin: 0 auto; }
 .log-details-thumb {
   width: 100%; max-height: 220px; object-fit: cover; border-radius: 10px; display: block;
 }
@@ -403,9 +410,12 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 
 /* Two equal buttons — camera and gallery are separate destinations, so neither
-   gets to look like the primary one. */
+   gets to look like the primary one. Capped and centered to line up with
+   .log-form below, which is max-width: 640px; on desktop an unconstrained row
+   stretched the buttons across the whole viewport (issue #39). Side padding
+   (not margin) keeps the mobile gutter once the row is centered. */
 .log-photo-actions {
-  display: flex; gap: 8px; margin: 16px 16px 0;
+  display: flex; gap: 8px; margin: 16px auto 0; max-width: 640px; padding: 0 16px;
 }
 .log-photo-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1;
@@ -818,6 +828,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   width: 40px; height: 40px; border-radius: 50%;
   background: var(--surface2); border: 1.5px solid var(--border);
   color: var(--text-sec); font-size: 1.15rem; line-height: 1; cursor: pointer;
+  text-decoration: none;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; transition: border-color 0.15s, color 0.15s, background 0.15s;
 }

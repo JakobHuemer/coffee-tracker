@@ -11,6 +11,15 @@ import { getSkipSpacing } from '../devFlags';
 import { api } from '../api/client';
 import type { Coffee, UnlockNotification } from '../types';
 
+// Display label per drink class (issue #11). The server sends the class id on
+// each catalog item; the client owns the label, mirroring how icon keys resolve.
+const CLASS_LABEL: Record<string, string> = {
+  coffee: 'Coffee',
+  chocolate: 'Chocolate',
+  tea: 'Tea',
+  energy: 'Energy',
+};
+
 export function LogCoffee() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -102,7 +111,7 @@ export function LogCoffee() {
   }
 
   async function handleSubmit() {
-    if (!selectedId) { setError('Please select a coffee type.'); return; }
+    if (!selectedId) { setError('Please select a drink.'); return; }
     if (!meetsContentRule) { setError('Public posts need a photo or a description.'); return; }
     // No future logs, nothing older than 24h — the picker flags both inline, so
     // this only catches a submit that races the window's edge. Re-resolved
@@ -220,7 +229,7 @@ export function LogCoffee() {
         )}
 
         <div className="log-form">
-          <div className="section-label">Coffee type</div>
+          <div className="section-label">Drink</div>
           {/* The menu is the server's now, so it can be missing. An empty grid
               under "Pick a coffee type to continue" is a dead end that blames
               the user for a failed fetch — say what happened and offer a retry. */}
@@ -232,17 +241,24 @@ export function LogCoffee() {
               <button className="log-menu-retry" onClick={() => refetchMenu()}>Try again</button>
             </div>
           ) : (
-            <div className="coffee-grid">
-              {coffees.map(c => (
-                <button
-                  key={c.id}
-                  className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
-                  onClick={() => setSelectedId(c.id)}
-                >
-                  <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
-                  <span className="cb-name">{c.name}</span>
-                  <span className="cb-mg">{c.caffeine}mg</span>
-                </button>
+            <div className="coffee-classes">
+              {[...new Set(coffees.map(c => c.class))].map(cls => (
+                <div className="coffee-class" key={cls}>
+                  <div className="coffee-class-label">{CLASS_LABEL[cls] ?? cls}</div>
+                  <div className="coffee-grid">
+                    {coffees.filter(c => c.class === cls).map(c => (
+                      <button
+                        key={c.id}
+                        className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
+                        onClick={() => setSelectedId(c.id)}
+                      >
+                        <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
+                        <span className="cb-name">{c.name}</span>
+                        <span className="cb-mg">{c.caffeine}mg</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -293,7 +309,7 @@ export function LogCoffee() {
           {/* Only ask for a pick when there is something to pick from — with no
               menu the block above already explains why. */}
           {!selectedId && coffees.length > 0 && (
-            <div className="log-requirement-hint">Pick a coffee type to continue.</div>
+            <div className="log-requirement-hint">Pick a drink to continue.</div>
           )}
           {selectedId && !meetsContentRule && (
             <div className="log-requirement-hint">Add a photo or write a description to post publicly.</div>
