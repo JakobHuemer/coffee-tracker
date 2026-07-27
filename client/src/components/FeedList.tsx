@@ -21,6 +21,15 @@ function timeAgo(ms: number): string {
   return `${d}d ago`;
 }
 
+// The exact instant a coffee was logged, to the minute, shown beside the
+// coarse "3d ago" so the precise time is never lost (issue #29). Rendered in
+// the viewer's own locale/zone.
+function exactTime(ms: number): string {
+  return new Date(ms).toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 // Apply fn to the one post matching id across every infinite-query page,
 // returning a new InfiniteData so React Query treats it as changed.
 function patchList(
@@ -77,7 +86,9 @@ function PostCard({
           : <span className="feed-avatar">{post.avatar}</span>}
         <div className="feed-post-meta">
           <span className="feed-username">{post.username}</span>
-          <span className="feed-time">{timeAgo(post.logged_at)}</span>
+          <span className="feed-time" title={new Date(post.logged_at).toLocaleString()}>
+            {timeAgo(post.logged_at)} · {exactTime(post.logged_at)}
+          </span>
         </div>
         {/* Only the owner's own list can contain private posts, but the badge is
             driven by the flag rather than the list so it can never mislabel. */}
@@ -102,7 +113,9 @@ function PostCard({
         >
           <div className="gallery-lightbox-meta">
             <span className="gallery-lightbox-coffee">{post.coffee_id.replace(/_/g, ' ')}</span>
-            <span className="gallery-lightbox-date">{timeAgo(post.logged_at)}</span>
+            <span className="gallery-lightbox-date" title={new Date(post.logged_at).toLocaleString()}>
+              {timeAgo(post.logged_at)} · {exactTime(post.logged_at)}
+            </span>
           </div>
           {post.description && <p className="gallery-lightbox-desc">{post.description}</p>}
         </PhotoLightbox>
