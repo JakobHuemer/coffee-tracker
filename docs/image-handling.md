@@ -108,15 +108,13 @@ image_variants
   UNIQUE(image_id, format, width)
 ```
 
-`coffee_entries` and `users` gain an `image_id` FK **alongside** the existing
-`photo_path`, which stays until every reader is migrated. A backfill step wraps
-each existing `photo_path`/`profile_photo` file as an `images` row with a single
-`webp`? — no: it is whatever format it already is — a single variant of its
-actual format at its actual size. Existing files are never rewritten
-(stability, VALUES 1); they just become a one-variant image that still serves.
-
-Migration is **additive and idempotent**, next number after the current head
-(currently 013 → `014_add_image_variants.js`). Never edit a shipped migration.
+`coffee_entries` and `users` gain a nullable `image_id` FK **alongside** the
+existing `photo_path` / `profile_photo`, which stay until every reader is moved
+over. The schema migration is **additive and idempotent**, next number after the
+current head (currently 013 → `014_add_image_variants.js`); never edit a shipped
+migration. How the existing single-file images become `images` + `image_variants`
+rows — without re-encoding at boot and without losing a byte — is its own plan:
+see [Migrating existing images](#migrating-existing-images) below.
 
 ### Serving
 
@@ -138,13 +136,118 @@ original is never uploaded. If a server-fed fallback did receive a full file,
 the server keeps it only long enough to derive variants, then deletes it — it is
 never written into `image_variants`, so no served URL can ever reference it.
 
+## Migrating existing images
+
+Two committed users of images exist today, both single files in `UPLOAD_DIR`:
+`coffee_entries.photo_path` (named `<uuid>.<ext>`) and `users.profile_photo`
+(named `pfp_<uuid>.<ext>`). `<ext>` comes from the upload MIME and is one of
+`jpg|png|webp|gif|heic|heif` — so **the format is recoverable from the filename
+alone**, no decode needed to classify a legacy file.
+
+Goal: every existing file becomes one `images` row + one `image_variants` row,
+linked by the new `image_id`, with **zero re-encoding at migration time and zero
+data loss**. This splits into two mechanisms because they have opposite
+constraints — one must be instant and infallible, the other is slow and
+best-effort.
+
+### Part 1 — schema + cheap wrap: numbered migration `014_add_image_variants.js`
+
+Runs at boot, synchronously, before routes mount (`migrate.js`), so it must be
+**fast, deterministic and DB-only**. A boot migration that decoded and
+re-encoded every historical photo through a WASM codec would make startup
+unbounded and could fail-fast the whole process (VALUES 7) over one malformed
+file. So this step touches the database only — never the pixels.
+
+1. **DDL** — create `images` and `image_variants`; add the nullable `image_id`
+   column to `coffee_entries` and `users`. Guarded with `PRAGMA table_info`
+   checks, exactly like `004`/`006`, so a re-run is a no-op.
+2. **Wrap, DB-only** — for each row with a non-null `photo_path` /
+   `profile_photo`:
+   - insert an `images` row: `id` = new uuid, `owner_id` = that row's user,
+     `created_at` = the entry's `created_at` (or `now` for profile photos),
+     `orig_width`/`orig_height` = **NULL** (unknown without decoding — that is
+     why they are nullable).
+   - insert one `image_variants` row: `format` parsed from the filename
+     extension (`heif`→`heic`, everything else 1:1), `width` = NULL (unknown),
+     `path` = the **existing filename, unchanged**, `bytes` = NULL.
+   - set the row's `image_id`.
+3. **Idempotent** — guard each wrap on `image_id IS NULL`. Recorded atomically
+   in `schema_migrations`, so it runs once; the guard just makes a
+   crash-then-retry safe.
+
+The files on disk are **never moved, renamed, or rewritten**. The original file
+stays put and remains the served bytes — `photo_path` is **not** dropped here
+(a later migration removes it once every reader uses `image_id`, the way `003`
+dropped `email`).
+
+> **"Never serve the original" vs. legacy files.** That rule targets *new*
+> uploads, where a full-res camera master exists and is withheld. A legacy file
+> is simply whatever the user uploaded through the old flow and was already the
+> served image — there is no higher-res original to hold back, so serving it
+> as-is is correct. Part 2 then produces smaller/modern variants around it.
+
+### Part 2 — re-encode backfill: one-time resumable job (NOT a boot migration)
+
+A maintenance script (`bun server/scripts/backfill-images.js`) run once after
+`014` ships. All the heavy, failure-prone work lives here so boot stays fast and
+fail-fast stays meaningful. For each `images` row that still has only its single
+legacy variant:
+
+- decode the legacy file **once**; backfill the real `orig_width`/`orig_height`
+  onto the `images` row and `width`/`bytes` onto the legacy variant.
+- generate the missing **sizes** (thumb/medium/large, **never upscaling** past
+  the source) and **formats** (WebP, AVIF) with the WASM codecs, writing each as
+  a new file + `image_variants` row.
+- **HEIC/HEIF** legacy files (old Safari uploads) that browsers can't render are
+  converted here — this is the moment an un-renderable legacy image becomes
+  viewable.
+
+Properties:
+
+- **Resumable / idempotent** — keyed on "a variant with this
+  `(image_id, format, width)` already exists", so an interrupted run only fills
+  gaps and re-running is safe.
+- **Never strands an image** — the legacy file is deleted only once at least one
+  browser-renderable variant exists for that image; there is always ≥1 servable
+  variant.
+- **Throttled** — batched so it doesn't peg CPU on a live box. Nothing depends
+  on it finishing: the legacy variant already serves throughout, so it can take
+  as long as it needs.
+
+### Reader coexistence during the transition
+
+- API image payloads prefer the `image_id` variant list; if `image_id` is null
+  they fall back to the single `photo_path`/`profile_photo` URL. The
+  `<ResponsiveImage>` component accepts either shape, so no render site is left
+  reading the old field directly (VALUES 0.4 — every dependent moves together).
+- **Deletion must delete every variant file**, not just one path. The delete
+  paths in `coffees.js` (DELETE entry), `auth.js` (delete profile photo, delete
+  account) currently `fs.unlink` a single file; they must unlink every
+  `image_variants.path` for the image. The FK's `ON DELETE CASCADE` clears the
+  rows, but the **files** need explicit unlinks — a cascade does not touch disk.
+
+### Verification (gate before dropping `photo_path`)
+
+- Zero orphans: every row with a non-null legacy path has a non-null `image_id`.
+- Every `image_variants.path` resolves to a file on disk; no `images` row has
+  zero variants.
+- `PRAGMA integrity_check` = `ok` after the migration, and after a hard kill
+  mid-backfill (WAL replay leaves either the single-variant or the multi-variant
+  state, never a torn row) — VALUES 2.
+- Only once all pass does a later numbered migration (`015_drop_photo_path.js`,
+  `manualTransaction` like `003`) remove `photo_path` / `profile_photo`.
+
 ## Phasing (each phase is a shippable PR)
 
 1. **Client downscale + WebP master, server stores it.** Immediate bandwidth
    win, no schema change beyond storing format/size. Single variant.
 2. **Multi-size + `srcset`.** Server derives thumb/medium/large; introduce
-   `images`/`image_variants` + the `014` migration + `<ResponsiveImage>`.
-3. **AVIF variants** via server WASM encode + `<picture type>` negotiation.
+   `images`/`image_variants` + the `014` migration + `<ResponsiveImage>`. Ship
+   the [existing-image migration](#migrating-existing-images): `014` wraps every
+   legacy file (Part 1), then the backfill job (Part 2) re-encodes them into the
+   new sizes.
+3. **AVIF variants** via server WASM encode + `<picture type>` negotiation. The
+   same backfill job gains AVIF output, so legacy images pick it up too.
 4. **(Optional) tagging/classification** — separate, own issue-sized effort;
    out of scope for the core delivery and only worth doing if a lightweight
    model can run in-container without violating VALUES 1/5.
@@ -163,6 +266,6 @@ never written into `image_variants`, so no served URL can ever reference it.
 - Confirm `@jsquash` runs clean under the container's Bun version; if not, the
   fallback decision (native `sharp` vs. deferring AVIF) changes.
 - Whether avatars need all three sizes or just `thumb` (likely just `thumb`).
-- Cleanup: deleting an entry must delete every variant file, not just one path
-  — the `image_variants` rows make that a single query, but wire it into the
-  existing `fs.unlink` paths in `coffees.js` / `auth.js`.
+- Whether to convert legacy HEIC/HEIF eagerly in the backfill or lazily on first
+  request — the migration section assumes eager, which is simpler to reason about
+  but front-loads the CPU.
