@@ -1067,6 +1067,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
    its existing spacing untouched. */
 .cmp-body > .empty-state,
 .cmp-body > .leaderboard,
+.cmp-body > .field-hint,
 .cmp-body > .auth-error { padding-left: 16px; padding-right: 16px; }
 
 /* Section headings carry the divider that separates one run of match cards
@@ -1231,10 +1232,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   color: var(--text-muted); transition: color 0.15s, border-color 0.15s;
 }
 .cmp-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
-.cmp-owner-tag {
-  margin-left: 6px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--text-muted);
-}
 .cmp-settings-btn, .cmp-leave-btn { margin: 0 16px; width: calc(100% - 32px); }
 
 /* Two rosters side by side need roughly a tablet's width before the standings

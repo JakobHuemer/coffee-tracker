@@ -317,3 +317,12 @@ rate people on a window they were never told about.
 - **Zero-match users on the leaderboard**: they sort last regardless of rating.
   The default 1000 would otherwise rank someone who has never played above an
   active player sitting just below it. Their rank renders as `—`.
+
+- **Group vs global leaderboard**: there is one ranking, computed globally.
+  `GET /competitions/leaderboard?scope=global` returns the top page of every
+  user; `?scope=group` returns the caller's group members with the SAME global
+  rank each carries on the global board — a three-person group reads something
+  like #4, #17, #58, not 1-2-3. The response always carries `me` (the caller's
+  own row, so a player outside the global page still sees their standing) and
+  echoes the `scope` back. An unknown `scope` value silently falls back to
+  global — the client trusts the echoed field, not its own query string.

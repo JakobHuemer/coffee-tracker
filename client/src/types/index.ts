@@ -387,10 +387,17 @@ export interface LeaderboardEntry {
   rank: number;
 }
 
+// `rank` is global in both scopes — the group scope filters who is listed, it
+// does not re-rank them (issue #53). `me` is the caller's own row, always
+// present even when they fall outside the returned page.
 export interface LeaderboardResponse {
+  scope: CompeteScope;
   group: { id: string; name: string } | null;
+  me: LeaderboardEntry | null;
   leaderboard: LeaderboardEntry[];
 }
+
+export type CompeteScope = 'global' | 'group';
 
 // One settled match the caller played, as an elo-change event (issue #34). Only
 // settled matches appear, so rating_before/after/delta are always present here

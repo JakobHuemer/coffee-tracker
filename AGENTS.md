@@ -46,8 +46,9 @@ in `server/src/data/*.js` (static). Endpoints:
 - `compare` — `GET /:username`
 - `groups` — `GET /`, `GET /mine`, `POST /`, `POST /join`, `POST /leave`,
   `PATCH /:id`, `GET /:id` (competition groups; one per user at a time)
-- `competitions` — `GET /`, `GET /leaderboard`, `POST /`, `POST /:id/join`,
-  `POST /:id/leave`, `GET /:id` (see [docs/competitions-elo.md](./docs/competitions-elo.md))
+- `competitions` — `GET /`, `GET /leaderboard?scope=global|group`, `GET /history`,
+  `POST /`, `POST /:id/join`, `POST /:id/leave`, `GET /:id`
+  (see [docs/competitions-elo.md](./docs/competitions-elo.md))
 
 Client pages in `client/src/pages/*` map 1:1 to these areas.
 Test suite: `server/src/*.test.js` (run with `bun run test`). Two kinds:
