@@ -277,7 +277,9 @@ to floating-point precision.
   `P_B = -P_A`), then apportion each side's split to its own pot. Both
   invariants — whole match sums to 0, each side sums to its pot — hold exactly.
 - Ties on the fractional part go to the earlier participant, so a settlement is
-  a pure function of roster order (`joined_at`), never of float luck.
+  a pure function of roster order rather than of float luck. That order has to
+  be total for the result to be reproducible, so `settleMatch` reads the roster
+  `ORDER BY joined_at, user_id` — an auto-joined roster shares one `joined_at`.
 
 Accepted consequence: a mismatch lopsided enough that the raw delta is under
 half a point settles at 0 for everyone. Nobody's rating moves, which is the

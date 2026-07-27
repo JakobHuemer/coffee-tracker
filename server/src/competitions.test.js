@@ -453,13 +453,17 @@ test('settling a daily match moves rating from the idle player to the active one
   expect(matchById(daily.id).state).toBe('settled');
   expect(active.delta).toBeGreaterThan(0);
   expect(idle.delta).toBeLessThan(0);
-  expect(active.delta + idle.delta).toBeCloseTo(0, 9);
+  expect(active.delta + idle.delta).toBe(0);
   expect(active.rating_before).toBe(BASE_RATING);
-  expect(active.rating_after).toBeCloseTo(BASE_RATING + active.delta, 9);
+  expect(active.rating_after).toBe(BASE_RATING + active.delta);
   expect(idle.score).toBe(0);
 
-  expect(ratingOf(a)).toBeCloseTo(active.rating_after, 9);
-  expect(ratingOf(b)).toBeCloseTo(idle.rating_after, 9);
+  // Whole points survive the round-trip through SQLite's REAL columns (#49).
+  for (const r of rows) expect(Number.isInteger(r.delta)).toBe(true);
+  expect(Number.isInteger(ratingOf(a))).toBe(true);
+
+  expect(ratingOf(a)).toBe(active.rating_after);
+  expect(ratingOf(b)).toBe(idle.rating_after);
   expect(db.prepare('SELECT matches FROM user_ratings WHERE user_id = ?').get(a).matches).toBe(1);
 });
 
@@ -519,8 +523,9 @@ test('a team match settles zero-sum and records each member\'s contribution shar
 
   const rows = participants(match.id);
   expect(matchById(match.id).state).toBe('settled');
-  expect(rows.reduce((s, r) => s + r.delta, 0)).toBeCloseTo(0, 9);
+  expect(rows.reduce((s, r) => s + r.delta, 0)).toBe(0);
   for (const r of rows) expect(r.contribution_share).toBeGreaterThan(0);
+  for (const r of rows) expect(Number.isInteger(r.delta)).toBe(true);
 
   const carry = rows.find((r) => r.user_id === users[0]);
   const passenger = rows.find((r) => r.user_id === users[1]);
@@ -566,7 +571,7 @@ test('ratings compound across matches — the second match starts from the first
 
   const p1 = participants(first.id).find((p) => p.user_id === a);
   const p2 = participants(second.id).find((p) => p.user_id === a);
-  expect(p2.rating_before).toBeCloseTo(p1.rating_after, 9);
+  expect(p2.rating_before).toBe(p1.rating_after);
   expect(db.prepare('SELECT matches FROM user_ratings WHERE user_id = ?').get(a).matches).toBe(2);
 });
 

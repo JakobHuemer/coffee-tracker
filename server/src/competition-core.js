@@ -85,7 +85,9 @@ function actualFromRank(score, opponentScore) {
 // Ties on the fractional part go to the earlier entry, which makes a settlement
 // a pure function of participant order (`joined_at` at the call site).
 function apportion(raw, total) {
-  const floors = raw.map((v) => Math.floor(v));
+  // `+ 0` folds Math.floor(-0) back to 0, so a zero delta is never the negative
+  // zero that would make `delta === 0` pass but `Object.is(delta, 0)` fail.
+  const floors = raw.map((v) => Math.floor(v) + 0);
   const leftover = total - floors.reduce((a, b) => a + b, 0);
   const byFraction = raw
     .map((v, i) => ({ i, frac: v - floors[i] }))
