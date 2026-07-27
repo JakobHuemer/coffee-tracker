@@ -290,6 +290,13 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
   const userId = useAuthStore(s => s.user?.id);
   const inMatch = match.participants.some(p => p.user_id === userId);
   const isLobby = match.state === 'open';
+  // The window has started and the match is neither settled nor cancelled — it
+  // is running, whether it is locked ('pending') or still an open weekly lobby
+  // on its first day (issue #44). Drives the "live" badge and the "Ends …" line
+  // together, so a running match never shows an "open" badge or a "Starts …"
+  // time while it sits in the Live now section.
+  const isRunning = (match.state === 'pending' || match.state === 'open') && match.scope_start <= Date.now();
+  const isDone = match.state === 'settled' || match.state === 'cancelled';
   const sideCount = (side: 'A' | 'B') => match.participants.filter(p => p.side === side).length;
 
   return (
@@ -299,17 +306,17 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
           <Icon name={MODE_ICON[match.mode]} size={13} /> {MODE_LABEL[match.mode]}
         </span>
         {match.title && <span className="cmp-match-title">{match.title}</span>}
-        <span className={`cmp-state ${match.state}`}>
-          {match.state === 'pending' ? 'live' : match.state}
+        <span className={`cmp-state ${isRunning ? 'pending' : match.state}`}>
+          {isRunning ? 'live' : match.state}
         </span>
       </div>
 
       <div className="cmp-match-when">
-        {isLobby
-          ? <>Starts {fmtRelative(match.scope_start)} · {fmtDateTime(match.scope_start)}</>
-          : match.state === 'pending'
+        {isDone
+          ? <>{fmtDateTime(match.scope_start)} — {fmtDateTime(match.scope_end)}</>
+          : isRunning
             ? <>Ends {fmtRelative(match.scope_end)} · {fmtDateTime(match.scope_end)}</>
-            : <>{fmtDateTime(match.scope_start)} — {fmtDateTime(match.scope_end)}</>}
+            : <>Starts {fmtRelative(match.scope_start)} · {fmtDateTime(match.scope_start)}</>}
       </div>
 
       {match.state === 'cancelled' ? (
@@ -496,6 +503,20 @@ function MatchList({ open, live, settled, global = false }: {
 
   const busy = join.isPending || leave.isPending;
 
+  // A match whose window has already started is live — even while it is still an
+  // open, joinable lobby (a weekly stays joinable through its first day, issue
+  // #44). Only matches that have not started yet are "waiting to start".
+  const now = Date.now();
+  const openStarted = [...open].filter(m => m.scope_start <= now).sort((a, b) => a.scope_start - b.scope_start);
+  const upcoming = [...open].filter(m => m.scope_start > now).sort((a, b) => a.scope_start - b.scope_start);
+  const joinCard = (m: Match) => (
+    <MatchCard
+      key={m.id} match={m} busy={busy}
+      onJoin={side => { setError(null); join.mutate({ id: m.id, side }); }}
+      onLeave={() => { setError(null); leave.mutate(m.id); }}
+    />
+  );
+
   return (
     <>
       {error && <div className="auth-error">{error}</div>}
@@ -509,22 +530,17 @@ function MatchList({ open, live, settled, global = false }: {
         )}
 
       <div className="section-label">Live now</div>
-      {live.length === 0
-        ? <div className="cmp-empty">{global ? 'No global matches running.' : 'Nothing running. Join tomorrow’s daily below.'}</div>
-        : live.map(m => <MatchCard key={m.id} match={m} />)}
+      {live.length === 0 && openStarted.length === 0
+        ? <div className="cmp-empty">{global ? 'No global matches running.' : 'Nothing running yet.'}</div>
+        /* Running matches: locked ones (pending) first, then any still-joinable
+           lobby whose window has already started. */
+        : <>{live.map(m => <MatchCard key={m.id} match={m} />)}{openStarted.map(joinCard)}</>}
 
       <div className="section-label">{global ? 'Open lobbies' : 'Waiting to start'}</div>
-      {open.length === 0
-        ? <div className="cmp-empty">{global ? 'No open global matches — create one.' : 'Nothing open. Daily opens a day ahead, weekly two.'}</div>
-        /* Soonest first: the API orders by start descending, which puts the
-           match that starts last at the top of a list of upcoming ones. */
-        : [...open].sort((a, b) => a.scope_start - b.scope_start).map(m => (
-          <MatchCard
-            key={m.id} match={m} busy={busy}
-            onJoin={side => { setError(null); join.mutate({ id: m.id, side }); }}
-            onLeave={() => { setError(null); leave.mutate(m.id); }}
-          />
-        ))}
+      {upcoming.length === 0
+        ? <div className="cmp-empty">{global ? 'No open global matches — create one.' : 'Nothing waiting. Daily opens a day ahead, weekly two.'}</div>
+        /* Soonest first. */
+        : upcoming.map(joinCard)}
 
       <div className="section-label">Finished</div>
       {settled.length === 0

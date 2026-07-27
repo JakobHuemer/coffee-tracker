@@ -59,13 +59,13 @@ function logCoffee(userId, at, { coffeeId = 'espresso', mg = 80 } = {}) {
     .run(randomUUID(), userId, coffeeId, mg, at);
 }
 
-function openMatch({ group, mode, start, end, teamSize = null, state = 'open', roster = [] }) {
+function openMatch({ group, mode, start, end, teamSize = null, state = 'open', roster = [], periodKey = null }) {
   const id = randomUUID();
   db.prepare(`
     INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
                          scope_start, scope_end, state, k_factor, team_size, created_at)
-    VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?)
-  `).run(id, group.id, mode, start, end, state, K_BY_MODE[mode], teamSize, Date.now());
+    VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)
+  `).run(id, group.id, mode, periodKey, start, end, state, K_BY_MODE[mode], teamSize, Date.now());
   for (const { userId, side = null } of roster) {
     db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, ?, ?)')
       .run(randomUUID(), id, userId, side, Date.now());
@@ -346,6 +346,47 @@ test('a lobby that filled goes live, one that did not is cancelled with no ratin
   expect(matchById(filled.id).state).toBe('pending');
   expect(matchById(empty.id).state).toBe('cancelled');
   expect(db.prepare('SELECT COUNT(*) AS c FROM user_ratings').get().c).toBe(0);
+});
+
+test('a weekly stays open through its first day, then locks like anything else (issue #44)', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = makeGroup('UTC', [a, b]);
+  // Monday 2026-07-20 UTC; window runs Mon 00:00 → Sun 23:59:59.999.
+  const monday = Date.parse('2026-07-20T00:00:00Z');
+  const weekly = openMatch({
+    group, mode: 'weekly', periodKey: '2026-07-20',
+    start: monday, end: monday + 7 * DAY - 1,
+    roster: [{ userId: a }, { userId: b }],
+  });
+
+  // Midday on the first day: the window is running, but the lobby is NOT locked
+  // — nobody joins a weekly at 00:00 Monday, so day one stays joinable.
+  lockDueLobbies(monday + 12 * 3600000);
+  expect(matchById(weekly.id).state).toBe('open');
+
+  // A second before the first day ends it is still open...
+  lockDueLobbies(Date.parse('2026-07-21T00:00:00Z') - 1);
+  expect(matchById(weekly.id).state).toBe('open');
+
+  // ...and at the next local midnight it locks like any other match.
+  lockDueLobbies(Date.parse('2026-07-21T00:00:00Z'));
+  expect(matchById(weekly.id).state).toBe('pending');
+});
+
+test('a daily still locks at its start instant, not a day later', () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = makeGroup('UTC', [a, b]);
+  const monday = Date.parse('2026-07-20T00:00:00Z');
+  const daily = openMatch({
+    group, mode: 'daily', periodKey: '2026-07-20',
+    start: monday, end: monday + DAY - 1,
+    roster: [{ userId: a }, { userId: b }],
+  });
+  // A minute in, the daily is already locked — the first-day grace is weekly-only.
+  lockDueLobbies(monday + 60000);
+  expect(matchById(daily.id).state).toBe('pending');
 });
 
 test('period_key is what tells a recurring match from a user-created one', () => {
