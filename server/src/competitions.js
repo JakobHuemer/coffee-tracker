@@ -17,6 +17,7 @@ const {
   performanceScore, settleFfa, settleTeams,
 } = require('./competition-core');
 const { localDateStr, localWallInstant, localDayBounds, isValidTz, DEFAULT_TZ } = require('./time');
+const { scoreMgSql } = require('./data/coffee-scores');
 
 // How often the ticker looks for work. A match settles on the first tick after
 // its window closes, so this is also the worst-case settlement lag.
@@ -70,10 +71,13 @@ function weeklyWindow(group, now = Date.now(), offsetDays = 0) {
 
 // ── layer 1: score a user over a window ──────────────────────────────────────
 
+// Caffeine is summed through scoreMgSql(), not the stored caffeine_mg — a few
+// drinks score differently from what the app displays. See
+// ./data/coffee-scores.js.
 const metricsStmt = () => db.prepare(`
-  SELECT COALESCE(SUM(caffeine_mg), 0) AS caffeine,
-         COUNT(*)                      AS cups,
-         COUNT(DISTINCT coffee_id)     AS variety
+  SELECT COALESCE(SUM(${scoreMgSql()}), 0) AS caffeine,
+         COUNT(*)                          AS cups,
+         COUNT(DISTINCT coffee_id)         AS variety
   FROM coffee_entries
   WHERE user_id = ? AND logged_at >= ? AND logged_at <= ?
 `);
@@ -98,9 +102,9 @@ function scoresForMany(userIds, start, end) {
   const holes = userIds.map(() => '?').join(',');
   const rows = db.prepare(`
     SELECT user_id,
-           COALESCE(SUM(caffeine_mg), 0) AS caffeine,
-           COUNT(*)                      AS cups,
-           COUNT(DISTINCT coffee_id)     AS variety
+           COALESCE(SUM(${scoreMgSql()}), 0) AS caffeine,
+           COUNT(*)                          AS cups,
+           COUNT(DISTINCT coffee_id)         AS variety
     FROM coffee_entries
     WHERE user_id IN (${holes}) AND logged_at >= ? AND logged_at <= ?
     GROUP BY user_id

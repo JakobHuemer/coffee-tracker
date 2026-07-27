@@ -151,10 +151,24 @@ test('score counts only entries inside the window', () => {
   logCoffee(user, end + 1);            // just after
   expect(scoreFor(user, start, end)).toBe(0);
 
+  // Neither drink appears in SCORE_CAFFEINE, so both score at their stored mg
+  // and this stays a test about the window, not about scoring overrides.
   logCoffee(user, start, { mg: 200, coffeeId: 'espresso' });
-  logCoffee(user, start + 3600000, { mg: 100, coffeeId: 'latte' });
+  logCoffee(user, start + 3600000, { mg: 100, coffeeId: 'lungo' });
   expect(scoreFor(user, start, end))
     .toBeCloseTo(performanceScore({ caffeine: 300, cups: 2, variety: 2 }), 12);
+});
+
+test('an overridden drink scores its SCORE_CAFFEINE value, not its stored mg', () => {
+  const user = makeUser('latte-drinker');
+  const start = Date.parse('2026-07-26T00:00:00Z');
+  const end = start + DAY - 1;
+
+  // Stored at the catalog's displayed 63mg; both lattes must score as 25.
+  logCoffee(user, start, { mg: 63, coffeeId: 'latte' });
+  logCoffee(user, start + 3600000, { mg: 63, coffeeId: 'latte_macchiato' });
+  expect(scoreFor(user, start, end))
+    .toBeCloseTo(performanceScore({ caffeine: 50, cups: 2, variety: 2 }), 12);
 });
 
 test('a user with no entries at all scores zero, not NaN', () => {
