@@ -386,7 +386,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .log-back-btn:hover { border-color: var(--accent); color: var(--accent); }
 .log-title { font-size: 1rem; font-weight: 700; }
 .log-details-step { flex: 1; overflow-y: auto; }
-.log-details-thumb-wrap { padding: 16px 16px 0; }
+.log-details-thumb-wrap { padding: 16px 16px 0; max-width: 640px; margin: 0 auto; }
 .log-details-thumb {
   width: 100%; max-height: 220px; object-fit: cover; border-radius: 10px; display: block;
 }
@@ -410,9 +410,12 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 
 /* Two equal buttons — camera and gallery are separate destinations, so neither
-   gets to look like the primary one. */
+   gets to look like the primary one. Capped and centered to line up with
+   .log-form below, which is max-width: 640px; on desktop an unconstrained row
+   stretched the buttons across the whole viewport (issue #39). Side padding
+   (not margin) keeps the mobile gutter once the row is centered. */
 .log-photo-actions {
-  display: flex; gap: 8px; margin: 16px 16px 0;
+  display: flex; gap: 8px; margin: 16px auto 0; max-width: 640px; padding: 0 16px;
 }
 .log-photo-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px; flex: 1;
