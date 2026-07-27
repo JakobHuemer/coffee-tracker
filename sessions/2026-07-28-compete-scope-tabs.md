@@ -1,5 +1,5 @@
 ---
-topics: [issue-53, compete-page, leaderboard-scope, sqlite-alias-trap, cross-group-history, playwright-in-docker]
+topics: [issue-53, compete-page, leaderboard-scope, sqlite-alias-trap, cross-group-history, playwright-in-docker, url-tab-state]
 ---
 
 # Compete: Global/Group as top-level tabs (#53)
@@ -67,3 +67,13 @@ docker run --rm --network host \
 30 UI assertions across two scopes, four sections, and the no-group gate.
 Useful pattern for any future work where headless Chromium won't launch
 here directly.
+
+## Review fixes (PR #57)
+
+- Tab state moved from `useState` to `useSearchParams` (`?scope=&section=`)
+  so a refresh/shared link keeps the tab instead of snapping to Group/Matches.
+  Absent params still fall back to the load-time default (group if in one).
+  All writes use `replace: true` — tab flips shouldn't stack back-button steps.
+- `.cmp-hist-list` is a direct child of `.cmp-body` (HistorySection returns a
+  fragment) but was missing from the `.cmp-body >` horizontal-inset rule, so
+  the elo-change list ran full-bleed and touched screen edges on mobile.

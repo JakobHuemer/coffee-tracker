@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, uploadUrl } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
@@ -1085,12 +1086,15 @@ const SCOPES: { id: CompeteScope; label: string; icon: string }[] = [
   { id: 'group', label: 'Group', icon: 'users' },
 ];
 
+function isScope(v: string | null): v is CompeteScope {
+  return v === 'global' || v === 'group';
+}
+
 export function Compete() {
-  // Null until the user picks: the default depends on whether they are in a
-  // group, which is only known once the page has loaded. Storing the choice
-  // rather than deriving it keeps a deliberate pick from being overwritten.
-  const [scope, setScope] = useState<CompeteScope | null>(null);
-  const [section, setSection] = useState<Section>('matches');
+  // Scope and section live in the URL so a refresh (or a shared link) lands on
+  // the same tab instead of snapping back to Group/Matches. Absent params fall
+  // back to the load-time default, so a first visit is unchanged.
+  const [params, setParams] = useSearchParams();
 
   const { data, isLoading } = useQuery<CompetitionsResponse>({
     queryKey: ['competitions'],
@@ -1103,19 +1107,39 @@ export function Compete() {
   const hasGroup = !!data?.group;
   // Someone in a group is here for their group; someone without one has nothing
   // to show under Group but the invitation to join one, so Global leads.
-  const activeScope = scope ?? (hasGroup ? 'group' : 'global');
+  const scopeParam = params.get('scope');
+  const activeScope: CompeteScope = isScope(scopeParam) ? scopeParam : (hasGroup ? 'group' : 'global');
 
   const sections = SECTIONS[activeScope];
-  // `section` is user state and survives a scope switch, so it can name a
-  // section the new scope does not have.
-  const activeSection = sections.some(s => s.id === section) ? section : sections[0].id;
+  // The section param can name a section the current scope does not have (a
+  // stale link, or a scope switch), so fall back to the first for rendering.
+  const sectionParam = params.get('section');
+  const activeSection = sections.some(s => s.id === sectionParam)
+    ? (sectionParam as Section)
+    : sections[0].id;
 
-  // Keep the section when the new scope also has it, so switching scope
-  // compares like with like. Otherwise normalise the state to what is actually
-  // being rendered, so the two can never disagree.
+  // replace: true — flipping tabs is not a navigation the back button should
+  // have to walk through.
   function pickScope(next: CompeteScope) {
-    setScope(next);
-    if (!SECTIONS[next].some(s => s.id === section)) setSection(SECTIONS[next][0].id);
+    // Keep the section when the new scope also has it, so switching scope
+    // compares like with like; otherwise land on that scope's first section so
+    // the URL and the rendered tab never disagree.
+    const nextSection = SECTIONS[next].some(s => s.id === activeSection) ? activeSection : SECTIONS[next][0].id;
+    setParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.set('scope', next);
+      p.set('section', nextSection);
+      return p;
+    }, { replace: true });
+  }
+
+  function pickSection(next: Section) {
+    setParams(prev => {
+      const p = new URLSearchParams(prev);
+      p.set('scope', activeScope);
+      p.set('section', next);
+      return p;
+    }, { replace: true });
   }
 
   return (
@@ -1155,7 +1179,7 @@ export function Compete() {
                     <button
                       key={s.id}
                       className={`tab-btn${activeSection === s.id ? ' active' : ''}`}
-                      onClick={() => setSection(s.id)}
+                      onClick={() => pickSection(s.id)}
                     >
                       {s.label}
                     </button>
