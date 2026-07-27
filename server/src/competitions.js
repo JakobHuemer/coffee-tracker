@@ -229,6 +229,25 @@ function ensureRecurringMatches(now = Date.now()) {
 
 // ── locking lobbies ──────────────────────────────────────────────────────────
 
+// The instant a lobby stops accepting joins and its roster locks.
+//
+// For most modes that is the start instant: once a match is running its roster
+// is frozen, which is what stops a player dodging a bad day. A WEEKLY is the
+// exception (issue #44): nobody joins a weekly at 00:00 Monday, so a Monday-start
+// lock shuts almost everyone out. A weekly therefore stays joinable through its
+// whole first civil day and only locks at the next local midnight. The scoring
+// window is unchanged — every participant is still scored over the identical
+// Mon–Sun window, so a day-1 joiner is judged on the same window as everyone
+// else and the zero-sum argument is untouched.
+function joinDeadline(match) {
+  if (match.mode !== 'weekly') return match.scope_start;
+  const group = db.prepare('SELECT timezone FROM competition_groups WHERE id = ?').get(match.group_id);
+  const tz = groupTz(group || { timezone: DEFAULT_TZ });
+  // period_key is the Monday's local date; the first day ends at the next local
+  // midnight, evaluated in the group's zone so DST is handled by time.js.
+  return localWallInstant(addDaysStr(match.period_key, 1), '00:00:00', tz);
+}
+
 // A user-created match accepts joins until its start instant. At that point the
 // roster must be legal for its mode, or the match is cancelled without touching
 // anyone's rating.
@@ -248,6 +267,9 @@ function rosterIsLegal(match, participants) {
 function lockDueLobbies(now = Date.now()) {
   const due = db.prepare("SELECT * FROM matches WHERE state = 'open' AND scope_start <= ?").all(now);
   for (const match of due) {
+    // A weekly that has started but is still inside its first-day join window
+    // stays open (issue #44); everything else locks at its start instant.
+    if (joinDeadline(match) > now) continue;
     const participants = db.prepare('SELECT user_id, side FROM match_participants WHERE match_id = ?')
       .all(match.id);
     const nextState = rosterIsLegal(match, participants) ? 'pending' : 'cancelled';
@@ -359,5 +381,5 @@ module.exports = {
   mondayOf, addDaysStr, dailyWindow, weeklyWindow, groupOf, autoJoinMemberIds,
   metricsFor, scoreFor, scoresForMany, ratingOf, ratingsForMany,
   ensureRecurringMatch, ensureRecurringMatches, rosterIsLegal, lockDueLobbies,
-  settleMatch, settleDueMatches, tick, startTicker, stopTicker,
+  joinDeadline, settleMatch, settleDueMatches, tick, startTicker, stopTicker,
 };

@@ -3,7 +3,7 @@ const { randomUUID } = require('crypto');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { BASE_RATING, K_BY_MODE, scorePoints } = require('../competition-core');
-const { groupOf, scoresForMany, ratingsForMany } = require('../competitions');
+const { groupOf, scoresForMany, ratingsForMany, joinDeadline } = require('../competitions');
 
 const router = express.Router();
 
@@ -239,7 +239,10 @@ router.post('/:id/join', requireAuth, (req, res) => {
   const match = matchOr404(res, req.params.id);
   if (!match) return;
   if (match.state !== 'open') return res.status(409).json({ error: 'This match is no longer open to join' });
-  if (match.scope_start <= Date.now()) return res.status(409).json({ error: 'This match has already started' });
+  // A weekly stays joinable through its first day, so the cutoff is the join
+  // deadline, not the start instant (issue #44). For every other mode the
+  // deadline IS the start instant, so this behaves exactly as before.
+  if (joinDeadline(match) <= Date.now()) return res.status(409).json({ error: 'This match is no longer open to join' });
 
   // A group match is members-only; a global match (no group) is open to anyone.
   if (match.group_id !== null) {

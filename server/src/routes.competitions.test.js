@@ -387,6 +387,28 @@ test('a team match refuses a missing side and a full one', async () => {
   expect((await post(c, `/api/competitions/${match.id}/join`, { side: 'B' })).status).toBe(200);
 });
 
+test('a weekly can still be joined on its first day, after it has started (issue #44)', async () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  const group = await createGroup(a); // creator's zone is UTC (see makeUser)
+  await post(b, '/api/groups/join', { group_id: group.id });
+
+  // A weekly whose window opened at the start of today (UTC): it is already
+  // running, but still inside its first day, so it must stay joinable.
+  const today = new Date().toISOString().slice(0, 10);
+  const start = Date.parse(`${today}T00:00:00Z`);
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
+                         scope_start, scope_end, state, k_factor, team_size, created_at)
+    VALUES (?, ?, 'weekly', ?, NULL, NULL, ?, ?, 'open', 20, NULL, ?)
+  `).run(id, group.id, today, start, start + 7 * 86400000 - 1, Date.now());
+
+  // scope_start is in the past, but the first-day window keeps it open.
+  expect((await post(b, `/api/competitions/${id}/join`)).status).toBe(200);
+  expect(db.prepare('SELECT COUNT(*) AS c FROM match_participants WHERE match_id = ?').get(id).c).toBe(1);
+});
+
 test('a running match can be neither joined nor left', async () => {
   const a = makeUser('a');
   const b = makeUser('b');
