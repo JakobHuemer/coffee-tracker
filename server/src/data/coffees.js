@@ -6,10 +6,14 @@
 // like `icon` — the client owns the display label per class (see
 // client/src/pages/LogCoffee.tsx CLASS_LABEL).
 //
-// The two lattes are mostly steamed milk over a single shot, so their caffeine
-// is lower than the espresso-forward drinks (issue #11). Changing a value here
-// only affects drinks logged afterwards — existing entries keep the caffeine_mg
-// copied onto them at log time (server/src/routes/coffees.js POST /entries).
+// `caffeine` is the single displayed value: the picker shows it, and it is
+// copied onto an entry at log time (server/src/routes/coffees.js POST /entries)
+// for the feed, Buzz, and every stat to read back. Changing a value here only
+// affects drinks logged afterwards — existing entries keep their copy.
+//
+// Competitions are the one exception: they score through
+// ./coffee-scores.js, which pins both lattes to 25mg no matter what this
+// catalog says. See that file before reconciling a leaderboard against a feed.
 const COFFEES = [
   { id: 'espresso',        name: 'Espresso',       caffeine: 63,  icon: 'coffee',    class: 'coffee' },
   { id: 'espresso_mac',    name: 'Espresso Mac.',  caffeine: 63,  icon: 'coffee',    class: 'coffee' },
@@ -18,8 +22,8 @@ const COFFEES = [
   { id: 'americano',       name: 'Americano',       caffeine: 95,  icon: 'coffee',    class: 'coffee' },
   { id: 'cappuccino',      name: 'Cappuccino',      caffeine: 75,  icon: 'coffee',    class: 'coffee' },
   { id: 'flat_white',      name: 'Flat White',      caffeine: 130, icon: 'coffee',    class: 'coffee' },
-  { id: 'latte',           name: 'Latte',           caffeine: 25,  icon: 'milk',      class: 'coffee' },
-  { id: 'latte_macchiato', name: 'Latte Macchiato', caffeine: 25,  icon: 'milk',      class: 'coffee' },
+  { id: 'latte',           name: 'Latte',           caffeine: 63,  icon: 'milk',      class: 'coffee' },
+  { id: 'latte_macchiato', name: 'Latte Macchiato', caffeine: 63,  icon: 'milk',      class: 'coffee' },
   { id: 'affogato',        name: 'Affogato',        caffeine: 63,  icon: 'ice-cream', class: 'coffee' },
   { id: 'frappuccino',     name: 'Frappuccino',     caffeine: 95,  icon: 'blended',   class: 'coffee' },
   { id: 'chocochino',      name: 'Chocochino',      caffeine: 30,  icon: 'chocolate', class: 'chocolate' },

@@ -20,15 +20,6 @@ const CLASS_LABEL: Record<string, string> = {
   energy: 'Energy',
 };
 
-// Menu-only caffeine overrides, keyed by coffee id. The server still owns the
-// real value — it's what gets copied onto an entry at log time — so this only
-// changes the number shown in the picker, not what a logged latte counts as.
-// The two lattes read 63mg here while the catalog keeps them at 25mg.
-const MENU_CAFFEINE_OVERRIDE: Record<string, number> = {
-  latte: 63,
-  latte_macchiato: 63,
-};
-
 export function LogCoffee() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -263,7 +254,7 @@ export function LogCoffee() {
                       >
                         <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
                         <span className="cb-name">{c.name}</span>
-                        <span className="cb-mg">{MENU_CAFFEINE_OVERRIDE[c.id] ?? c.caffeine}mg</span>
+                        <span className="cb-mg">{c.caffeine}mg</span>
                       </button>
                     ))}
                   </div>
