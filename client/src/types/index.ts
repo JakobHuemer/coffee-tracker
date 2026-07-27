@@ -142,6 +142,13 @@ export interface RankingEntry {
   id: string;
   username: string;
   avatar: string;
+  // The global board is an Elo ladder (issue #40): `rating` is the sort key,
+  // `cups`/`total_caffeine` are display columns for the selected period.
+  rating: number;
+  // Settled competition matches. 0 = unrated; those sort last and show no rank.
+  matches: number;
+  // The player's competition group, or null if they are in none.
+  group_name: string | null;
   cups: number;
   total_caffeine: number;
   rank: number;

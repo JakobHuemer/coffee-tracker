@@ -195,35 +195,40 @@ function RankingsTab() {
         <div className="card my-rank-card">
           <div className="my-rank-label">Your rank</div>
           <div className="my-rank-row">
-            <div className="rank-num">#{data.my_rank.rank}</div>
+            <div className="rank-num">{data.my_rank.matches === 0 ? '—' : `#${data.my_rank.rank}`}</div>
             <div className="rank-user">
               <span className="rank-avatar">{data.my_rank.avatar}</span>
               <span className="rank-username">{data.my_rank.username}</span>
             </div>
             <div className="rank-stats">
-              <span>{data.my_rank.cups} cups</span>
-              <span className="rank-caf">{data.my_rank.total_caffeine}mg</span>
+              <span className="rank-caf">{Math.round(data.my_rank.rating)} Elo</span>
+              <span>{data.my_rank.cups} cups · {data.my_rank.total_caffeine}mg</span>
             </div>
           </div>
         </div>
       )}
 
       <div className="card">
-        <div className="section-label">Top Brewers</div>
+        <div className="section-label">Elo Ladder</div>
         {isLoading ? <div className="load-text">Loading…</div> : (
           <div className="leaderboard">
             {(data?.rankings ?? []).map((r, i) => (
               <div key={r.id} className={`lb-row${r.id === user?.id ? ' me' : ''}`}
                 onClick={() => r.id !== user?.id && navigate(`/compare/${r.username}`)}
                 style={{ cursor: r.id !== user?.id ? 'pointer' : 'default' }}>
-                <div className="lb-rank">{i < 3 ? <Icon name="medal" className={`lb-medal lb-medal-${i}`} /> : `#${r.rank}`}</div>
+                {/* Unrated players (no settled match) sort last and show no rank
+                    — a medal or #n would imply they earned the spot. */}
+                <div className="lb-rank">{r.matches === 0 ? '—' : i < 3 ? <Icon name="medal" className={`lb-medal lb-medal-${i}`} /> : `#${r.rank}`}</div>
                 <div className="lb-user">
                   <span className="lb-avatar">{r.avatar}</span>
-                  <span className="lb-username">{r.username}</span>
+                  <span className="lb-userinfo">
+                    <span className="lb-username">{r.username}</span>
+                    <span className="lb-substat">{r.group_name ?? 'No group'} · {r.cups} cups · {r.total_caffeine}mg</span>
+                  </span>
                 </div>
                 <div className="lb-stats">
-                  <span>{r.cups} cups</span>
-                  <span className="lb-caf">{r.total_caffeine}mg</span>
+                  <span className="lb-caf">{Math.round(r.rating)}</span>
+                  <span>Elo</span>
                 </div>
               </div>
             ))}
@@ -455,7 +460,7 @@ export function Stats() {
         <div className="stats-hero-top">
           <div className="stats-rank-tile">
             <div className="stats-rank-num">
-              {alltimeRank?.my_rank ? `#${alltimeRank.my_rank.rank}` : '—'}
+              {alltimeRank?.my_rank && alltimeRank.my_rank.matches > 0 ? `#${alltimeRank.my_rank.rank}` : '—'}
             </div>
             <div className="stats-rank-label">Global Rank</div>
           </div>
