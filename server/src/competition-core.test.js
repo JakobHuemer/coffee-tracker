@@ -262,7 +262,7 @@ test('every team delta is a whole number, and each side still splits its whole p
     expect(allWhole(rows.map((r) => r.delta))).toBe(true);
     expect(sum(rows.map((r) => r.delta))).toBe(0);
 
-    // Each side splits exactly the whole pot the team-level result set.
+    // Each side splits exactly the whole pot the team-level result gave it.
     const rA = sum(teamA.map((p) => p.rating)) / teamA.length;
     const rB = sum(teamB.map((p) => p.rating)) / teamB.length;
     const sA = sum(teamA.map((p) => p.score)) / teamA.length;
