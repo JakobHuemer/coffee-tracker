@@ -15,6 +15,7 @@ import type { Coffee, UnlockNotification } from '../types';
 // each catalog item; the client owns the label, mirroring how icon keys resolve.
 const CLASS_LABEL: Record<string, string> = {
   coffee: 'Coffee',
+  milk: 'Milk',
   chocolate: 'Chocolate',
   tea: 'Tea',
   energy: 'Energy',

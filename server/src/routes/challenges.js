@@ -6,12 +6,9 @@ const {
   checkAfterChallengeWin,
   checkAfterFirstChallenge,
 } = require('../achievements');
-const { todayStr, DATE_RE } = require('./_helpers');
 const { COFFEES } = require('../data/coffees');
 
 const router = express.Router();
-
-const VALID_METRICS = ['total_cups', 'caffeine', 'espresso_cups', 'unique_types'];
 
 // Aggregate progress toward a metric for one or more users since startDate.
 // Pass a single-element array for an individual participant's progress.
@@ -84,10 +81,11 @@ function seedCommunityChallenges() {
 seedCommunityChallenges();
 
 router.get('/', requireAuth, (req, res) => {
-  // Personal challenges are private — only the creator sees their own.
+  // Personal challenges were removed (issue #51) — only community challenges,
+  // shared by everyone, exist now. They surface here and on the Compete page.
   const challenges = db.prepare(
-    "SELECT * FROM challenges WHERE status = 'active' AND (type = 'community' OR creator_id = ?) ORDER BY type, end_date"
-  ).all(req.user.id);
+    "SELECT * FROM challenges WHERE status = 'active' AND type = 'community' ORDER BY end_date"
+  ).all();
 
   const result = challenges.map(c => {
     const participants = db.prepare(
@@ -95,49 +93,16 @@ router.get('/', requireAuth, (req, res) => {
     ).all(c.id);
     const joined = participants.some(p => p.user_id === req.user.id);
 
-    // For personal challenges the creator is always the sole participant; compute
-    // my_progress unconditionally so it never appears stuck at 0.
-    const myProgress = (c.type === 'personal' && c.creator_id === req.user.id)
-      ? userProgressFor(c, req.user.id)
-      : joined ? userProgressFor(c, req.user.id) : null;
-
     return {
       ...c,
       participants_count: participants.length,
       community_progress: communityProgressFor(c, participants),
-      my_progress: myProgress,
-      joined: joined || (c.type === 'personal' && c.creator_id === req.user.id),
+      my_progress: joined ? userProgressFor(c, req.user.id) : null,
+      joined,
     };
   });
 
   res.json(result);
-});
-
-router.post('/', requireAuth, (req, res) => {
-  const { name, description, metric, target, endDate } = req.body;
-  if (!name || !metric || !target || !endDate) return res.status(400).json({ error: 'Missing fields' });
-  if (typeof name !== 'string' || name.length > 100) return res.status(400).json({ error: 'Invalid name' });
-  if (description !== undefined && (typeof description !== 'string' || description.length > 500)) {
-    return res.status(400).json({ error: 'Invalid description' });
-  }
-  if (!VALID_METRICS.includes(metric)) return res.status(400).json({ error: 'Invalid metric' });
-
-  const targetNum = Number(target);
-  if (!Number.isInteger(targetNum) || targetNum <= 0) return res.status(400).json({ error: 'Target must be a positive integer' });
-  if (!DATE_RE.test(endDate)) return res.status(400).json({ error: 'Invalid end date (expected YYYY-MM-DD)' });
-
-  const id = randomUUID();
-  const today = todayStr();
-  db.prepare(
-    'INSERT INTO challenges (id, type, creator_id, name, description, metric, target, start_date, end_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, 'personal', req.user.id, name, description || '', metric, targetNum, today, endDate, 'active');
-
-  db.prepare(
-    'INSERT INTO challenge_participants (id, challenge_id, user_id, joined_at) VALUES (?, ?, ?, ?)'
-  ).run(randomUUID(), id, req.user.id, Date.now());
-
-  const challenge = db.prepare('SELECT * FROM challenges WHERE id = ?').get(id);
-  res.json(challenge);
 });
 
 router.post('/:id/join', requireAuth, (req, res) => {
@@ -167,21 +132,15 @@ router.get('/:id', requireAuth, (req, res) => {
   const now = Date.now();
   const endDate = Date.parse(`${challenge.end_date}T23:59:59Z`);
 
-  if (challenge.type === 'community' && communityProgress >= challenge.target && challenge.status === 'active') {
+  if (communityProgress >= challenge.target && challenge.status === 'active') {
     db.prepare("UPDATE challenges SET status = 'completed' WHERE id = ?").run(challenge.id);
     for (const p of participants) {
       db.prepare('UPDATE challenge_participants SET completed = 1 WHERE challenge_id = ? AND user_id = ?').run(challenge.id, p.user_id);
       checkAfterChallengeWin(p.user_id);
     }
   } else if (now > endDate && challenge.status === 'active') {
+    // Ran out the clock without hitting the target — retire it, no winners.
     db.prepare("UPDATE challenges SET status = 'completed' WHERE id = ?").run(challenge.id);
-    if (challenge.type === 'personal') {
-      const myProgress = userProgressFor(challenge, req.user.id);
-      if (myProgress >= challenge.target) {
-        db.prepare('UPDATE challenge_participants SET completed = 1 WHERE challenge_id = ? AND user_id = ?').run(challenge.id, req.user.id);
-        checkAfterChallengeWin(req.user.id);
-      }
-    }
   }
 
   res.json({

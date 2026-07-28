@@ -121,9 +121,10 @@ export interface GoalsResponse {
   streak: Streak;
 }
 
+// Personal challenges were removed (issue #51); only community challenges remain.
 export interface Challenge {
   id: string;
-  type: 'community' | 'personal';
+  type: 'community';
   creator_id: string | null;
   name: string;
   description: string;
