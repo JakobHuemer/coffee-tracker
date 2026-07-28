@@ -7,10 +7,17 @@
 // rounding bug and not stale data.
 //
 // The divergence is confined to the ELO input — competitions.js metricsStmt()
-// and scoresForMany(), the two queries feeding performanceScore(). Everything
-// else (Buzz, stats, streaks, achievements, casualties, the rankings page's
-// total_caffeine column, community challenges) sums the stored caffeine_mg and
-// therefore agrees with what the user sees.
+// and scoresForMany(), the two queries feeding points(). Everything else (Buzz,
+// stats, streaks, achievements, casualties, the rankings page's total_caffeine
+// column, community challenges) sums the stored caffeine_mg and therefore agrees
+// with what the user sees.
+//
+// Those same two queries are also the only ones that filter on is_public — a
+// competition scores public entries only (docs/competitions-rating-v2.md).
+//
+// Under v2's linear points the override bites harder than it used to: a latte is
+// a flat 38-point gap against its displayed 63mg, where the old saturating curve
+// absorbed most of it. That is known and intended, not a reason to change this.
 //
 // Any coffee id absent from this map scores at its stored caffeine_mg, so the
 // default is "score what you show" and only listed ids diverge.

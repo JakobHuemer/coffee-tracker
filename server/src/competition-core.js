@@ -1,75 +1,113 @@
-// Competitions — the pure math. Spec: docs/competitions-elo.md.
+// Competitions — the pure math. Spec: docs/competitions-rating-v2.md.
+//
+// docs/competitions-elo.md describes v1 and every match settled under it. It is
+// history, not a description of this file. Settled matches are never recomputed:
+// v2 applies to matches settled after it shipped, and nothing back-fills.
 //
 // Deliberately free of any DB import so it can be unit-tested without opening
 // the database. Everything that touches SQLite lives in ./competitions.js.
 //
 // Two layers, never mixed:
-//   1. score  — single-player, accumulating, per-metric, never zero-sum.
-//   2. rating — consumes participants' scores for ONE match, ranks them, and
-//               settles a zero-sum delta. Never reads raw metrics directly.
+//   1. points — single-player, linear, uncapped, never zero-sum.
+//   2. rating — consumes participants' points for ONE match and settles a
+//               zero-sum delta from the score MARGIN. Never reads raw metrics.
 
 // ── Tuning surface ───────────────────────────────────────────────────────────
 // Changing these only affects matches settled after the change; settled
 // match_participants rows are an immutable log and are never recomputed.
+// docs/competitions-rating-v2.1.md documents what has to be re-derived alongside
+// each one — in particular, moving a POINT_WEIGHT silently re-scales the margin,
+// because MARGIN_PER_DAY is denominated in the same points.
 
-const WEIGHTS = { caffeine: 0.45, cups: 0.35, variety: 0.20 };
+// Points per unit of each metric: caffeine per mg, cups per logged entry,
+// variety per distinct coffee_id. Linear and uncapped — the Nth cup is worth
+// exactly what the first was, and one new kind of drink is worth one extra cup.
+const POINT_WEIGHTS = { caffeine: 1, cups: 15, variety: 15 };
 
-// Half-credit points of the saturating curve: f(k) = 0.5.
-const SATURATION = { caffeine: 200, cups: 3, variety: 2 };
+// The margin scale grows with the window (v2.1): a weekly accumulates ~7x a
+// daily's points, so a fixed gap threshold would grade the two on completely
+// different curves. Instead the scale is derived per match from its duration —
+// see marginScaleFor(). MARGIN_PER_DAY is the gap, per day of window, that grades
+// as roughly 90/10; MARGIN_FLOOR is the shortest window's scale, below which a
+// single drink would be an automatic shutout.
+const MARGIN_PER_DAY = 500;
+const MARGIN_FLOOR = 150;
+const DAY_MS = 86400000;
 
-const BASE_RATING = 1000;
+// Rating gap at which the favourite is expected to score ~91/9 (a full scale;
+// 76/24 lands at half of it). Classic Elo.
 const ELO_SCALE = 400;
 
-// K lives on the match row, picked from the mode at creation time. Daily fires
-// ~365x/year on one day's luck so it stays low-weight; weekly aggregates 7 days
-// and sits well above it; 1v1/ondemand are rare and deliberate so they take the
-// full classic weight; team sits below that because the team-level delta is
-// split across members afterwards.
-const K_BY_MODE = { daily: 8, weekly: 20, '1v1': 32, ondemand: 32, team: 24 };
+// Starting rating for an unrated user. Baked into every settled rating_before
+// in the database — moving it would make historical rows incomparable.
+const BASE_RATING = 1000;
+
+// One K for every mode (v2.1). Daily, weekly, ondemand and 1v1 settle
+// identically — the duration-scaled margin already grades a short window's
+// closeness, so K no longer has to also dampen it. The only thing that
+// distinguishes daily/weekly is that the server opens them automatically. K is
+// copied onto the match row at creation, so a match keeps the K it was created
+// with; v1 matches keep whatever K they were created with. ~40 is the swing an
+// emphatic 1v1 produces (delta is K*(A-E), so K/2 between equal ratings).
+const K = 80;
+
+// Retained as a map keyed by every current mode so callers can index it by
+// `match.mode` exactly as before; every entry is the single K above.
+const K_BY_MODE = { daily: K, weekly: K, '1v1': K, ondemand: K };
 
 const MODES = Object.keys(K_BY_MODE);
 
-// Softmax temperature for the team contribution split.
-const SHARE_TEMPERATURE = 1;
+// ── Layer 1: points ──────────────────────────────────────────────────────────
 
-// ── Layer 1: performance score ───────────────────────────────────────────────
-
-// Saturating curve x / (x + k): maps [0, inf) -> [0, 1), zero at zero, with
-// diminishing returns so one huge day cannot dwarf the whole field.
-function saturate(x, k) {
-  const v = Math.max(0, Number(x) || 0);
-  return v / (v + k);
-}
-
-// Weighted sum of the three normalised metrics. Result is in [0, 1).
-function performanceScore({ caffeine = 0, cups = 0, variety = 0 } = {}) {
-  return (
-    WEIGHTS.caffeine * saturate(caffeine, SATURATION.caffeine) +
-    WEIGHTS.cups * saturate(cups, SATURATION.cups) +
-    WEIGHTS.variety * saturate(variety, SATURATION.variety)
+// Linear, uncapped, zero for a user who logged nothing. There is no saturating
+// curve and no display transform: the number this returns is the number the UI
+// shows, raw. A weekly window is legitimately worth several times a daily one.
+//
+// Rounded once, at the end — not per term.
+function points({ caffeine = 0, cups = 0, variety = 0 } = {}) {
+  return Math.round(
+    POINT_WEIGHTS.caffeine * Math.max(0, Number(caffeine) || 0)
+    + POINT_WEIGHTS.cups * Math.max(0, Number(cups) || 0)
+    + POINT_WEIGHTS.variety * Math.max(0, Number(variety) || 0)
   );
 }
 
-// Display form of a score: an integer 0..1000, so the UI never renders a float.
-function scorePoints(score) {
-  return Math.round(score * 1000);
-}
-
 // ── Layer 2: rating ──────────────────────────────────────────────────────────
+
+// The margin scale for one match, from its window length (v2.1). `scopeEnd` is
+// inclusive, so the window is (end - start + 1) ms. Grows linearly with duration
+// above the floor: ~7.2h and shorter all sit at MARGIN_FLOOR; a daily is 500, a
+// weekly 3500. Derived rather than stored — it is a pure function of scope_start
+// and scope_end, which are already on the match row, already immutable, and
+// already shown to participants.
+//
+// A whole match uses ONE scale, applied to every pair in it. It may differ
+// between matches but must never vary within one, or the zero-sum antisymmetry
+// (A_ij + A_ji = 1) breaks.
+function marginScaleFor(scopeStart, scopeEnd) {
+  const durationMs = scopeEnd - scopeStart + 1;
+  return Math.max(MARGIN_FLOOR, MARGIN_PER_DAY * (durationMs / DAY_MS));
+}
 
 // Standard Elo logistic on the usual 400-point scale.
 function expectedScore(rating, opponentRating) {
   return 1 / (1 + Math.pow(10, (opponentRating - rating) / ELO_SCALE));
 }
 
-// `actual` is RANK, not magnitude: only the ordering of two scores matters.
-// Margin is the score layer's concern — a saturating curve already absorbs it,
-// and letting it back in here would make Elo swing harder on a blowout than on
-// a close finish.
-function actualFromRank(score, opponentScore) {
-  if (score > opponentScore) return 1;
-  if (score < opponentScore) return 0;
-  return 0.5;
+// `actual` is the score MARGIN, not rank: being 50 points behind the leader and
+// 200 ahead of third is a materially different result from being 200 behind and
+// 50 ahead, and the two must not settle identically (v1's rank-only form made
+// them identical, which is the defect v2 exists to fix).
+//
+// It is the same Bradley-Terry logistic the expected-score side uses, and for
+// the same structural reason: A_ij + A_ji = 1 by construction, which is what
+// keeps the settlement zero-sum. A normalised score share would not be.
+//
+// It saturates: past roughly 4 * marginScale the result is within a rounding
+// error of 1, so running up the score stops paying. `marginScale` comes from
+// marginScaleFor() at the call site.
+function actualFromMargin(score, opponentScore, marginScale) {
+  return 1 / (1 + Math.pow(10, (opponentScore - score) / marginScale));
 }
 
 // Ratings move in whole points only, and the whole-number deltas still have to
@@ -98,17 +136,25 @@ function apportion(raw, total) {
 
 // Free-for-all over N participants, decomposed into all N*(N-1)/2 pairs.
 //
-//   E_ij    = 1 / (1 + 10^((R_j - R_i)/400))
+//   A_ij    = 1 / (1 + 10^((P_j - P_i)/marginScale))
+//   E_ij    = 1 / (1 + 10^((R_j - R_i)/ELO_SCALE))
 //   delta_i = K/(N-1) * sum_{j!=i} (A_ij - E_ij)
+//
+// `marginScale` is one value for the whole match — marginScaleFor(scope_start,
+// scope_end) at the call site. Passing it in (rather than reading a module
+// constant) is what lets a daily and a weekly grade on curves matched to their
+// own length while every pair inside one match still shares a scale.
 //
 // Zero-sum is STRUCTURAL, not tested-after-the-fact: A_ij + A_ji = 1 and
 // E_ij + E_ji = 1 always, so every pair's contribution to sum(delta_i) cancels
-// exactly, for any N, any K, any rating spread. `apportion` then makes the
-// deltas whole without spending that guarantee.
+// exactly, for any N, any K, any rating spread, any score spread. `apportion`
+// then makes the deltas whole without spending that guarantee.
 //
-// A consequence of whole points: a mismatch lopsided enough that the raw delta
-// is under half a point settles at 0 for everyone. Nobody's rating moves, which
-// is the honest outcome — there was nothing there to win.
+// The K/(N-1) divisor is what keeps total movement bounded as the field grows,
+// so a larger match settles more gently than a 1v1.
+//
+// Nobody moves when every score is equal — including when everyone scored zero,
+// where A_ij = 0.5 for every pair. An empty match needs no special case.
 //
 // There is deliberately NO floor/clamp on the resulting rating. A MIN_RATING
 // clamp would break zero-sum the moment a participant hit it — the clamped
@@ -117,7 +163,7 @@ function apportion(raw, total) {
 // feed back into rating_before.
 //
 // participants: [{ userId, rating, score }]  ->  [{ userId, delta, ratingAfter }]
-function settleFfa(participants, k) {
+function settleFfa(participants, k, marginScale) {
   const n = participants.length;
   if (n < 2) throw new Error('settleFfa needs at least 2 participants');
 
@@ -125,7 +171,7 @@ function settleFfa(participants, k) {
     let sum = 0;
     for (const q of participants) {
       if (q === p) continue;
-      sum += actualFromRank(p.score, q.score) - expectedScore(p.rating, q.rating);
+      sum += actualFromMargin(p.score, q.score, marginScale) - expectedScore(p.rating, q.rating);
     }
     return (k / (n - 1)) * sum;
   });
@@ -141,74 +187,8 @@ function settleFfa(participants, k) {
   }));
 }
 
-// Softmax over scores. Keeps close scores near-equal but stops crushing the
-// bottom performer as the gap widens (unlike a raw S_i/sum ratio, which
-// punishes linearly). Also handles an all-zero-score team for free: exp(0) = 1
-// for everyone, so the pot splits evenly with no separate fallback.
-function contributionShares(scores, temperature = SHARE_TEMPERATURE) {
-  const exps = scores.map((s) => Math.exp(s / temperature));
-  const total = exps.reduce((a, b) => a + b, 0);
-  return exps.map((e) => e / total);
-}
-
-const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
-
-// Team match (x vs y). Settle the team-level result first, then split each
-// side's pot by contribution share.
-//
-//   P_A = K * (A_A - E_A),  P_B = -P_A
-//   winning side: delta_i = P * share_i                 (sums to P)
-//   losing side:  delta_i = P * (1 - share_i)/(n - 1)   (sums to P)
-//
-// Each side needs n >= 2: a side of one is the 1v1 mode, and the losing split
-// would divide by zero.
-//
-// teamA/teamB: [{ userId, rating, score }]
-function settleTeams(teamA, teamB, k) {
-  if (teamA.length < 2 || teamB.length < 2) {
-    throw new Error('settleTeams needs at least 2 members per side');
-  }
-
-  const rA = mean(teamA.map((p) => p.rating));
-  const rB = mean(teamB.map((p) => p.rating));
-  const sA = mean(teamA.map((p) => p.score));
-  const sB = mean(teamB.map((p) => p.score));
-
-  const eA = expectedScore(rA, rB);
-  const aA = actualFromRank(sA, sB);
-  // The pot is settled as a whole number first, so a side's whole-point split
-  // can still sum to exactly the pot it was given.
-  const pA = Math.round(k * (aA - eA));
-  const pB = -pA;
-
-  // The side holding the positive pot splits it by share; the other side
-  // spreads its (negative) pot by inverse share. A drawn match that also lands
-  // on E = 0.5 gives P = 0, so every delta is 0 with no special case.
-  const aIsWinning = pA >= 0;
-
-  function split(team, pot, isWinning) {
-    const shares = contributionShares(team.map((p) => p.score));
-    const raw = shares.map((share) => (
-      isWinning ? pot * share : pot * ((1 - share) / (team.length - 1))
-    ));
-    const deltas = apportion(raw, pot);
-    return team.map((p, i) => ({
-      userId: p.userId,
-      delta: deltas[i],
-      share: shares[i],
-      ratingBefore: p.rating,
-      ratingAfter: p.rating + deltas[i],
-    }));
-  }
-
-  return [
-    ...split(teamA, pA, aIsWinning).map((r) => ({ ...r, side: 'A' })),
-    ...split(teamB, pB, !aIsWinning).map((r) => ({ ...r, side: 'B' })),
-  ];
-}
-
 module.exports = {
-  WEIGHTS, SATURATION, BASE_RATING, ELO_SCALE, K_BY_MODE, MODES, SHARE_TEMPERATURE,
-  saturate, performanceScore, scorePoints,
-  expectedScore, actualFromRank, apportion, settleFfa, contributionShares, settleTeams,
+  POINT_WEIGHTS, MARGIN_PER_DAY, MARGIN_FLOOR, BASE_RATING, ELO_SCALE,
+  K, K_BY_MODE, MODES,
+  points, marginScaleFor, expectedScore, actualFromMargin, apportion, settleFfa,
 };

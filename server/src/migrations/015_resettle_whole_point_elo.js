@@ -4,7 +4,8 @@
 //
 // Settlement is a pure function of (rating_before, score, k), and only the
 // rating layer changed — scores are untouched — so this replays the stored
-// scores through the same settleFfa/settleTeams the live code now uses. It does
+// scores through the settleFfa/settleTeams this migration was written against
+// (see the note on ./lib/settle-v1.js below). It does
 // NOT re-score from coffee_entries: the per-participant `score` written at
 // settlement is the immutable record of that window, and re-reading raw entries
 // (which may have been edited or deleted since) would change what the match was.
@@ -19,7 +20,14 @@
 //
 // user_ratings is a derived cache, so it is rebuilt wholesale from the replay:
 // every row in it traces to a settlement, and no settled match is ever undone.
-const { BASE_RATING, settleFfa, settleTeams } = require('../competition-core');
+//
+// The math comes from ./lib/settle-v1.js — a frozen copy of the settlement this
+// migration was written against — NOT from competition-core.js, which has since
+// moved to rating v2 (margin-based, no team mode). Replaying old matches through
+// v2 would re-score history under rules that did not exist when it was played.
+// See docs/competitions-rating-v2.md, "History is immutable".
+const { settleFfa, settleTeams } = require('./lib/settle-v1');
+const { BASE_RATING } = require('../competition-core');
 
 exports.up = (db) => {
   const matches = db.prepare(

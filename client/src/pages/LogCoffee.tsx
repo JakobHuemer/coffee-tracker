@@ -305,6 +305,18 @@ export function LogCoffee() {
             </button>
           </div>
 
+          {/* Only public entries are scored in a competition (VALUES 7 of
+              docs/competitions-rating-v2.md), so a private log is worth zero
+              rating points. The user has to be able to see that at the moment
+              they log it, not discover it when a match settles. Shown only in
+              the non-public state — the same line under a public entry would
+              just be noise. Styled as a warning, like the public content rule
+              below it, because it is the same class of "this won't do what you
+              expect" notice. */}
+          {!isPublic && (
+            <div className="log-requirement-hint">Private logs don’t count toward rating.</div>
+          )}
+
           {error && <div className="auth-error">{error}</div>}
 
           {/* Only ask for a pick when there is something to pick from — with no

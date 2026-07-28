@@ -48,7 +48,9 @@ in `server/src/data/*.js` (static). Endpoints:
   `PATCH /:id`, `GET /:id` (competition groups; one per user at a time)
 - `competitions` — `GET /`, `GET /leaderboard?scope=global|group`, `GET /history`,
   `POST /`, `POST /:id/join`, `POST /:id/leave`, `GET /:id`
-  (see [docs/competitions-elo.md](./docs/competitions-elo.md))
+  (see [docs/competitions-rating-v2.md](./docs/competitions-rating-v2.md); the
+  superseded [docs/competitions-elo.md](./docs/competitions-elo.md) still
+  describes how every match settled before v2 was scored)
 
 Client pages in `client/src/pages/*` map 1:1 to these areas.
 Test suite: `server/src/*.test.js` (run with `bun run test`). Two kinds:

@@ -2,14 +2,14 @@ const express = require('express');
 const { randomUUID } = require('crypto');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
-const { BASE_RATING, K_BY_MODE, scorePoints } = require('../competition-core');
+const { BASE_RATING, K_BY_MODE } = require('../competition-core');
 const { groupOf, scoresForMany, ratingsForMany, joinDeadline } = require('../competitions');
 
 const router = express.Router();
 
 // Modes a user may open themselves. daily/weekly are opened by the ticker on a
 // recurring window and are never created through the API.
-const USER_MODES = ['ondemand', '1v1', 'team'];
+const USER_MODES = ['ondemand', '1v1'];
 
 const TITLE_MAX = 60;
 // Upper bound on a user-created window. Long enough for "run this for a month",
@@ -27,8 +27,12 @@ function matchOr404(res, id) {
 }
 
 // Participants with everything the UI needs. For a match that has not settled
-// yet, `score` is computed live from the window so far; for a settled one it is
+// yet, `points` is computed live from the window so far; for a settled one it is
 // the stored value, which is the number the deltas were actually derived from.
+//
+// Points are a linear, uncapped integer (docs/competitions-rating-v2.md) — there
+// is no maximum, so nothing here or in the client may render one as a fraction
+// of a whole.
 //
 // The live path scores and rates the whole roster in two queries rather than
 // two per player: a match list is dozens of matches deep, so the per-user form
@@ -44,35 +48,31 @@ function participantsOf(match) {
 
   const settled = match.state === 'settled';
   const userIds = rows.map((r) => r.user_id);
-  const liveScores = settled
+  const livePoints = settled
     ? new Map()
     : scoresForMany(userIds, match.scope_start, Math.min(Date.now(), match.scope_end));
   const liveRatings = settled ? new Map() : ratingsForMany(userIds);
 
-  const enriched = rows.map((r) => {
-    const score = settled ? r.score : (liveScores.get(r.user_id) ?? 0);
-    return {
-      user_id: r.user_id,
-      username: r.username,
-      avatar: r.avatar,
-      profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
-      side: r.side,
-      joined_at: r.joined_at,
-      score,
-      points: scorePoints(score || 0),
-      contribution_share: r.contribution_share,
-      rating_before: r.rating_before,
-      rating_after: r.rating_after,
-      delta: r.delta,
-      // A live match shows the rating a player is carrying INTO it; a settled
-      // one shows what they had when it settled.
-      current_rating: settled ? r.rating_after : (liveRatings.get(r.user_id) ?? BASE_RATING),
-    };
-  });
+  const enriched = rows.map((r) => ({
+    user_id: r.user_id,
+    username: r.username,
+    avatar: r.avatar,
+    profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
+    joined_at: r.joined_at,
+    // The stored `score` column IS the points a settled window was worth. A
+    // match settled under v1 holds a 0..1000 number from the old curve instead —
+    // history is immutable and is never re-derived.
+    points: settled ? (r.score ?? 0) : (livePoints.get(r.user_id) ?? 0),
+    rating_before: r.rating_before,
+    rating_after: r.rating_after,
+    delta: r.delta,
+    // A live match shows the rating a player is carrying INTO it; a settled
+    // one shows what they had when it settled.
+    current_rating: settled ? r.rating_after : (liveRatings.get(r.user_id) ?? BASE_RATING),
+  }));
 
-  // Standings order: highest score first. In a team match the sides are shown
-  // separately, so keep the ordering within each side.
-  return enriched.sort((a, b) => (b.score || 0) - (a.score || 0));
+  // Standings order: most points first.
+  return enriched.sort((a, b) => b.points - a.points);
 }
 
 function matchPayload(match, { withParticipants = true } = {}) {
@@ -88,7 +88,6 @@ function matchPayload(match, { withParticipants = true } = {}) {
     scope_end: match.scope_end,
     state: match.state,
     k_factor: match.k_factor,
-    team_size: match.team_size,
     created_at: match.created_at,
     settled_at: match.settled_at,
     participant_count: participants
@@ -253,7 +252,7 @@ router.get('/history', requireAuth, (req, res) => {
 // lives in the caller's group (members-only); with it the match belongs to no
 // group and anyone may join (issue #35). Either way it is a user-created lobby.
 router.post('/', requireAuth, (req, res) => {
-  const { mode, title = null, scope_start, scope_end, team_size = null, side = 'A' } = req.body || {};
+  const { mode, title = null, scope_start, scope_end } = req.body || {};
   const isGlobal = (req.body && req.body.global) === true;
 
   const group = isGlobal ? null : groupOf(req.user.id);
@@ -279,30 +278,20 @@ router.post('/', requireAuth, (req, res) => {
   if (duration < MIN_DURATION_MS) return res.status(400).json({ error: 'The match must run for at least a minute' });
   if (duration > MAX_DURATION_MS) return res.status(400).json({ error: 'A match can run for at most 90 days' });
 
-  let teamSize = null;
-  if (mode === 'team') {
-    if (!Number.isInteger(team_size) || team_size < 2 || team_size > 10) {
-      return res.status(400).json({ error: 'Team size must be a whole number between 2 and 10' });
-    }
-    // A side of one is the 1v1 mode, and the losing-side split divides by
-    // (n - 1) — which is why the floor is 2, not 1.
-    teamSize = team_size;
-  }
-  if (mode === 'team' && side !== 'A' && side !== 'B') {
-    return res.status(400).json({ error: 'Side must be A or B' });
-  }
-
   const id = randomUUID();
+  // `team_size` and `side` stay in the schema because settled team matches hold
+  // real data in them, but team mode is gone (v2) and a new match never fills
+  // them in.
   db.transaction(() => {
     db.prepare(`
       INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
                            scope_start, scope_end, state, k_factor, team_size, created_at)
-      VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'open', ?, ?, ?)
+      VALUES (?, ?, ?, NULL, ?, ?, ?, ?, 'open', ?, NULL, ?)
     `).run(id, groupId, mode, title ? title.trim() : null, req.user.id,
-      scope_start, scope_end, K_BY_MODE[mode], teamSize, now);
+      scope_start, scope_end, K_BY_MODE[mode], now);
 
-    db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, ?, ?)')
-      .run(randomUUID(), id, req.user.id, mode === 'team' ? side : null, now);
+    db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
+      .run(randomUUID(), id, req.user.id, now);
   })();
 
   res.status(201).json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(id)) });
@@ -330,21 +319,13 @@ router.post('/:id/join', requireAuth, (req, res) => {
     .get(match.id, req.user.id);
   if (already) return res.status(409).json({ error: 'You are already in this match' });
 
-  const current = db.prepare('SELECT side FROM match_participants WHERE match_id = ?').all(match.id);
-
-  let side = null;
-  if (match.mode === 'team') {
-    side = req.body && req.body.side;
-    if (side !== 'A' && side !== 'B') return res.status(400).json({ error: 'Pick side A or B' });
-    if (current.filter((p) => p.side === side).length >= match.team_size) {
-      return res.status(409).json({ error: 'That side is full' });
-    }
-  } else if (match.mode === '1v1' && current.length >= 2) {
+  const current = db.prepare('SELECT user_id FROM match_participants WHERE match_id = ?').all(match.id);
+  if (match.mode === '1v1' && current.length >= 2) {
     return res.status(409).json({ error: 'This match already has both players' });
   }
 
-  db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, ?, ?)')
-    .run(randomUUID(), match.id, req.user.id, side, Date.now());
+  db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
+    .run(randomUUID(), match.id, req.user.id, Date.now());
 
   res.json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id)) });
 });

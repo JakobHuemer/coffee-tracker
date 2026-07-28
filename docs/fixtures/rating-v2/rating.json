@@ -1,0 +1,628 @@
+{
+  "_comment": "Fixtures for docs/competitions-rating-v2.md. The expected values ARE the spec: they were generated from the reference implementation in that document and reviewed. Do not edit by hand to make a failing test pass. All participants are fictional.",
+  "pointWeights": {
+    "caffeine": 1,
+    "cups": 15,
+    "variety": 15
+  },
+  "marginPerDay": 500,
+  "marginFloor": 150,
+  "cases": [
+    {
+      "name": "identical points, nobody moves",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "a",
+          "points": 400,
+          "rating": 1000
+        },
+        {
+          "name": "b",
+          "points": 400,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "a",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "b",
+          "delta": 0,
+          "ratingAfter": 1000
+        }
+      ]
+    },
+    {
+      "name": "50 point margin",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "a",
+          "points": 450,
+          "rating": 1000
+        },
+        {
+          "name": "b",
+          "points": 400,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "a",
+          "delta": 15,
+          "ratingAfter": 1015
+        },
+        {
+          "name": "b",
+          "delta": -15,
+          "ratingAfter": 985
+        }
+      ]
+    },
+    {
+      "name": "200 point margin",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "a",
+          "points": 600,
+          "rating": 1000
+        },
+        {
+          "name": "b",
+          "points": 400,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "a",
+          "delta": 36,
+          "ratingAfter": 1036
+        },
+        {
+          "name": "b",
+          "delta": -36,
+          "ratingAfter": 964
+        }
+      ]
+    },
+    {
+      "name": "800 point margin, saturated at the K/2 ceiling",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "a",
+          "points": 1200,
+          "rating": 1000
+        },
+        {
+          "name": "b",
+          "points": 400,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "a",
+          "delta": 40,
+          "ratingAfter": 1040
+        },
+        {
+          "name": "b",
+          "delta": -40,
+          "ratingAfter": 960
+        }
+      ]
+    },
+    {
+      "name": "favourite underperforms",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "favourite",
+          "points": 400,
+          "rating": 1200
+        },
+        {
+          "name": "underdog",
+          "points": 600,
+          "rating": 900
+        }
+      ],
+      "expect": [
+        {
+          "name": "favourite",
+          "delta": -64,
+          "ratingAfter": 1136
+        },
+        {
+          "name": "underdog",
+          "delta": 64,
+          "ratingAfter": 964
+        }
+      ]
+    },
+    {
+      "name": "favourite performs as expected, gains little",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "favourite",
+          "points": 600,
+          "rating": 1200
+        },
+        {
+          "name": "underdog",
+          "points": 400,
+          "rating": 900
+        }
+      ],
+      "expect": [
+        {
+          "name": "favourite",
+          "delta": 9,
+          "ratingAfter": 1209
+        },
+        {
+          "name": "underdog",
+          "delta": -9,
+          "ratingAfter": 891
+        }
+      ]
+    },
+    {
+      "name": "runner-up close to the lead, gains",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "first",
+          "points": 900,
+          "rating": 1000
+        },
+        {
+          "name": "second",
+          "points": 850,
+          "rating": 1000
+        },
+        {
+          "name": "third",
+          "points": 650,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "first",
+          "delta": 26,
+          "ratingAfter": 1026
+        },
+        {
+          "name": "second",
+          "delta": 11,
+          "ratingAfter": 1011
+        },
+        {
+          "name": "third",
+          "delta": -37,
+          "ratingAfter": 963
+        }
+      ]
+    },
+    {
+      "name": "runner-up close to the tail, loses",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "first",
+          "points": 900,
+          "rating": 1000
+        },
+        {
+          "name": "second",
+          "points": 700,
+          "rating": 1000
+        },
+        {
+          "name": "third",
+          "points": 650,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "first",
+          "delta": 37,
+          "ratingAfter": 1037
+        },
+        {
+          "name": "second",
+          "delta": -11,
+          "ratingAfter": 989
+        },
+        {
+          "name": "third",
+          "delta": -26,
+          "ratingAfter": 974
+        }
+      ]
+    },
+    {
+      "name": "every participant scored zero",
+      "k": 24,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "a",
+          "points": 0,
+          "rating": 1000
+        },
+        {
+          "name": "b",
+          "points": 0,
+          "rating": 1000
+        },
+        {
+          "name": "c",
+          "points": 0,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "a",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "b",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "c",
+          "delta": 0,
+          "ratingAfter": 1000
+        }
+      ]
+    },
+    {
+      "name": "eight participants, identical points",
+      "k": 24,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "a",
+          "points": 500,
+          "rating": 1000
+        },
+        {
+          "name": "b",
+          "points": 500,
+          "rating": 1000
+        },
+        {
+          "name": "c",
+          "points": 500,
+          "rating": 1000
+        },
+        {
+          "name": "d",
+          "points": 500,
+          "rating": 1000
+        },
+        {
+          "name": "e",
+          "points": 500,
+          "rating": 1000
+        },
+        {
+          "name": "f",
+          "points": 500,
+          "rating": 1000
+        },
+        {
+          "name": "g",
+          "points": 500,
+          "rating": 1000
+        },
+        {
+          "name": "h",
+          "points": 500,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "a",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "b",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "c",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "d",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "e",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "f",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "g",
+          "delta": 0,
+          "ratingAfter": 1000
+        },
+        {
+          "name": "h",
+          "delta": 0,
+          "ratingAfter": 1000
+        }
+      ]
+    },
+    {
+      "name": "seven participants, equal ratings",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "variety",
+          "points": 821,
+          "rating": 1000
+        },
+        {
+          "name": "caffeine",
+          "points": 767,
+          "rating": 1000
+        },
+        {
+          "name": "monk",
+          "points": 405,
+          "rating": 1000
+        },
+        {
+          "name": "volume",
+          "points": 215,
+          "rating": 1000
+        },
+        {
+          "name": "farm",
+          "points": 180,
+          "rating": 1000
+        },
+        {
+          "name": "doppio",
+          "points": 158,
+          "rating": 1000
+        },
+        {
+          "name": "casual",
+          "points": 135,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "variety",
+          "delta": 36,
+          "ratingAfter": 1036
+        },
+        {
+          "name": "caffeine",
+          "delta": 31,
+          "ratingAfter": 1031
+        },
+        {
+          "name": "monk",
+          "delta": 12,
+          "ratingAfter": 1012
+        },
+        {
+          "name": "volume",
+          "delta": -11,
+          "ratingAfter": 989
+        },
+        {
+          "name": "farm",
+          "delta": -18,
+          "ratingAfter": 982
+        },
+        {
+          "name": "doppio",
+          "delta": -23,
+          "ratingAfter": 977
+        },
+        {
+          "name": "casual",
+          "delta": -27,
+          "ratingAfter": 973
+        }
+      ]
+    },
+    {
+      "name": "seven participants, spread ratings",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "variety",
+          "points": 821,
+          "rating": 1300
+        },
+        {
+          "name": "caffeine",
+          "points": 767,
+          "rating": 1100
+        },
+        {
+          "name": "monk",
+          "points": 405,
+          "rating": 1000
+        },
+        {
+          "name": "volume",
+          "points": 215,
+          "rating": 950
+        },
+        {
+          "name": "farm",
+          "points": 180,
+          "rating": 900
+        },
+        {
+          "name": "doppio",
+          "points": 158,
+          "rating": 850
+        },
+        {
+          "name": "casual",
+          "points": 135,
+          "rating": 800
+        }
+      ],
+      "expect": [
+        {
+          "name": "variety",
+          "delta": 6,
+          "ratingAfter": 1306
+        },
+        {
+          "name": "caffeine",
+          "delta": 17,
+          "ratingAfter": 1117
+        },
+        {
+          "name": "monk",
+          "delta": 9,
+          "ratingAfter": 1009
+        },
+        {
+          "name": "volume",
+          "delta": -8,
+          "ratingAfter": 942
+        },
+        {
+          "name": "farm",
+          "delta": -9,
+          "ratingAfter": 891
+        },
+        {
+          "name": "doppio",
+          "delta": -8,
+          "ratingAfter": 842
+        },
+        {
+          "name": "casual",
+          "delta": -7,
+          "ratingAfter": 793
+        }
+      ]
+    },
+    {
+      "name": "worked ondemand example, K=80",
+      "k": 80,
+      "marginScale": 150,
+      "participants": [
+        {
+          "name": "Max Mustermann",
+          "points": 300,
+          "rating": 1000
+        },
+        {
+          "name": "Erika Mustermann",
+          "points": 250,
+          "rating": 1000
+        },
+        {
+          "name": "John Doe",
+          "points": 218,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "Max Mustermann",
+          "delta": 18,
+          "ratingAfter": 1018
+        },
+        {
+          "name": "Erika Mustermann",
+          "delta": -2,
+          "ratingAfter": 998
+        },
+        {
+          "name": "John Doe",
+          "delta": -16,
+          "ratingAfter": 984
+        }
+      ]
+    },
+    {
+      "name": "worked daily example, K=80, scale 500",
+      "k": 80,
+      "marginScale": 500,
+      "participants": [
+        {
+          "name": "Max Mustermann",
+          "points": 595,
+          "rating": 1000
+        },
+        {
+          "name": "Erika Mustermann",
+          "points": 535,
+          "rating": 1000
+        },
+        {
+          "name": "John Doe",
+          "points": 305,
+          "rating": 1000
+        }
+      ],
+      "expect": [
+        {
+          "name": "Max Mustermann",
+          "delta": 14,
+          "ratingAfter": 1014
+        },
+        {
+          "name": "Erika Mustermann",
+          "delta": 7,
+          "ratingAfter": 1007
+        },
+        {
+          "name": "John Doe",
+          "delta": -21,
+          "ratingAfter": 979
+        }
+      ]
+    }
+  ]
+}

@@ -38,16 +38,16 @@ const SECTIONS: Record<CompeteScope, { id: Section; label: string }[]> = {
 };
 
 const MODE_LABEL: Record<MatchMode, string> = {
-  daily: 'Daily', weekly: 'Weekly', ondemand: 'Free-for-all', '1v1': '1v1', team: 'Team',
+  daily: 'Daily', weekly: 'Weekly', ondemand: 'Free-for-all', '1v1': '1v1',
 };
 
 const MODE_ICON: Record<MatchMode, string> = {
-  daily: 'calendar', weekly: 'calendar', ondemand: 'bolt', '1v1': 'scale', team: 'users',
+  daily: 'calendar', weekly: 'calendar', ondemand: 'bolt', '1v1': 'scale',
 };
 
 // Modes a player can open themselves. daily and weekly are opened by the server
 // for the whole group, on its own schedule.
-const USER_MODES: MatchMode[] = ['1v1', 'ondemand', 'team'];
+const USER_MODES: MatchMode[] = ['1v1', 'ondemand'];
 
 const HOUR = 3600000;
 
@@ -266,39 +266,15 @@ function Standing({ p, settled, rank }: { p: MatchParticipant; settled: boolean;
 function MatchStandings({ match }: { match: Match }) {
   const settled = match.state === 'settled';
 
-  if (match.mode !== 'team') {
-    return (
-      <div className="cmp-standings">
-        {match.participants.map((p, i) => (
-          <Standing key={p.user_id} p={p} settled={settled} rank={i + 1} />
-        ))}
-        {/* A lobby nobody has joined would otherwise render an empty gap. */}
-        {match.participants.length === 0 && (
-          <div className="cmp-side-empty">No players yet — be the first.</div>
-        )}
-      </div>
-    );
-  }
-
-  // Team matches are two rosters facing each other, so showing one flat ranking
-  // would hide the thing that actually decided the match.
-  const sides: Array<'A' | 'B'> = ['A', 'B'];
   return (
-    <div className="cmp-sides">
-      {sides.map(side => {
-        const members = match.participants.filter(p => p.side === side);
-        return (
-          <div key={side} className="cmp-side">
-            <div className="cmp-side-head">Side {side}</div>
-            <div className="cmp-standings">
-              {members.map((p, i) => (
-                <Standing key={p.user_id} p={p} settled={settled} rank={i + 1} />
-              ))}
-              {members.length === 0 && <div className="cmp-side-empty">No players yet</div>}
-            </div>
-          </div>
-        );
-      })}
+    <div className="cmp-standings">
+      {match.participants.map((p, i) => (
+        <Standing key={p.user_id} p={p} settled={settled} rank={i + 1} />
+      ))}
+      {/* A lobby nobody has joined would otherwise render an empty gap. */}
+      {match.participants.length === 0 && (
+        <div className="cmp-side-empty">No players yet — be the first.</div>
+      )}
     </div>
   );
 }
@@ -307,7 +283,7 @@ function MatchStandings({ match }: { match: Match }) {
 
 function MatchCard({ match, onJoin, onLeave, busy }: {
   match: Match;
-  onJoin?: (side: 'A' | 'B' | null) => void;
+  onJoin?: () => void;
   onLeave?: () => void;
   busy?: boolean;
 }) {
@@ -321,7 +297,6 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
   // time while it sits in the Live now section.
   const isRunning = (match.state === 'pending' || match.state === 'open') && match.scope_start <= Date.now();
   const isDone = match.state === 'settled' || match.state === 'cancelled';
-  const sideCount = (side: 'A' | 'B') => match.participants.filter(p => p.side === side).length;
 
   return (
     <div className="card cmp-match">
@@ -355,28 +330,11 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
             <button className="btn-secondary" disabled={busy} onClick={() => onLeave && onLeave()}>
               Leave match
             </button>
-          ) : match.mode === 'team' ? (
-            <>
-              <button
-                className="btn-secondary"
-                disabled={busy || sideCount('A') >= (match.team_size ?? 0)}
-                onClick={() => onJoin && onJoin('A')}
-              >
-                Join A ({sideCount('A')}/{match.team_size})
-              </button>
-              <button
-                className="btn-secondary"
-                disabled={busy || sideCount('B') >= (match.team_size ?? 0)}
-                onClick={() => onJoin && onJoin('B')}
-              >
-                Join B ({sideCount('B')}/{match.team_size})
-              </button>
-            </>
           ) : (
             <button
               className="btn-primary"
               disabled={busy || (match.mode === '1v1' && match.participant_count >= 2)}
-              onClick={() => onJoin && onJoin(null)}
+              onClick={() => onJoin && onJoin()}
             >
               {match.mode === '1v1' && match.participant_count >= 2 ? 'Match is full' : 'Join match'}
             </button>
@@ -393,8 +351,6 @@ function NewMatchForm({ onDone, global = false }: { onDone: () => void; global?:
   const qc = useQueryClient();
   const [mode, setMode] = useState<MatchMode>('1v1');
   const [title, setTitle] = useState('');
-  const [teamSize, setTeamSize] = useState(2);
-  const [side, setSide] = useState<'A' | 'B'>('A');
   // Default to a match that opens in an hour and runs for a day: long enough
   // for people to actually see the lobby and join it.
   const [start, setStart] = useState(() => toLocalInput(Date.now() + HOUR));
@@ -408,7 +364,6 @@ function NewMatchForm({ onDone, global = false }: { onDone: () => void; global?:
       scope_start: new Date(start).getTime(),
       scope_end: new Date(end).getTime(),
       ...(global ? { global: true } : {}),
-      ...(mode === 'team' ? { team_size: teamSize, side } : {}),
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['competitions'] });
@@ -453,29 +408,6 @@ function NewMatchForm({ onDone, global = false }: { onDone: () => void; global?:
         <div className="field-hint">Max 90 days. Settles when it ends.</div>
       </div>
 
-      {mode === 'team' && (
-        <>
-          <div className="field">
-            <label htmlFor="cmp-size">Players per side</label>
-            <input
-              id="cmp-size" className="search-input" type="number" min={2} max={10} value={teamSize}
-              onChange={e => setTeamSize(Number(e.target.value))}
-            />
-            <div className="field-hint">Min 2 per side.</div>
-          </div>
-          <div className="field">
-            <label>Your side</label>
-            <div className="cmp-mode-picker">
-              {(['A', 'B'] as const).map(s => (
-                <button key={s} className={`cmp-mode-opt${side === s ? ' active' : ''}`} onClick={() => setSide(s)}>
-                  Side {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
       {error && <div className="auth-error">{error}</div>}
 
       <div className="cmp-form-actions">
@@ -518,8 +450,7 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
   const refresh = () => qc.invalidateQueries({ queryKey: ['competitions'] });
 
   const join = useMutation({
-    mutationFn: ({ id, side }: { id: string; side: 'A' | 'B' | null }) =>
-      api.post(`/competitions/${id}/join`, side ? { side } : {}),
+    mutationFn: (id: string) => api.post(`/competitions/${id}/join`),
     onSuccess: refresh,
     onError: (e: Error) => setError(e.message),
   });
@@ -540,7 +471,7 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
   const joinCard = (m: Match) => (
     <MatchCard
       key={m.id} match={m} busy={busy}
-      onJoin={side => { setError(null); join.mutate({ id: m.id, side }); }}
+      onJoin={() => { setError(null); join.mutate(m.id); }}
       onLeave={() => { setError(null); leave.mutate(m.id); }}
     />
   );
