@@ -47,7 +47,7 @@ function handleUpload(mw) {
 
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, is_admin, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous

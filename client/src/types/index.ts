@@ -53,6 +53,9 @@ export interface User {
   // Off by default — nothing ever puts a user on a roster otherwise.
   auto_join_daily?: 0 | 1;
   auto_join_weekly?: 0 | 1;
+  // Admin flag. Admins can reset any user's password and promote/demote other
+  // admins from the Profile page. Absent/0 for ordinary users.
+  is_admin?: 0 | 1;
   created_at: number;
 }
 

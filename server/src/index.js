@@ -22,6 +22,11 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
 const db = require('./db');
 require('./migrate')(db);
 
+// Ensure the bootstrap admin (ADMIN_USERNAME) is promoted, if that user exists.
+// Runs after migrations so the is_admin column is guaranteed present, and before
+// routes mount so admin access is correct from the first request. Non-fatal.
+require('./admin-bootstrap').promoteBootstrapAdmin(db);
+
 const app = express();
 
 // Same-origin by design (AGENTS.md #6): the API is only called from the
@@ -92,6 +97,7 @@ app.get('/uploads/:filename', (req, res) => {
 
 // Routes
 app.use('/api/auth',        require('./routes/auth'));
+app.use('/api/admin',       require('./routes/admin'));
 app.use('/api/coffees',     require('./routes/coffees'));
 app.use('/api/feed',        require('./routes/feed'));
 app.use('/api/energy',      require('./routes/energy'));

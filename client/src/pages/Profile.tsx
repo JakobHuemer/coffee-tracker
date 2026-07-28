@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
 import { useAuthStore } from '../store/auth';
@@ -173,6 +173,91 @@ function ChangePasswordCard() {
           {mutation.isPending ? 'Saving…' : 'Reset password'}
         </button>
       </form>
+    </div>
+  );
+}
+
+interface AdminUser {
+  id: string;
+  username: string;
+  avatar: string;
+  is_admin: 0 | 1;
+  created_at: number;
+}
+
+// One user row in the admin card: set a new password, and toggle admin. Local
+// state per row so a reset on one user doesn't clear the input of another.
+function AdminUserRow({ u }: { u: AdminUser }) {
+  const qc = useQueryClient();
+  const [pw, setPw] = useState('');
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  const resetMutation = useMutation({
+    mutationFn: (password: string) => api.post(`/admin/users/${u.id}/reset-password`, { password }),
+    onSuccess: () => {
+      setPw(''); setError(''); setMsg('Password set');
+      setTimeout(() => setMsg(''), 3000);
+    },
+    onError: (e: Error) => { setMsg(''); setError(e.message); },
+  });
+
+  const adminMutation = useMutation({
+    mutationFn: (is_admin: boolean) => api.post(`/admin/users/${u.id}/admin`, { is_admin }),
+    onSuccess: () => { setError(''); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
+    onError: (e: Error) => setError(e.message),
+  });
+
+  function submitReset(e: React.FormEvent) {
+    e.preventDefault();
+    if (pw.length === 0) { setError('Enter a new password.'); return; }
+    resetMutation.mutate(pw);
+  }
+
+  return (
+    <div style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+        <span>{u.avatar} {u.username}{u.is_admin ? ' · admin' : ''}</span>
+        <button
+          className="btn-secondary"
+          onClick={() => adminMutation.mutate(!u.is_admin)}
+          disabled={adminMutation.isPending}
+        >
+          {u.is_admin ? 'Remove admin' : 'Make admin'}
+        </button>
+      </div>
+      <form onSubmit={submitReset} style={{ display: 'flex', gap: 8 }}>
+        <input
+          type="text"
+          value={pw}
+          onChange={e => setPw(e.target.value)}
+          placeholder="New password"
+          autoComplete="off"
+          style={{ flex: 1 }}
+        />
+        <button type="submit" className="btn-primary" disabled={resetMutation.isPending}>
+          {resetMutation.isPending ? 'Setting…' : 'Set password'}
+        </button>
+      </form>
+      {msg && <div className="pw-success">{msg}</div>}
+      {error && <div className="auth-error">{error}</div>}
+    </div>
+  );
+}
+
+// Admin-only card. Rendered only when the current user is an admin (see the
+// guard at the call site), but the endpoints enforce that server-side too.
+function AdminCard() {
+  const { data: users = [], isLoading } = useQuery<AdminUser[]>({
+    queryKey: ['admin-users'],
+    queryFn: () => api.get('/admin/users'),
+  });
+
+  return (
+    <div className="card">
+      <div className="section-label">Admin</div>
+      {isLoading && <div className="profile-placeholder-body">Loading…</div>}
+      {users.map(u => <AdminUserRow key={u.id} u={u} />)}
     </div>
   );
 }
@@ -433,6 +518,8 @@ export function Profile() {
         <GalleryCard />
 
         <ChangePasswordCard />
+
+        {user?.is_admin ? <AdminCard /> : null}
 
         <DebugCard />
 
