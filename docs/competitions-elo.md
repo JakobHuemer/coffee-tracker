@@ -254,9 +254,52 @@ the existing `server/src/time.js`. Consequences:
 - The weekly `period_key` is the local date of that week's Monday, not an ISO
   week number, so there is no year-boundary numbering edge case.
 
-Everything in the score and rating layers is implemented exactly as specified:
-same weights, same saturation, rank-only `actual`, pairwise FFA decomposition,
-softmax contribution split, and no floor or clamp anywhere in settlement.
+Everything else in the score and rating layers is implemented as specified: same
+weights, same saturation, rank-only `actual`, pairwise FFA decomposition,
+softmax contribution split, and no floor or clamp anywhere in settlement. The
+one addition is that settled deltas are whole numbers.
+
+## Ratings move in whole points
+
+The spec settles real-valued deltas. The shipped code settles whole ones (issue
+#49) — a rating is a scoreboard number, and `+7.6883` is not one.
+
+Rounding each delta on its own would break zero-sum, so this is an
+apportionment, not a rounding. `apportion(raw, total)` in `competition-core.js`
+floors every raw delta and hands the leftover whole units to the deltas with the
+largest fractional part (largest remainder / Hamilton). The result is built from
+`total` minus the floors rather than by re-adding the floats, so **the sum is
+exact by construction** — a stronger guarantee than the spec's, which only held
+to floating-point precision.
+
+- FFA and 1v1 apportion the N raw deltas to a total of 0.
+- Team matches settle a whole pot first (`P_A = round(K * (A_A - E_A))`,
+  `P_B = -P_A`), then apportion each side's split to its own pot. Both
+  invariants — whole match sums to 0, each side sums to its pot — hold exactly.
+- Ties on the fractional part go to the earlier participant, so a settlement is
+  a pure function of roster order rather than of float luck. That order has to
+  be total for the result to be reproducible, so `settleMatch` reads the roster
+  `ORDER BY joined_at, user_id` — an auto-joined roster shares one `joined_at`.
+
+Accepted consequence: a mismatch lopsided enough that the raw delta is under
+half a point settles at 0 for everyone. Nobody's rating moves, which is the
+honest outcome — there was nothing there to win. Whole-point Elo behaves this
+way wherever it is used, FIDE included.
+
+The columns stay `REAL` (`rating_before`/`rating_after`/`delta`), but nothing
+fractional survives: migration `015_resettle_whole_point_elo.js` **re-evaluates
+the whole match history** into whole points so the ledger does not tell two
+stories. It replays every settled match in `(settled_at, id)` order through the
+same `settleFfa`/`settleTeams`, feeding each match the running rating the
+previous ones left — the stored per-participant `score` is reused unchanged
+(only the rating layer moved, and the score is the immutable record of that
+window; it is *not* re-derived from `coffee_entries`). The `user_ratings` cache
+is rebuilt wholesale from the replay afterwards. From there on every delta is
+whole, so a rating that starts at `BASE_RATING = 1000` stays whole forever.
+
+Re-rounding each stored delta on its own would not have worked — it would break
+the zero-sum the deltas were derived from — which is exactly why the migration
+replays through `apportion` rather than rounding rows in place.
 
 ## Match lifecycle
 

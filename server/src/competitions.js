@@ -293,8 +293,11 @@ function cancel(matchId, now) {
 // so a crash mid-settlement leaves the match pending and it settles cleanly on
 // the next tick rather than half-applying deltas to the rating cache.
 function settleMatch(match, now = Date.now()) {
+  // user_id breaks the joined_at tie: a whole-point delta that lands on a
+  // fractional tie goes to the earlier participant, so the roster order has to
+  // be total. Auto-joined rosters all share one joined_at instant.
   const rows = db.prepare(
-    'SELECT user_id, side FROM match_participants WHERE match_id = ? ORDER BY joined_at'
+    'SELECT user_id, side FROM match_participants WHERE match_id = ? ORDER BY joined_at, user_id'
   ).all(match.id);
 
   const players = rows.map((r) => ({

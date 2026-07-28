@@ -3,10 +3,11 @@ import { test, expect } from 'bun:test';
 const {
   BASE_RATING, K_BY_MODE,
   saturate, performanceScore, scorePoints,
-  expectedScore, actualFromRank, settleFfa, contributionShares, settleTeams,
+  expectedScore, actualFromRank, apportion, settleFfa, contributionShares, settleTeams,
 } = require('./competition-core');
 
 const sum = (xs) => xs.reduce((a, b) => a + b, 0);
+const allWhole = (xs) => xs.every((x) => Number.isInteger(x));
 
 // Deterministic PRNG so a failing random case is reproducible from the seed.
 function rng(seed) {
@@ -69,6 +70,55 @@ test('actual is rank only — margin never leaks in', () => {
   expect(actualFromRank(0.1, 0.9)).toBe(0);
 });
 
+// ── apportionment (whole-number deltas, issue #49) ───────────────────────────
+
+test('apportion hands out whole numbers that hit the target sum exactly', () => {
+  const rand = rng(49490);
+  for (let trial = 0; trial < 500; trial++) {
+    const n = 2 + Math.floor(rand() * 7);
+    const total = Math.floor(rand() * 61) - 30;
+    // Random split of `total` into n reals, so the input genuinely sums to it.
+    const cuts = Array.from({ length: n - 1 }, () => rand()).sort((a, b) => a - b);
+    const raw = [...cuts, 1].map((c, i) => (c - (i === 0 ? 0 : cuts[i - 1])) * total);
+
+    const out = apportion(raw, total);
+    expect(allWhole(out)).toBe(true);
+    expect(sum(out)).toBe(total);
+    // Largest remainder never moves anyone a full point off their real share.
+    for (let i = 0; i < n; i++) expect(Math.abs(out[i] - raw[i])).toBeLessThan(1);
+  }
+});
+
+test('apportion breaks fractional ties by position, so it is order-deterministic', () => {
+  expect(apportion([1.5, -1.5], 0)).toEqual([2, -2]);
+  expect(apportion([-1.5, 1.5], 0)).toEqual([-1, 1]);
+  expect(apportion([0.5, 0.5, 0.5, -1.5], 0)).toEqual([1, 1, 0, -2]);
+});
+
+test('apportion leaves values that are already whole untouched', () => {
+  expect(apportion([16, -16], 0)).toEqual([16, -16]);
+  expect(apportion([0, 0, 0], 0)).toEqual([0, 0, 0]);
+});
+
+test('apportion absorbs float drift between the raw values and the target', () => {
+  // The team path hands it raw values derived from a rounded pot, so they sum
+  // to the target only to float precision. The target still wins.
+  expect(apportion([-1e-17, -1e-17, -1e-17], 0)).toEqual([0, 0, 0]);
+  expect(sum(apportion([-7.000000000000001, -7.000000000000001, -7.000000000000001], -21))).toBe(-21);
+  expect(sum(apportion([4.999999999, 5.000000001, -10], 0))).toBe(0);
+});
+
+test('a zero delta is positive zero, never negative zero', () => {
+  // -0 would survive into the ledger and make an exact `toBe(0)` fail later.
+  for (const d of apportion([-0, -0], -0)) expect(Object.is(d, 0)).toBe(true);
+  const drawn = settleTeams(
+    [{ userId: 'a1', rating: 1000, score: 0 }, { userId: 'a2', rating: 1000, score: 0 }],
+    [{ userId: 'b1', rating: 1000, score: 0 }, { userId: 'b2', rating: 1000, score: 0 }],
+    K_BY_MODE.team,
+  );
+  for (const r of drawn) expect(Object.is(r.delta, 0)).toBe(true);
+});
+
 // ── FFA ──────────────────────────────────────────────────────────────────────
 
 test('FFA is zero-sum for random N, ratings and scores', () => {
@@ -82,20 +132,61 @@ test('FFA is zero-sum for random N, ratings and scores', () => {
     }));
     const k = K_BY_MODE.daily + rand() * 30;
     const deltas = settleFfa(participants, k).map((r) => r.delta);
-    expect(sum(deltas)).toBeCloseTo(0, 9);
+    // Exactly zero, not close to it: whole numbers have no float residue.
+    expect(sum(deltas)).toBe(0);
   }
 });
 
-test('FFA at N=2 reduces to classic head-to-head Elo', () => {
+test('every FFA delta is a whole number, in every mode', () => {
+  const rand = rng(31337);
+  for (let trial = 0; trial < 400; trial++) {
+    const n = 2 + Math.floor(rand() * 7); // N in [2, 8]
+    const participants = Array.from({ length: n }, (_, i) => ({
+      userId: `u${i}`,
+      rating: 400 + rand() * 1800,
+      score: rand(),
+    }));
+    const mode = Object.keys(K_BY_MODE)[Math.floor(rand() * Object.keys(K_BY_MODE).length)];
+    const rows = settleFfa(participants, K_BY_MODE[mode]);
+    expect(allWhole(rows.map((r) => r.delta))).toBe(true);
+    expect(allWhole(rows.map((r) => r.ratingAfter - r.ratingBefore))).toBe(true);
+    expect(sum(rows.map((r) => r.delta))).toBe(0);
+  }
+});
+
+test('a whole-number delta never lands more than a point off the raw Elo change', () => {
+  // The raw change for the favourite here is K*(1 - E) with E from the ratings.
+  const k = 20;
+  const rows = settleFfa(
+    [{ userId: 'a', rating: 1240, score: 0.7 }, { userId: 'b', rating: 1000, score: 0.2 }],
+    k,
+  );
+  const raw = k * (1 - expectedScore(1240, 1000));
+  const a = rows.find((r) => r.userId === 'a');
+  expect(Math.abs(a.delta - raw)).toBeLessThan(1);
+  expect(a.delta).toBe(Math.round(raw)); // no tie in play, so it is plain rounding
+});
+
+test('a mismatch too lopsided to be worth a whole point moves nobody', () => {
+  // K*(1 - E) here is ~3e-5, and there is no fraction of a point to hand over.
+  const rows = settleFfa(
+    [{ userId: 'a', rating: 2400, score: 0.9 }, { userId: 'b', rating: 5, score: 0 }],
+    32,
+  );
+  for (const r of rows) expect(r.delta).toBe(0);
+  expect(sum(rows.map((r) => r.delta))).toBe(0);
+});
+
+test('FFA at N=2 reduces to classic head-to-head Elo, rounded to whole points', () => {
   const k = 32;
   const [a, b] = settleFfa(
     [{ userId: 'a', rating: 1200, score: 0.6 }, { userId: 'b', rating: 1000, score: 0.4 }],
     k,
   );
   const expectedA = expectedScore(1200, 1000);
-  expect(a.delta).toBeCloseTo(k * (1 - expectedA), 12);
-  expect(b.delta).toBeCloseTo(k * (0 - expectedScore(1000, 1200)), 12);
-  expect(a.delta + b.delta).toBeCloseTo(0, 12);
+  expect(a.delta).toBe(Math.round(k * (1 - expectedA)));
+  expect(b.delta).toBe(-a.delta); // the loser pays exactly what the winner takes
+  expect(a.delta + b.delta).toBe(0);
 });
 
 test('an all-tie FFA between equal ratings moves nobody', () => {
@@ -103,7 +194,7 @@ test('an all-tie FFA between equal ratings moves nobody', () => {
     [0, 1, 2].map((i) => ({ userId: `u${i}`, rating: BASE_RATING, score: 0.3 })),
     K_BY_MODE.daily,
   );
-  for (const r of rows) expect(r.delta).toBeCloseTo(0, 12);
+  for (const r of rows) expect(r.delta).toBe(0);
 });
 
 test('a participant who logged nothing loses to anyone who scored above 0', () => {
@@ -113,17 +204,17 @@ test('a participant who logged nothing loses to anyone who scored above 0', () =
   );
   expect(active.delta).toBeGreaterThan(0);
   expect(idle.delta).toBeLessThan(0);
-  expect(active.delta + idle.delta).toBeCloseTo(0, 12);
+  expect(active.delta + idle.delta).toBe(0);
 });
 
 test('ratingAfter is never floored — a big loss can push below any floor', () => {
   const rows = settleFfa(
-    [{ userId: 'a', rating: 2400, score: 0.9 }, { userId: 'b', rating: 5, score: 0 }],
+    [{ userId: 'a', rating: 300, score: 0.9 }, { userId: 'b', rating: 3, score: 0 }],
     32,
   );
   const loser = rows.find((r) => r.userId === 'b');
-  expect(loser.ratingAfter).toBeLessThan(5);
-  expect(sum(rows.map((r) => r.delta))).toBeCloseTo(0, 12);
+  expect(loser.ratingAfter).toBeLessThan(0);
+  expect(sum(rows.map((r) => r.delta))).toBe(0);
 });
 
 test('FFA needs at least two participants', () => {
@@ -150,11 +241,36 @@ test('team match is zero-sum overall and each side splits exactly its pot', () =
     const teamB = mk(sizeB);
 
     const rows = settleTeams(teamA, teamB, K_BY_MODE.team);
-    expect(sum(rows.map((r) => r.delta))).toBeCloseTo(0, 9);
+    expect(sum(rows.map((r) => r.delta))).toBe(0);
 
     const potA = sum(rows.filter((r) => r.side === 'A').map((r) => r.delta));
     const potB = sum(rows.filter((r) => r.side === 'B').map((r) => r.delta));
-    expect(potA).toBeCloseTo(-potB, 9);
+    expect(potA + potB).toBe(0);
+  }
+});
+
+test('every team delta is a whole number, and each side still splits its whole pot', () => {
+  const rand = rng(490049);
+  for (let trial = 0; trial < 300; trial++) {
+    const mk = (p) => Array.from({ length: p }, (_, i) => ({
+      userId: `${p}-${i}-${trial}`, rating: 400 + rand() * 1800, score: rand(),
+    }));
+    const teamA = mk(2 + Math.floor(rand() * 4));
+    const teamB = mk(2 + Math.floor(rand() * 4));
+
+    const rows = settleTeams(teamA, teamB, K_BY_MODE.team);
+    expect(allWhole(rows.map((r) => r.delta))).toBe(true);
+    expect(sum(rows.map((r) => r.delta))).toBe(0);
+
+    // Each side splits exactly the whole pot the team-level result gave it.
+    const rA = sum(teamA.map((p) => p.rating)) / teamA.length;
+    const rB = sum(teamB.map((p) => p.rating)) / teamB.length;
+    const sA = sum(teamA.map((p) => p.score)) / teamA.length;
+    const sB = sum(teamB.map((p) => p.score)) / teamB.length;
+    // `+ 0` for the same reason the implementation does it: a pot that rounds
+    // to zero from below is -0 here, and the deltas it produces are +0.
+    const pot = Math.round(K_BY_MODE.team * (actualFromRank(sA, sB) - expectedScore(rA, rB))) + 0;
+    expect(sum(rows.filter((r) => r.side === 'A').map((r) => r.delta))).toBe(pot);
   }
 });
 
@@ -199,7 +315,7 @@ test('an evenly matched drawn team game moves nobody', () => {
     { userId: 'b1', rating: 1000, score: 0.5 },
     { userId: 'b2', rating: 1000, score: 0.5 },
   ];
-  for (const r of settleTeams(teamA, teamB, K_BY_MODE.team)) expect(r.delta).toBeCloseTo(0, 12);
+  for (const r of settleTeams(teamA, teamB, K_BY_MODE.team)) expect(r.delta).toBe(0);
 });
 
 test('a side of one is rejected — that is 1v1, not a team', () => {
@@ -217,7 +333,7 @@ test('several hundred mixed matches leave the pool mean exactly where it started
   const rand = rng(777);
   const pool = Array.from({ length: 40 }, (_, i) => ({
     userId: `p${i}`,
-    rating: BASE_RATING + (rand() - 0.5) * 200,
+    rating: BASE_RATING + Math.round((rand() - 0.5) * 200),
     skill: rand(),
   }));
   const before = sum(pool.map((p) => p.rating)) / pool.length;
@@ -248,7 +364,9 @@ test('several hundred mixed matches leave the pool mean exactly where it started
   }
 
   const after = sum([...ratingOf.values()]) / pool.length;
-  // Not "within noise" — zero-sum settlement means the pool mean is conserved
-  // to floating-point precision. Any real drift is a broken formula.
-  expect(after).toBeCloseTo(before, 8);
+  // Not "within noise" and not "close to" — whole-number zero-sum deltas
+  // conserve the pool total bit for bit. Any drift at all is a broken formula.
+  expect(after).toBe(before);
+  // And a pool that started whole is still whole 600 matches later.
+  expect(allWhole([...ratingOf.values()])).toBe(true);
 });

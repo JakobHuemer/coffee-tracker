@@ -71,8 +71,10 @@ exports.up = (db) => {
       user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       side               TEXT,   -- 'A' | 'B' for team mode, NULL for FFA/1v1
       joined_at          INTEGER NOT NULL,
-      -- Everything below is written once, at settlement, and never recomputed:
-      -- this is the immutable ledger the rating cache is derived from.
+      -- Everything below is written at settlement: this is the ledger the
+      -- rating cache is derived from. It is treated as immutable in normal
+      -- operation; the one exception is a settlement-rule change, which
+      -- re-evaluates the whole history in a migration (see 015).
       score              REAL,
       contribution_share REAL,
       rating_before      REAL,

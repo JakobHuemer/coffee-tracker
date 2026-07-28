@@ -72,6 +72,30 @@ function actualFromRank(score, opponentScore) {
   return 0.5;
 }
 
+// Ratings move in whole points only, and the whole-number deltas still have to
+// add up to the match total exactly. Largest-remainder apportionment does both:
+// floor every raw delta, then hand the leftover units to the entries with the
+// biggest fractional part.
+//
+// The sum is exact by construction — the result is built from `total` minus the
+// floors, never by re-adding the floats — so float error in `raw` cannot leak
+// into the ledger. `leftover` is therefore always in [0, raw.length]: each floor
+// gives away less than 1, and `sum(raw)` is `total`.
+//
+// Ties on the fractional part go to the earlier entry, which makes a settlement
+// a pure function of participant order (`joined_at` at the call site).
+function apportion(raw, total) {
+  // `+ 0` folds Math.floor(-0) back to 0, so a zero delta is never the negative
+  // zero that would make `delta === 0` pass but `Object.is(delta, 0)` fail.
+  const floors = raw.map((v) => Math.floor(v) + 0);
+  const leftover = total - floors.reduce((a, b) => a + b, 0);
+  const byFraction = raw
+    .map((v, i) => ({ i, frac: v - floors[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i);
+  for (let j = 0; j < leftover; j++) floors[byFraction[j].i] += 1;
+  return floors;
+}
+
 // Free-for-all over N participants, decomposed into all N*(N-1)/2 pairs.
 //
 //   E_ij    = 1 / (1 + 10^((R_j - R_i)/400))
@@ -79,7 +103,12 @@ function actualFromRank(score, opponentScore) {
 //
 // Zero-sum is STRUCTURAL, not tested-after-the-fact: A_ij + A_ji = 1 and
 // E_ij + E_ji = 1 always, so every pair's contribution to sum(delta_i) cancels
-// exactly, for any N, any K, any rating spread.
+// exactly, for any N, any K, any rating spread. `apportion` then makes the
+// deltas whole without spending that guarantee.
+//
+// A consequence of whole points: a mismatch lopsided enough that the raw delta
+// is under half a point settles at 0 for everyone. Nobody's rating moves, which
+// is the honest outcome — there was nothing there to win.
 //
 // There is deliberately NO floor/clamp on the resulting rating. A MIN_RATING
 // clamp would break zero-sum the moment a participant hit it — the clamped
@@ -92,15 +121,24 @@ function settleFfa(participants, k) {
   const n = participants.length;
   if (n < 2) throw new Error('settleFfa needs at least 2 participants');
 
-  return participants.map((p) => {
+  const raw = participants.map((p) => {
     let sum = 0;
     for (const q of participants) {
       if (q === p) continue;
       sum += actualFromRank(p.score, q.score) - expectedScore(p.rating, q.rating);
     }
-    const delta = (k / (n - 1)) * sum;
-    return { userId: p.userId, delta, ratingBefore: p.rating, ratingAfter: p.rating + delta };
+    return (k / (n - 1)) * sum;
   });
+
+  // Whole points, still summing to the zero the raw deltas sum to.
+  const deltas = apportion(raw, 0);
+
+  return participants.map((p, i) => ({
+    userId: p.userId,
+    delta: deltas[i],
+    ratingBefore: p.rating,
+    ratingAfter: p.rating + deltas[i],
+  }));
 }
 
 // Softmax over scores. Keeps close scores near-equal but stops crushing the
@@ -138,7 +176,9 @@ function settleTeams(teamA, teamB, k) {
 
   const eA = expectedScore(rA, rB);
   const aA = actualFromRank(sA, sB);
-  const pA = k * (aA - eA);
+  // The pot is settled as a whole number first, so a side's whole-point split
+  // can still sum to exactly the pot it was given.
+  const pA = Math.round(k * (aA - eA));
   const pB = -pA;
 
   // The side holding the positive pot splits it by share; the other side
@@ -148,17 +188,17 @@ function settleTeams(teamA, teamB, k) {
 
   function split(team, pot, isWinning) {
     const shares = contributionShares(team.map((p) => p.score));
-    return team.map((p, i) => {
-      const share = shares[i];
-      const delta = isWinning ? pot * share : pot * ((1 - share) / (team.length - 1));
-      return {
-        userId: p.userId,
-        delta,
-        share,
-        ratingBefore: p.rating,
-        ratingAfter: p.rating + delta,
-      };
-    });
+    const raw = shares.map((share) => (
+      isWinning ? pot * share : pot * ((1 - share) / (team.length - 1))
+    ));
+    const deltas = apportion(raw, pot);
+    return team.map((p, i) => ({
+      userId: p.userId,
+      delta: deltas[i],
+      share: shares[i],
+      ratingBefore: p.rating,
+      ratingAfter: p.rating + deltas[i],
+    }));
   }
 
   return [
@@ -170,5 +210,5 @@ function settleTeams(teamA, teamB, k) {
 module.exports = {
   WEIGHTS, SATURATION, BASE_RATING, ELO_SCALE, K_BY_MODE, MODES, SHARE_TEMPERATURE,
   saturate, performanceScore, scorePoints,
-  expectedScore, actualFromRank, settleFfa, contributionShares, settleTeams,
+  expectedScore, actualFromRank, apportion, settleFfa, contributionShares, settleTeams,
 };
