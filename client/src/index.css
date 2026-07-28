@@ -1069,7 +1069,12 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
    stay pill-shaped for Stats. */
 .cmp-scope-tabs {
   display: flex;
-  margin: 12px 16px 0;
+  /* Match the rest of the page column: capped at --content-max and centred on
+     desktop (like .page-header/.stats-tab-body), 16px inset via padding so the
+     tabs line up with the cards below instead of overflowing the layout. */
+  max-width: var(--content-max);
+  margin: 12px auto 0;
+  padding: 0 16px;
   border-bottom: 1.5px solid var(--border);
 }
 .cmp-scope-tab {
