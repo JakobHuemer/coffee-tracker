@@ -12,6 +12,8 @@ import { Saved } from './pages/Saved';
 import { MyPosts } from './pages/MyPosts';
 import { LogCoffee } from './pages/LogCoffee';
 import { Stats } from './pages/Stats';
+import { Badges } from './pages/Badges';
+import { Milestones } from './pages/Milestones';
 import { Compete } from './pages/Compete';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
@@ -73,6 +75,10 @@ export function App() {
           <Route path="/log" element={<RequireAuth><LogCoffee /></RequireAuth>} />
           {/* Stats lost its bottom-nav slot to Compete; Profile links here. */}
           <Route path="/stats" element={<RequireAuth><Stats /></RequireAuth>} />
+          {/* Badges and Milestones left the Stats tab bar for their own pages,
+              reached from Profile (issue #51). */}
+          <Route path="/badges" element={<RequireAuth><Badges /></RequireAuth>} />
+          <Route path="/milestones" element={<RequireAuth><Milestones /></RequireAuth>} />
           {/* Scope + section live in the path (/compete/group/ranking) so a
               refresh or shared link lands on the same tab. Bare /compete
               canonicalises to the resolved default once data loads. */}
@@ -83,9 +89,10 @@ export function App() {
           <Route path="/compare/:username" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
-          <Route path="/achievements" element={<Navigate to="/stats" replace />} />
+          <Route path="/achievements" element={<Navigate to="/badges" replace />} />
           <Route path="/rankings" element={<Navigate to="/stats" replace />} />
-          <Route path="/challenges" element={<Navigate to="/stats" replace />} />
+          {/* Community challenges moved to Compete (issue #51). */}
+          <Route path="/challenges" element={<Navigate to="/compete/global/challenges" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         {token && !isAuth && <BottomNav />}

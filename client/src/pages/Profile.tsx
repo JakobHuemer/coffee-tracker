@@ -408,6 +408,20 @@ export function Profile() {
           <Icon name="arrow-right" size={14} />
         </button>
 
+        {/* Badges and Milestones left the Stats tab bar and are their own pages
+            reached from here now (issue #51). */}
+        <button className="card profile-link-card" onClick={() => navigate('/badges')}>
+          <span className="profile-link-icon"><Icon name="medal" size={18} /></span>
+          <span className="profile-link-label">Badges</span>
+          <Icon name="arrow-right" size={14} />
+        </button>
+
+        <button className="card profile-link-card" onClick={() => navigate('/milestones')}>
+          <span className="profile-link-icon"><Icon name="target" size={18} /></span>
+          <span className="profile-link-label">Milestones</span>
+          <Icon name="arrow-right" size={14} />
+        </button>
+
         {/* Saved gave up its bottom-nav slot to "Yours"; this is now the only
             way in. */}
         <button className="card profile-link-card" onClick={() => navigate('/saved')}>

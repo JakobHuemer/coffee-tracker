@@ -7,26 +7,16 @@ import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { CompareContent } from './Compare';
-import { rarityColor, rarityLabel, byUnlockedThenRarity } from '../rarity';
 import type {
-  Achievement, Badge, Challenge, GoalsResponse, ProgressMetric, StreaksResponse,
+  GoalsResponse, StreaksResponse,
   RankingEntry, Stats as StatsData, Streak, Task, UnlockNotification,
 } from '../types';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-const METRICS = [
-  { value: 'total_cups', label: 'Total Cups' },
-  { value: 'caffeine', label: 'Total Caffeine (mg)' },
-  { value: 'espresso_cups', label: 'Espresso Cups' },
-  { value: 'unique_types', label: 'Unique Coffee Types' },
-];
-function metricLabel(m: string) { return METRICS.find(x => x.value === m)?.label || m; }
-function progressPct(current: number, target: number) { return Math.min(100, Math.round((current / target) * 100)); }
-
 interface RankingsResponse { rankings: RankingEntry[]; my_rank: RankingEntry | null; }
 
-type Tab = 'goals' | 'badges' | 'rankings' | 'challenges' | 'compare';
+type Tab = 'goals' | 'rankings' | 'compare';
 
 // ── Tab: Goals ────────────────────────────────────────────────────────────────
 
@@ -86,61 +76,6 @@ function GoalsTab({ setNotifications }: { setNotifications: (n: UnlockNotificati
           evaluate automatically based on the coffees you post today — just post your coffees and check back!
         </p>
       </div>
-    </div>
-  );
-}
-
-// ── Tab: Badges & Achievements ────────────────────────────────────────────────
-
-function BadgesTab() {
-  const { data: achievements = [] } = useQuery<Achievement[]>({
-    queryKey: ['achievements'], queryFn: () => api.get('/achievements'),
-  });
-  const { data: badges = [] } = useQuery<Badge[]>({
-    queryKey: ['badges'], queryFn: () => api.get('/badges'),
-  });
-  const categories = [...new Set(achievements.map(a => a.category))];
-
-  return (
-    <div className="stats-tab-body">
-      <div className="card">
-        <div className="section-label">Badges</div>
-        <div className="badges-grid">
-          {badges
-            .slice()
-            .sort(byUnlockedThenRarity)
-            .map(b => (
-              <div key={b.id} className={`badge-card${b.unlocked ? ' unlocked' : ' locked'}`} title={b.description}>
-                <div className="badge-icon"><Icon name={b.icon} size={28} /></div>
-                <div className="badge-name">{b.name}</div>
-                <div className="badge-rarity" style={{ color: rarityColor(b.rarity) }}>{rarityLabel(b.rarity)}</div>
-                {b.unlocked && b.unlocked_at && <div className="badge-date">{new Date(b.unlocked_at).toLocaleDateString()}</div>}
-              </div>
-            ))}
-        </div>
-      </div>
-
-      {categories.map(cat => {
-        const catAchs = achievements.filter(a => a.category === cat);
-        return (
-          <div key={cat} className="card">
-            <div className="section-label">{cat.charAt(0).toUpperCase() + cat.slice(1)}</div>
-            <div className="ach-list">
-              {catAchs.map(a => (
-                <div key={a.id} className={`ach-item${a.unlocked ? ' unlocked' : ' locked'}`}>
-                  <div className="ach-icon"><Icon name={a.icon} size={24} /></div>
-                  <div className="ach-body">
-                    <div className="ach-name">{a.name}</div>
-                    <div className="ach-desc">{a.description}</div>
-                    {a.unlocked && a.unlocked_at && <div className="ach-date">Unlocked {new Date(a.unlocked_at).toLocaleDateString()}</div>}
-                  </div>
-                  {a.unlocked && <div className="ach-check"><Icon name="check-circle" /></div>}
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -240,183 +175,6 @@ function RankingsTab() {
   );
 }
 
-// ── Tab: Challenges ───────────────────────────────────────────────────────────
-
-function ChallengesTab({ setNotifications }: { setNotifications: (n: UnlockNotification[]) => void }) {
-  const qc = useQueryClient();
-  const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: '', description: '', metric: 'total_cups', target: 10, endDate: '' });
-
-  const { data: challenges = [] } = useQuery<Challenge[]>({
-    queryKey: ['challenges'], queryFn: () => api.get('/challenges'), refetchInterval: 60000,
-  });
-  const { data: stats } = useQuery<StatsData>({
-    queryKey: ['stats'], queryFn: () => api.get('/coffees/stats'),
-  });
-  const { data: streaks } = useQuery<StreaksResponse>({
-    queryKey: ['streaks'], queryFn: () => api.get('/streaks'),
-  });
-  const { data: achievements = [] } = useQuery<Achievement[]>({
-    queryKey: ['achievements'], queryFn: () => api.get('/achievements'),
-  });
-
-  const uniqueTypes = Object.keys(stats?.by_type ?? {}).length;
-  const cupsTotal = stats?.total_cups ?? 0;
-  const cafTotal = stats?.total_caffeine ?? 0;
-  const streak = streaks?.streak?.current_streak ?? 0;
-
-  // Milestones, their thresholds and their wording all come from the server —
-  // the client only supplies the running totals to measure against. Anything
-  // restated here would be a second copy free to drift (issue #30).
-  const metricValues: Record<ProgressMetric, number> = {
-    total_cups: cupsTotal,
-    total_caffeine: cafTotal,
-    unique_types: uniqueTypes,
-    goal_streak: streak,
-  };
-
-  const milestones = achievements
-    .filter(a => a.progress)
-    .map(a => {
-      const { metric, target } = a.progress!;
-      const current = metricValues[metric] ?? 0;
-      const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
-      return { id: a.id, label: a.description, target, current, unlocked: a.unlocked, pct };
-    });
-
-  const joinMutation = useMutation({
-    mutationFn: (id: string) => api.post<{ ok: boolean; unlocked: UnlockNotification[] }>(`/challenges/${id}/join`),
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['challenges'] });
-      if (data.unlocked?.length) {
-        setNotifications(data.unlocked);
-        qc.invalidateQueries({ queryKey: ['badges'] });
-        qc.invalidateQueries({ queryKey: ['achievements'] });
-      }
-    },
-  });
-  const createMutation = useMutation({
-    mutationFn: (body: typeof form) => api.post('/challenges', body),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['challenges'] }); setShowCreate(false); },
-  });
-
-  const community = challenges.filter(c => c.type === 'community');
-  const personal  = challenges.filter(c => c.type === 'personal');
-  const minDate = new Date(); minDate.setDate(minDate.getDate() + 1);
-  const minDateStr = minDate.toISOString().slice(0, 10);
-
-  return (
-    <div className="stats-tab-body">
-      <div className="section-header">
-        <div className="section-label" style={{ marginBottom: 0 }}>Milestones</div>
-        <span className="section-tag">Personal progress</span>
-      </div>
-
-      <div className="card">
-        <div className="milestone-list">
-          {milestones.map(m => (
-            <div key={m.id} className={`milestone-item${m.unlocked ? ' done' : ''}`}>
-              <div className="milestone-label-row">
-                <span className="milestone-label">{m.label}</span>
-                <span className="milestone-count">
-                  {m.unlocked
-                    ? <><Icon name="check-circle" /> Done</>
-                    : `${m.current.toLocaleString()} / ${m.target.toLocaleString()}`}
-                </span>
-              </div>
-              <div className="ch-progress-wrap" style={{ marginBottom: 0 }}>
-                <div
-                  className={`ch-progress-bar${m.unlocked ? ' milestone-done' : ''}`}
-                  style={{ width: `${m.pct}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="section-header">
-        <div className="section-label" style={{ marginBottom: 0 }}>Community Challenges</div>
-        <span className="section-tag">Everyone together</span>
-      </div>
-
-      {community.map(c => {
-        const pct = progressPct(c.community_progress, c.target);
-        return (
-          <div key={c.id} className="card">
-            <div className="ch-header">
-              <div><div className="ch-name">{c.name}</div><div className="ch-desc">{c.description}</div></div>
-              <div className="ch-badge community">Community</div>
-            </div>
-            <div className="ch-progress-label">
-              <span>{metricLabel(c.metric)}</span>
-              <span>{c.community_progress.toLocaleString()} / {c.target.toLocaleString()}</span>
-            </div>
-            <div className="ch-progress-wrap"><div className="ch-progress-bar" style={{ width: `${pct}%` }} /></div>
-            <div className="ch-meta">
-              <span><Icon name="users" /> {c.participants_count} participants</span>
-              <span><Icon name="calendar" /> Ends {new Date(c.end_date).toLocaleDateString()}</span>
-            </div>
-            {c.joined ? (
-              <div className="ch-joined"><Icon name="check-circle" /> Joined · Your contribution: {c.my_progress?.toLocaleString() ?? 0}</div>
-            ) : (
-              <button className="btn-primary" onClick={() => joinMutation.mutate(c.id)} disabled={joinMutation.isPending}>Join Challenge</button>
-            )}
-          </div>
-        );
-      })}
-
-      <div className="section-header">
-        <div className="section-label" style={{ marginBottom: 0 }}>Personal Challenges</div>
-        <button className="btn-secondary" onClick={() => setShowCreate(!showCreate)}>{showCreate ? 'Cancel' : '+ Create'}</button>
-      </div>
-
-      {showCreate && (
-        <div className="card">
-          <div className="section-label">New Personal Challenge</div>
-          <form onSubmit={e => { e.preventDefault(); createMutation.mutate(form); }} className="create-form">
-            <div className="field"><label>Name</label><input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required placeholder="e.g. Espresso Month" /></div>
-            <div className="field"><label>Description</label><input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Optional" /></div>
-            <div className="field"><label>Track</label>
-              <select value={form.metric} onChange={e => setForm(f => ({ ...f, metric: e.target.value }))}>
-                {METRICS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-              </select>
-            </div>
-            <div className="field"><label>Target</label><input type="number" value={form.target} min={1} onChange={e => setForm(f => ({ ...f, target: +e.target.value }))} required /></div>
-            <div className="field"><label>End Date</label><input type="date" value={form.endDate} min={minDateStr} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} required /></div>
-            <button type="submit" className="btn-primary" disabled={createMutation.isPending}>{createMutation.isPending ? 'Creating…' : 'Create Challenge'}</button>
-          </form>
-        </div>
-      )}
-
-      {personal.length === 0 && !showCreate && (
-        <div className="card empty-state"><div>No personal challenges yet. Create one to track your own goals!</div></div>
-      )}
-
-      {personal.map(c => {
-        const pct = c.my_progress !== null ? progressPct(c.my_progress, c.target) : 0;
-        return (
-          <div key={c.id} className="card">
-            <div className="ch-header">
-              <div><div className="ch-name">{c.name}</div>{c.description && <div className="ch-desc">{c.description}</div>}</div>
-              <div className="ch-badge personal">Personal</div>
-            </div>
-            <div className="ch-progress-label">
-              <span>{metricLabel(c.metric)}</span>
-              <span>{(c.my_progress ?? 0).toLocaleString()} / {c.target.toLocaleString()}</span>
-            </div>
-            <div className="ch-progress-wrap"><div className="ch-progress-bar personal" style={{ width: `${pct}%` }} /></div>
-            <div className="ch-meta">
-              <span><Icon name="calendar" /> Ends {new Date(c.end_date).toLocaleDateString()}</span>
-              <span>{pct >= 100 ? <><Icon name="trophy" /> Completed!</> : `${pct}%`}</span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── Main Stats page ───────────────────────────────────────────────────────────
 
 export function Stats() {
@@ -437,11 +195,11 @@ export function Stats() {
   const pct = todayCaf / 400;
   const safeColor = !todayCaf ? 'var(--text-muted)' : pct < 0.75 ? '#4CAF50' : pct < 1 ? '#FF9800' : '#E53935';
 
+  // Badges and Challenges left this row (issue #51): Badges + Milestones are
+  // their own pages off Profile now, and community challenges moved to Compete.
   const TABS: { id: Tab; label: string; icon: string }[] = [
     { id: 'goals',      label: 'Goals',      icon: 'target' },
-    { id: 'badges',     label: 'Badges',     icon: 'medal' },
     { id: 'rankings',   label: 'Rankings',   icon: 'trophy' },
-    { id: 'challenges', label: 'Challenges', icon: 'bolt' },
     { id: 'compare',    label: 'Compare',    icon: 'scale' },
   ];
 
@@ -496,11 +254,9 @@ export function Stats() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'goals'      && <GoalsTab setNotifications={setNotifications} />}
-      {activeTab === 'badges'     && <BadgesTab />}
-      {activeTab === 'rankings'   && <RankingsTab />}
-      {activeTab === 'challenges' && <ChallengesTab setNotifications={setNotifications} />}
-      {activeTab === 'compare'    && <div className="stats-tab-body"><CompareContent /></div>}
+      {activeTab === 'goals'    && <GoalsTab setNotifications={setNotifications} />}
+      {activeTab === 'rankings' && <RankingsTab />}
+      {activeTab === 'compare'  && <div className="stats-tab-body"><CompareContent /></div>}
     </div>
   );
 }
