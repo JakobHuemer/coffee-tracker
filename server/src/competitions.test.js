@@ -13,11 +13,14 @@ const db = require('./db');
 require('./migrate')(db);
 
 const {
-  mondayOf, dailyWindow, weeklyWindow, groupOf, scoreFor, ratingOf,
+  mondayOf, dailyWindow, weeklyWindow, groupOf, metricsFor, scoreFor, scoresForMany, ratingOf,
   ensureRecurringMatch, ensureRecurringMatches, rosterIsLegal,
   lockDueLobbies, settleMatch, settleDueMatches, tick,
 } = require('./competitions');
-const { BASE_RATING, K_BY_MODE, performanceScore, settleFfa } = require('./competition-core');
+const { BASE_RATING, K_BY_MODE, points } = require('./competition-core');
+// The migration replays history through the FROZEN v1 math, so its expectations
+// come from there too — competition-core has moved on to v2.
+const { settleFfa: settleFfaV1 } = require('./migrations/lib/settle-v1');
 
 const DAY = 86400000;
 
@@ -54,9 +57,14 @@ function makeGroup(timezone = 'UTC', userIds = []) {
   return db.prepare('SELECT * FROM competition_groups WHERE id = ?').get(id);
 }
 
-function logCoffee(userId, at, { coffeeId = 'espresso', mg = 80 } = {}) {
-  db.prepare('INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at) VALUES (?, ?, ?, ?, ?)')
-    .run(randomUUID(), userId, coffeeId, mg, at);
+// Defaults to a PUBLIC entry, because that is the only kind a competition can
+// see (value 7 of docs/competitions-rating-v2.md). Pass `isPublic: 0` for the
+// tests that are about the filter itself.
+function logCoffee(userId, at, { coffeeId = 'espresso', mg = 80, isPublic = 1, createdAt = at } = {}) {
+  db.prepare(`
+    INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at, created_at, is_public)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(randomUUID(), userId, coffeeId, mg, at, createdAt, isPublic);
 }
 
 function openMatch({ group, mode, start, end, teamSize = null, state = 'open', roster = [], periodKey = null }) {
@@ -142,7 +150,7 @@ test('an invalid group zone falls back to UTC instead of throwing', () => {
 
 // ── scoring ──────────────────────────────────────────────────────────────────
 
-test('score counts only entries inside the window', () => {
+test('score counts only entries inside the window, and both bounds are inclusive', () => {
   const user = makeUser('scorer');
   const start = Date.parse('2026-07-26T00:00:00Z');
   const end = start + DAY - 1;
@@ -152,11 +160,57 @@ test('score counts only entries inside the window', () => {
   expect(scoreFor(user, start, end)).toBe(0);
 
   // Neither drink appears in SCORE_CAFFEINE, so both score at their stored mg
-  // and this stays a test about the window, not about scoring overrides.
+  // and this stays a test about the window, not about scoring overrides. Both
+  // sit exactly ON a bound, which is what pins the inclusivity.
   logCoffee(user, start, { mg: 200, coffeeId: 'espresso' });
-  logCoffee(user, start + 3600000, { mg: 100, coffeeId: 'lungo' });
-  expect(scoreFor(user, start, end))
-    .toBeCloseTo(performanceScore({ caffeine: 300, cups: 2, variety: 2 }), 12);
+  logCoffee(user, end, { mg: 100, coffeeId: 'lungo' });
+  expect(scoreFor(user, start, end)).toBe(points({ caffeine: 300, cups: 2, variety: 2 }));
+  expect(scoreFor(user, start, end)).toBe(360); // 300mg + 2 cups + 2 kinds, at 1/15/15
+});
+
+test('logged_at decides window membership, not created_at', () => {
+  const user = makeUser('backdater');
+  const start = Date.parse('2026-07-26T00:00:00Z');
+  const end = start + DAY - 1;
+
+  // Logged inside the window but entered hours after it closed — the user-stated
+  // drinking time is the one that counts.
+  logCoffee(user, start + 3600000, { mg: 90, createdAt: end + 10 * 3600000 });
+  expect(scoreFor(user, start, end)).toBe(points({ caffeine: 90, cups: 1, variety: 1 }));
+});
+
+test('a private entry contributes nothing to caffeine, cups or variety', () => {
+  const user = makeUser('lurker');
+  const start = Date.parse('2026-07-26T00:00:00Z');
+  const end = start + DAY - 1;
+
+  logCoffee(user, start + 1000, { mg: 200, coffeeId: 'espresso', isPublic: 0 });
+  logCoffee(user, start + 2000, { mg: 150, coffeeId: 'lungo', isPublic: 0 });
+  expect(metricsFor(user, start, end)).toMatchObject({ caffeine: 0, cups: 0, variety: 0 });
+  expect(scoreFor(user, start, end)).toBe(0);
+
+  // One public entry alongside them scores on its own, as if the others were
+  // not there at all.
+  logCoffee(user, start + 3000, { mg: 80, coffeeId: 'ristretto' });
+  expect(metricsFor(user, start, end)).toMatchObject({ caffeine: 80, cups: 1, variety: 1 });
+  expect(scoreFor(user, start, end)).toBe(points({ caffeine: 80, cups: 1, variety: 1 }));
+});
+
+test('the public filter is competition-only — every other surface still counts a private entry', () => {
+  const user = makeUser('mixed');
+  const start = Date.parse('2026-07-26T00:00:00Z');
+  const end = start + DAY - 1;
+  logCoffee(user, start + 1000, { mg: 200, isPublic: 0 });
+  logCoffee(user, start + 2000, { mg: 100, isPublic: 1 });
+
+  // What Buzz, stats, streaks, achievements, casualties, the rankings page's
+  // caffeine total and community challenges all read: every entry, no filter.
+  const total = db.prepare(
+    'SELECT COALESCE(SUM(caffeine_mg), 0) AS mg, COUNT(*) AS cups FROM coffee_entries WHERE user_id = ?'
+  ).get(user);
+  expect(total).toMatchObject({ mg: 300, cups: 2 });
+  // The competition sees only the public half.
+  expect(metricsFor(user, start, end)).toMatchObject({ caffeine: 100, cups: 1 });
 });
 
 test('an overridden drink scores its SCORE_CAFFEINE value, not its stored mg', () => {
@@ -167,8 +221,36 @@ test('an overridden drink scores its SCORE_CAFFEINE value, not its stored mg', (
   // Stored at the catalog's displayed 63mg; both lattes must score as 25.
   logCoffee(user, start, { mg: 63, coffeeId: 'latte' });
   logCoffee(user, start + 3600000, { mg: 63, coffeeId: 'latte_macchiato' });
-  expect(scoreFor(user, start, end))
-    .toBeCloseTo(performanceScore({ caffeine: 50, cups: 2, variety: 2 }), 12);
+  expect(scoreFor(user, start, end)).toBe(points({ caffeine: 50, cups: 2, variety: 2 }));
+});
+
+test('scoresForMany and scoreFor agree for the same roster and window', () => {
+  const a = makeUser('roster-a');
+  const b = makeUser('roster-b');
+  const c = makeUser('roster-c'); // logs nothing: absent from the batch result
+  const start = Date.parse('2026-07-26T00:00:00Z');
+  const end = start + DAY - 1;
+
+  logCoffee(a, start + 1000, { mg: 180, coffeeId: 'espresso' });
+  logCoffee(a, start + 2000, { mg: 63, coffeeId: 'latte' });        // overridden to 25
+  logCoffee(a, start + 3000, { mg: 90, coffeeId: 'lungo', isPublic: 0 }); // ignored
+  logCoffee(b, start + 1000, { mg: 120, coffeeId: 'ristretto' });
+
+  const batch = scoresForMany([a, b, c], start, end);
+  for (const user of [a, b, c]) {
+    expect(batch.get(user) ?? 0).toBe(scoreFor(user, start, end));
+  }
+  expect(batch.get(a)).toBe(points({ caffeine: 205, cups: 2, variety: 2 }));
+  expect(batch.has(c)).toBe(false); // read with `?? 0`
+});
+
+test('points are linear and uncapped over a real window', () => {
+  const user = makeUser('heavy');
+  const start = Date.parse('2026-07-26T00:00:00Z');
+  const end = start + DAY - 1;
+  for (let i = 0; i < 12; i++) logCoffee(user, start + i * 60000, { mg: 63, coffeeId: 'espresso' });
+  // 756 mg + 12 cups + 1 kind. Nothing saturates and there is no 1000 ceiling.
+  expect(scoreFor(user, start, end)).toBe(951);
 });
 
 test('a user with no entries at all scores zero, not NaN', () => {
@@ -337,13 +419,17 @@ test('joining a lobby is what puts you on a roster', () => {
 // ── lobbies ──────────────────────────────────────────────────────────────────
 
 test('rosterIsLegal enforces each mode\'s shape', () => {
-  expect(rosterIsLegal({ mode: '1v1' }, [{ side: null }, { side: null }])).toBe(true);
-  expect(rosterIsLegal({ mode: '1v1' }, [{ side: null }])).toBe(false);
-  expect(rosterIsLegal({ mode: 'ondemand' }, [{ side: null }, { side: null }, { side: null }])).toBe(true);
-  expect(rosterIsLegal({ mode: 'ondemand' }, [{ side: null }])).toBe(false);
-  const team = { mode: 'team', team_size: 2 };
-  expect(rosterIsLegal(team, [{ side: 'A' }, { side: 'A' }, { side: 'B' }, { side: 'B' }])).toBe(true);
-  expect(rosterIsLegal(team, [{ side: 'A' }, { side: 'A' }, { side: 'B' }])).toBe(false);
+  // 1v1 is exactly two; every other surviving mode is a free-for-all needing
+  // any two players. Team mode is gone, so there is no side to validate.
+  expect(rosterIsLegal({ mode: '1v1' }, [{}, {}])).toBe(true);
+  expect(rosterIsLegal({ mode: '1v1' }, [{}])).toBe(false);
+  expect(rosterIsLegal({ mode: '1v1' }, [{}, {}, {}])).toBe(false);
+  for (const mode of ['ondemand', 'daily', 'weekly']) {
+    expect(rosterIsLegal({ mode }, [{}, {}, {}])).toBe(true);
+    expect(rosterIsLegal({ mode }, [{}, {}])).toBe(true);
+    expect(rosterIsLegal({ mode }, [{}])).toBe(false);
+    expect(rosterIsLegal({ mode }, [])).toBe(false);
+  }
 });
 
 test('a lobby that filled goes live, one that did not is cancelled with no rating moved', () => {
@@ -501,54 +587,93 @@ test('the whole ticker pass is safe to run repeatedly', () => {
   for (const row of counts) expect(row.c).toBe(1);
 });
 
-test('a team match settles zero-sum and records each member\'s contribution share', () => {
-  const users = ['a1', 'a2', 'b1', 'b2'].map((n) => makeUser(n));
-  const group = makeGroup('UTC', users);
+test('a settled match stores the raw points, and grades on the margin between them', () => {
+  const [lead, near, far] = ['lead', 'near', 'far'].map((n) => makeUser(n));
+  const group = makeGroup('UTC', [lead, near, far]);
   const start = Date.now() - DAY;
   const end = Date.now() - 1000;
 
   const match = openMatch({
-    group, mode: 'team', start, end, teamSize: 2, state: 'pending',
-    roster: [
-      { userId: users[0], side: 'A' }, { userId: users[1], side: 'A' },
-      { userId: users[2], side: 'B' }, { userId: users[3], side: 'B' },
-    ],
+    group, mode: 'ondemand', start, end, state: 'pending',
+    roster: [{ userId: lead }, { userId: near }, { userId: far }],
   });
 
-  logCoffee(users[0], start + 1000, { mg: 300, coffeeId: 'espresso' });
-  logCoffee(users[0], start + 2000, { mg: 200, coffeeId: 'latte' });
-  logCoffee(users[2], start + 1000, { mg: 50 });
+  // 300 / 250 / 60 points — `near` finishes just behind the lead and well clear
+  // of `far`, which under v1's rank-only settlement would have paid the same as
+  // finishing last. Two cups and two kinds are worth 60 of each of the first
+  // two totals; one cup and one kind are worth 30 of the last.
+  logCoffee(lead, start + 1000, { mg: 240, coffeeId: 'espresso' });
+  logCoffee(lead, start + 2000, { mg: 0, coffeeId: 'decaf' });
+  logCoffee(near, start + 1000, { mg: 190, coffeeId: 'espresso' });
+  logCoffee(near, start + 2000, { mg: 0, coffeeId: 'decaf' });
+  logCoffee(far, start + 1000, { mg: 30, coffeeId: 'espresso' });
 
   settleMatch(match, end + 1);
 
   const rows = participants(match.id);
+  const byUser = new Map(rows.map((r) => [r.user_id, r]));
   expect(matchById(match.id).state).toBe('settled');
-  expect(rows.reduce((s, r) => s + r.delta, 0)).toBe(0);
-  for (const r of rows) expect(r.contribution_share).toBeGreaterThan(0);
-  for (const r of rows) expect(Number.isInteger(r.delta)).toBe(true);
 
-  const carry = rows.find((r) => r.user_id === users[0]);
-  const passenger = rows.find((r) => r.user_id === users[1]);
-  expect(carry.delta).toBeGreaterThan(0);          // side A won
-  expect(carry.delta).toBeGreaterThan(passenger.delta); // and carried it
+  // The stored score is the raw point total — no 0..1000 transform anywhere.
+  expect(byUser.get(lead).score).toBe(300);
+  expect(byUser.get(near).score).toBe(250);
+  expect(byUser.get(far).score).toBe(60);
+
+  expect(rows.reduce((s, r) => s + r.delta, 0)).toBe(0);
+  for (const r of rows) expect(Number.isInteger(r.delta)).toBe(true);
+  // Second place, 50 points off the lead and 190 clear of last, GAINS rating.
+  expect(byUser.get(near).delta).toBeGreaterThan(0);
+  expect(byUser.get(lead).delta).toBeGreaterThan(byUser.get(near).delta);
+  expect(byUser.get(far).delta).toBeLessThan(0);
+
+  // Team mode is gone: nothing writes a side or a contribution share any more.
+  for (const r of rows) {
+    expect(r.side).toBeNull();
+    expect(r.contribution_share).toBeNull();
+  }
 });
 
-test('a pending match that lost a side is cancelled rather than settled', () => {
-  const users = ['a1', 'a2', 'b1'].map((n) => makeUser(n));
+test('a pending match that lost all but one player is cancelled rather than settled', () => {
+  const users = ['solo', 'gone'].map((n) => makeUser(n));
   const group = makeGroup('UTC', users);
   const start = Date.now() - DAY;
   const end = Date.now() - 1000;
   const match = openMatch({
-    group, mode: 'team', start, end, teamSize: 2, state: 'pending',
-    roster: [
-      { userId: users[0], side: 'A' }, { userId: users[1], side: 'A' },
-      { userId: users[2], side: 'B' },
-    ],
+    group, mode: 'ondemand', start, end, state: 'pending',
+    roster: [{ userId: users[0] }],
   });
 
   settleMatch(match, end + 1);
   expect(matchById(match.id).state).toBe('cancelled');
   expect(db.prepare('SELECT COUNT(*) AS c FROM user_ratings').get().c).toBe(0);
+});
+
+test('private logging can lose a match that public logging would have won', () => {
+  // The accepted consequence, made explicit: this is a rule change with real
+  // standings impact, not a tidy-up.
+  const [quiet, loud] = ['quiet', 'loud'].map((n) => makeUser(n));
+  const group = makeGroup('UTC', [quiet, loud]);
+  const start = Date.now() - DAY;
+  const end = Date.now() - 1000;
+  const match = openMatch({
+    group, mode: '1v1', start, end, state: 'pending',
+    roster: [{ userId: quiet }, { userId: loud }],
+  });
+
+  // `quiet` drank far more, but kept almost all of it private.
+  for (let i = 0; i < 6; i++) {
+    logCoffee(quiet, start + i * 60000, { mg: 120, coffeeId: 'espresso', isPublic: 0 });
+  }
+  logCoffee(quiet, start + 7 * 60000, { mg: 30, coffeeId: 'lungo' });
+  logCoffee(loud, start + 1000, { mg: 150, coffeeId: 'espresso' });
+
+  settleMatch(match, end + 1);
+
+  const byUser = new Map(participants(match.id).map((r) => [r.user_id, r]));
+  expect(byUser.get(quiet).score).toBe(points({ caffeine: 30, cups: 1, variety: 1 }));
+  expect(byUser.get(loud).score).toBe(points({ caffeine: 150, cups: 1, variety: 1 }));
+  expect(byUser.get(quiet).delta).toBeLessThan(0);
+  expect(byUser.get(loud).delta).toBeGreaterThan(0);
 });
 
 test('ratings compound across matches — the second match starts from the first result', () => {
@@ -586,16 +711,27 @@ test('groupOf returns the one group a user is in', () => {
 
 const resettle = require('./migrations/015_resettle_whole_point_elo');
 
+// The K these historical matches were CREATED with, which is what the migration
+// replays them at. Hard-coded to v1's table rather than read from K_BY_MODE: a
+// settled match keeps the k_factor stored on its row forever, so retuning the
+// live table must not move this test's expectations.
+const K_V1_DAILY = 8;
+const K_V1_TEAM = 24;
+
 // A match already in the 'settled' state carrying a deliberately fractional
 // ledger, the way pre-#49 data looks. Scores are what settlement reads back;
 // the rating_* / delta / share values are junk the migration must overwrite.
+//
+// These rows are v1 history: 0..1 scores, team mode, the old K. v2 never
+// produces anything like them, and never rewrites them either.
 function seedSettledMatch({ group, mode = 'daily', settledAt, parts }) {
   const id = randomUUID();
   db.prepare(`
     INSERT INTO matches (id, group_id, mode, period_key, title, creator_id,
                          scope_start, scope_end, state, k_factor, team_size, created_at, settled_at)
     VALUES (?, ?, ?, NULL, NULL, NULL, ?, ?, 'settled', ?, ?, ?, ?)
-  `).run(id, group.id, mode, settledAt - DAY, settledAt - 1, K_BY_MODE[mode],
+  `).run(id, group.id, mode, settledAt - DAY, settledAt - 1,
+    mode === 'team' ? K_V1_TEAM : K_V1_DAILY,
     mode === 'team' ? 2 : null, settledAt - DAY, settledAt);
   let joinedAt = settledAt - DAY;
   for (const p of parts) {
@@ -626,8 +762,12 @@ test('migration 015 re-evaluates settled matches into whole, zero-sum, compoundi
   expect(p1.reduce((s, r) => s + r.delta, 0)).toBe(0);
   expect(p2.reduce((s, r) => s + r.delta, 0)).toBe(0);
 
-  // The re-evaluated deltas are exactly what a fresh settlement produces.
-  const fresh = settleFfa([{ userId: a, rating: BASE_RATING, score: 0.4 }, { userId: b, rating: BASE_RATING, score: 0 }], K_BY_MODE.daily);
+  // The re-evaluated deltas are exactly what the v1 settlement produces — the
+  // one this migration was written against, at the K the match was created with.
+  const fresh = settleFfaV1(
+    [{ userId: a, rating: BASE_RATING, score: 0.4 }, { userId: b, rating: BASE_RATING, score: 0 }],
+    K_V1_DAILY,
+  );
   const a1 = p1.find((r) => r.user_id === a);
   expect(a1.delta).toBe(fresh.find((r) => r.userId === a).delta);
 

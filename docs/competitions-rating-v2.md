@@ -1,6 +1,6 @@
 # Competitions — rating v2
 
-Status: **specified, not implemented.**
+Status: **implemented.**
 
 This document supersedes [competitions-elo.md](./competitions-elo.md) for every
 match settled after v2 ships. That document is left unmodified and remains the

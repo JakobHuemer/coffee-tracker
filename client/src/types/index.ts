@@ -281,10 +281,10 @@ export interface EnergyResponse {
 }
 
 /* ── Competitions ────────────────────────────────────────────────────────────
- * Groups, matches and ratings. See docs/competitions-elo.md and
+ * Groups, matches and ratings. See docs/competitions-rating-v2.md and
  * server/src/competition-core.js. All instants are UTC epoch ms. */
 
-export type MatchMode = 'daily' | 'weekly' | 'ondemand' | '1v1' | 'team';
+export type MatchMode = 'daily' | 'weekly' | 'ondemand' | '1v1';
 
 // open      lobby, players may still join (user-created modes only)
 // pending   running, roster locked
@@ -321,12 +321,11 @@ export interface MatchParticipant {
   username: string;
   avatar: string;
   profile_photo_url: string | null;
-  side: 'A' | 'B' | null;
   joined_at: number;
   // Live for a running match (window so far), frozen at settlement afterwards.
-  score: number;
+  // A linear, uncapped integer — there is no maximum to render it against, so
+  // never show it as a percentage, a bar, or a fraction of anything.
   points: number;
-  contribution_share: number | null;
   rating_before: number | null;
   rating_after: number | null;
   delta: number | null;
@@ -346,7 +345,6 @@ export interface Match {
   scope_end: number;
   state: MatchState;
   k_factor: number;
-  team_size: number | null;
   created_at: number;
   settled_at: number | null;
   participant_count: number;

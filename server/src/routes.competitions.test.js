@@ -293,7 +293,7 @@ test('a match cannot be created without a group', async () => {
   expect(res.status).toBe(400);
 });
 
-test('match creation validates mode, window and team size', async () => {
+test('match creation validates mode and window', async () => {
   const a = makeUser('a');
   await createGroup(a);
   const start = Date.now() + HOUR;
@@ -312,24 +312,24 @@ test('match creation validates mode, window and team size', async () => {
   expect((await bad({ scope_end: start + 1000 })).status).toBe(400);
   expect((await bad({ scope_end: start + 91 * 86400000 })).status).toBe(400);
   expect((await bad({ title: 'x'.repeat(61) })).status).toBe(400);
-  // A side of one is 1v1, and the losing split divides by (n - 1).
-  expect((await bad({ mode: 'team', team_size: 1 })).status).toBe(400);
-  expect((await bad({ mode: 'team', team_size: 2.5 })).status).toBe(400);
-  expect((await bad({ mode: 'team', team_size: 11 })).status).toBe(400);
-  expect((await bad({ mode: 'team', team_size: 2, side: 'C' })).status).toBe(400);
+  // Team mode is gone (rating v2): it is now just another unknown mode, and the
+  // team fields are ignored rather than validated.
+  expect((await bad({ mode: 'team', team_size: 2, side: 'A' })).status).toBe(400);
 });
 
-test('the creator is rostered on the match they create, on the side they picked', async () => {
+test('the creator is rostered on the match they create, with no side', async () => {
   const a = makeUser('a');
   await createGroup(a);
   const start = Date.now() + HOUR;
   const res = await post(a, '/api/competitions', {
-    mode: 'team', team_size: 2, side: 'B', scope_start: start, scope_end: start + HOUR,
+    mode: 'ondemand', scope_start: start, scope_end: start + HOUR,
   });
   expect(res.status).toBe(201);
   expect(res.body.match.participants).toHaveLength(1);
   expect(res.body.match.participants[0].user_id).toBe(a.id);
-  expect(res.body.match.participants[0].side).toBe('B');
+  // Sides went with team mode; the column stays for settled team matches only.
+  expect(db.prepare('SELECT side, team_size FROM match_participants p JOIN matches m ON m.id = p.match_id WHERE m.id = ?')
+    .get(res.body.match.id)).toEqual({ side: null, team_size: null });
 });
 
 /* ── joining and leaving a match ───────────────────────────────────────────── */
@@ -371,20 +371,22 @@ test('joining twice is a 409 and a 1v1 refuses a third player', async () => {
   expect((await post(c, `/api/competitions/${match.id}/join`)).status).toBe(409);
 });
 
-test('a team match refuses a missing side and a full one', async () => {
+test('an ondemand lobby takes any number of players and ignores a side', async () => {
   const a = makeUser('a');
   const b = makeUser('b');
   const c = makeUser('c');
   const group = await createGroup(a);
-  for (const u of [b, c]) await post(u, '/api/groups/join', { group_id: group.id });
+  for (const u of [b, c] ) await post(u, '/api/groups/join', { group_id: group.id });
 
-  const match = await lobbyIn(a, { mode: 'team', team_size: 2, side: 'A' });
-  expect((await post(b, `/api/competitions/${match.id}/join`, {})).status).toBe(400);
-  expect((await post(b, `/api/competitions/${match.id}/join`, { side: 'C' })).status).toBe(400);
+  const match = await lobbyIn(a);
+  // A `side` in the body is a leftover from team mode; it is not read, and it
+  // certainly does not gate the join.
   expect((await post(b, `/api/competitions/${match.id}/join`, { side: 'A' })).status).toBe(200);
-  // Side A now holds 2 of 2.
-  expect((await post(c, `/api/competitions/${match.id}/join`, { side: 'A' })).status).toBe(409);
-  expect((await post(c, `/api/competitions/${match.id}/join`, { side: 'B' })).status).toBe(200);
+  expect((await post(c, `/api/competitions/${match.id}/join`, {})).status).toBe(200);
+
+  const rows = db.prepare('SELECT side FROM match_participants WHERE match_id = ?').all(match.id);
+  expect(rows).toHaveLength(3);
+  for (const r of rows) expect(r.side).toBeNull();
 });
 
 test('a weekly can still be joined on its first day, after it has started (issue #44)', async () => {
@@ -646,12 +648,16 @@ test('a live match reports scores from the window so far, a settled one the stor
   const start = Date.now() - HOUR;
   db.prepare("UPDATE matches SET scope_start = ?, scope_end = ?, state = 'pending' WHERE id = ?")
     .run(start, start + 2 * HOUR, match.id);
-  db.prepare('INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at) VALUES (?, ?, ?, ?, ?)')
+  db.prepare('INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at, is_public) VALUES (?, ?, ?, ?, ?, 1)')
     .run(randomUUID(), a.id, 'espresso', 200, start + 60000);
+  // Private, and inside the same window: it must not move the live score.
+  db.prepare('INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at, is_public) VALUES (?, ?, ?, ?, ?, 0)')
+    .run(randomUUID(), b.id, 'espresso', 500, start + 60000);
 
   const live = await get(a, `/api/competitions/${match.id}`);
   const byName = Object.fromEntries(live.body.match.participants.map((p) => [p.username, p]));
-  expect(byName.a.points).toBeGreaterThan(0);
+  // 200mg + 1 cup + 1 kind, raw and uncapped — no 0..1000 transform.
+  expect(byName.a.points).toBe(230);
   expect(byName.b.points).toBe(0);
   // Standings are ordered best-first, and nothing has settled so no delta yet.
   expect(live.body.match.participants[0].username).toBe('a');
@@ -661,12 +667,14 @@ test('a live match reports scores from the window so far, a settled one the stor
   // Once settled the payload reports the stored ledger, not a fresh count.
   db.prepare("UPDATE matches SET state = 'settled' WHERE id = ?").run(match.id);
   db.prepare('UPDATE match_participants SET score = ?, rating_before = 1000, rating_after = ?, delta = ? WHERE match_id = ? AND user_id = ?')
-    .run(0.5, 1016, 16, match.id, a.id);
+    .run(742, 1016, 16, match.id, a.id);
   const settled = await get(a, `/api/competitions/${match.id}`);
   const sa = settled.body.match.participants.find((p) => p.username === 'a');
   expect(sa.delta).toBe(16);
   expect(sa.current_rating).toBe(1016);
-  expect(sa.points).toBe(500); // straight from the stored score, not recomputed
+  // Straight from the stored score, not recomputed — that row is the immutable
+  // record of what the window was worth when it settled.
+  expect(sa.points).toBe(742);
 });
 
 /* ── match history (issue #34) ─────────────────────────────────────────────── */

@@ -14,7 +14,7 @@ const { randomUUID } = require('crypto');
 const db = require('./db');
 const {
   BASE_RATING, K_BY_MODE,
-  performanceScore, settleFfa, settleTeams,
+  points, settleFfa,
 } = require('./competition-core');
 const { localDateStr, localWallInstant, localDayBounds, isValidTz, DEFAULT_TZ } = require('./time');
 const { scoreMgSql } = require('./data/coffee-scores');
@@ -71,6 +71,14 @@ function weeklyWindow(group, now = Date.now(), offsetDays = 0) {
 
 // ── layer 1: score a user over a window ──────────────────────────────────────
 
+// Only PUBLIC entries count toward a competition, and only these two queries
+// apply that filter — Buzz, stats, streaks, achievements, casualties, rankings
+// and community challenges keep counting every entry. It is load-bearing, not
+// cosmetic: a participant who logs mostly privately can go from first to last.
+//
+// `logged_at` (the user-stated drinking time), not `created_at`, decides window
+// membership, and both bounds are inclusive.
+//
 // Caffeine is summed through scoreMgSql(), not the stored caffeine_mg — a few
 // drinks score differently from what the app displays. See
 // ./data/coffee-scores.js.
@@ -79,7 +87,7 @@ const metricsStmt = () => db.prepare(`
          COUNT(*)                          AS cups,
          COUNT(DISTINCT coffee_id)         AS variety
   FROM coffee_entries
-  WHERE user_id = ? AND logged_at >= ? AND logged_at <= ?
+  WHERE user_id = ? AND is_public = 1 AND logged_at >= ? AND logged_at <= ?
 `);
 
 // Raw metrics a user accumulated inside a match window.
@@ -87,15 +95,16 @@ function metricsFor(userId, start, end) {
   return metricsStmt().get(userId, start, end);
 }
 
-// The 0..1 performance score a user earned inside a match window.
+// The points a user earned inside a match window. Linear and uncapped — this is
+// the number the UI shows, raw, with no maximum to render it against.
 function scoreFor(userId, start, end) {
-  return performanceScore(metricsFor(userId, start, end));
+  return points(metricsFor(userId, start, end));
 }
 
 // Same thing for a whole roster, in ONE query instead of one per player.
 // Rendering a match list means scoring every participant of every match, so the
 // per-user form turns a page load into hundreds of round trips.
-// Returns Map(userId -> score); users with no entries are absent, so read it
+// Returns Map(userId -> points); users with no entries are absent, so read it
 // with `?? 0`.
 function scoresForMany(userIds, start, end) {
   if (userIds.length === 0) return new Map();
@@ -106,10 +115,11 @@ function scoresForMany(userIds, start, end) {
            COUNT(*)                          AS cups,
            COUNT(DISTINCT coffee_id)         AS variety
     FROM coffee_entries
-    WHERE user_id IN (${holes}) AND logged_at >= ? AND logged_at <= ?
+    WHERE user_id IN (${holes}) AND is_public = 1
+      AND logged_at >= ? AND logged_at <= ?
     GROUP BY user_id
   `).all(...userIds, start, end);
-  return new Map(rows.map((r) => [r.user_id, performanceScore(r)]));
+  return new Map(rows.map((r) => [r.user_id, points(r)]));
 }
 
 // Ratings for a whole roster in one query. Absent users are unrated, so read
@@ -257,11 +267,6 @@ function joinDeadline(match) {
 // anyone's rating.
 function rosterIsLegal(match, participants) {
   if (match.mode === '1v1') return participants.length === 2;
-  if (match.mode === 'team') {
-    const a = participants.filter((p) => p.side === 'A').length;
-    const b = participants.filter((p) => p.side === 'B').length;
-    return a === match.team_size && b === match.team_size;
-  }
   // ondemand, daily and weekly are free-for-alls: any two players make a match.
   // A recurring lobby nobody joined is cancelled by this, which is the intended
   // outcome — an empty day costs nobody any rating.
@@ -274,7 +279,7 @@ function lockDueLobbies(now = Date.now()) {
     // A weekly that has started but is still inside its first-day join window
     // stays open (issue #44); everything else locks at its start instant.
     if (joinDeadline(match) > now) continue;
-    const participants = db.prepare('SELECT user_id, side FROM match_participants WHERE match_id = ?')
+    const participants = db.prepare('SELECT user_id FROM match_participants WHERE match_id = ?')
       .all(match.id);
     const nextState = rosterIsLegal(match, participants) ? 'pending' : 'cancelled';
     db.prepare('UPDATE matches SET state = ?, settled_at = ? WHERE id = ?')
@@ -297,38 +302,32 @@ function settleMatch(match, now = Date.now()) {
   // fractional tie goes to the earlier participant, so the roster order has to
   // be total. Auto-joined rosters all share one joined_at instant.
   const rows = db.prepare(
-    'SELECT user_id, side FROM match_participants WHERE match_id = ? ORDER BY joined_at, user_id'
+    'SELECT user_id FROM match_participants WHERE match_id = ? ORDER BY joined_at, user_id'
   ).all(match.id);
 
   const players = rows.map((r) => ({
     userId: r.user_id,
-    side: r.side,
     rating: ratingOf(r.user_id),
     score: scoreFor(r.user_id, match.scope_start, match.scope_end),
   }));
 
-  let results;
-  if (match.mode === 'team') {
-    const a = players.filter((p) => p.side === 'A');
-    const b = players.filter((p) => p.side === 'B');
-    if (a.length < 2 || b.length < 2) return cancel(match.id, now);
-    results = settleTeams(a, b, match.k_factor);
-  } else {
-    if (players.length < 2) return cancel(match.id, now);
-    results = settleFfa(players, match.k_factor);
-  }
+  if (players.length < 2) return cancel(match.id, now);
+  const results = settleFfa(players, match.k_factor);
 
   const scoreByUser = new Map(players.map((p) => [p.userId, p.score]));
+  // `side` and `contribution_share` only ever meant something in team mode,
+  // which v2 dropped; the columns stay because settled team matches still hold
+  // real data in them. A v2 settlement leaves them as it found them: null.
   const updateParticipant = db.prepare(`
     UPDATE match_participants
-    SET score = ?, contribution_share = ?, rating_before = ?, rating_after = ?, delta = ?
+    SET score = ?, rating_before = ?, rating_after = ?, delta = ?
     WHERE match_id = ? AND user_id = ?
   `);
 
   db.transaction(() => {
     for (const r of results) {
       updateParticipant.run(
-        scoreByUser.get(r.userId), r.share ?? null,
+        scoreByUser.get(r.userId),
         r.ratingBefore, r.ratingAfter, r.delta,
         match.id, r.userId,
       );
