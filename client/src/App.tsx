@@ -73,7 +73,12 @@ export function App() {
           <Route path="/log" element={<RequireAuth><LogCoffee /></RequireAuth>} />
           {/* Stats lost its bottom-nav slot to Compete; Profile links here. */}
           <Route path="/stats" element={<RequireAuth><Stats /></RequireAuth>} />
+          {/* Scope + section live in the path (/compete/group/ranking) so a
+              refresh or shared link lands on the same tab. Bare /compete
+              canonicalises to the resolved default once data loads. */}
           <Route path="/compete" element={<RequireAuth><Compete /></RequireAuth>} />
+          <Route path="/compete/:scope" element={<RequireAuth><Compete /></RequireAuth>} />
+          <Route path="/compete/:scope/:section" element={<RequireAuth><Compete /></RequireAuth>} />
           <Route path="/compare" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/compare/:username" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />

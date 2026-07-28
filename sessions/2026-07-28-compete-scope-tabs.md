@@ -70,10 +70,18 @@ here directly.
 
 ## Review fixes (PR #57)
 
-- Tab state moved from `useState` to `useSearchParams` (`?scope=&section=`)
-  so a refresh/shared link keeps the tab instead of snapping to Group/Matches.
-  Absent params still fall back to the load-time default (group if in one).
-  All writes use `replace: true` — tab flips shouldn't stack back-button steps.
+- Tab state lives in the PATH, not query params: routes `/compete`,
+  `/compete/:scope`, `/compete/:scope/:section` all mount `<Compete>`; the page
+  reads `useParams` and `useNavigate`. A `useEffect` canonicalises once data
+  loads — bare `/compete`, an unknown scope, or a section the scope lacks all
+  `navigate(replace)` to the resolved `/compete/<scope>/<section>`. Guarded by
+  `isLoading` so `hasGroup` (which picks the default scope) is known first; no
+  redirect loop because the rewrite target always matches the params it sets.
+  Server SPA fallback (`app.get('*')`) already serves index.html, so deep-link
+  refresh resolves client-side.
+- Top-level Global/Group is a real underline tab bar (`.cmp-scope-tabs` /
+  `.cmp-scope-tab`), NOT the shared `.stats-tabs` pills — Stats still needs
+  those pills, so the compete bar got its own class.
 - `.cmp-hist-list` is a direct child of `.cmp-body` (HistorySection returns a
   fragment) but was missing from the `.cmp-body >` horizontal-inset rule, so
   the elo-change list ran full-bleed and touched screen edges on mobile.

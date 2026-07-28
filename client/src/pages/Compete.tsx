@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, uploadUrl } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
@@ -1086,15 +1086,16 @@ const SCOPES: { id: CompeteScope; label: string; icon: string }[] = [
   { id: 'group', label: 'Group', icon: 'users' },
 ];
 
-function isScope(v: string | null): v is CompeteScope {
+function isScope(v: string | undefined): v is CompeteScope {
   return v === 'global' || v === 'group';
 }
 
 export function Compete() {
-  // Scope and section live in the URL so a refresh (or a shared link) lands on
-  // the same tab instead of snapping back to Group/Matches. Absent params fall
-  // back to the load-time default, so a first visit is unchanged.
-  const [params, setParams] = useSearchParams();
+  // Scope and section live in the path (/compete/group/ranking) so a refresh or
+  // a shared link lands on the same tab instead of snapping back to
+  // Group/Matches. Bare or invalid paths fall back to the load-time default.
+  const { scope: scopeParam, section: sectionParam } = useParams();
+  const navigate = useNavigate();
 
   const { data, isLoading } = useQuery<CompetitionsResponse>({
     queryKey: ['competitions'],
@@ -1107,39 +1108,36 @@ export function Compete() {
   const hasGroup = !!data?.group;
   // Someone in a group is here for their group; someone without one has nothing
   // to show under Group but the invitation to join one, so Global leads.
-  const scopeParam = params.get('scope');
   const activeScope: CompeteScope = isScope(scopeParam) ? scopeParam : (hasGroup ? 'group' : 'global');
 
   const sections = SECTIONS[activeScope];
-  // The section param can name a section the current scope does not have (a
+  // The section segment can name a section the current scope does not have (a
   // stale link, or a scope switch), so fall back to the first for rendering.
-  const sectionParam = params.get('section');
-  const activeSection = sections.some(s => s.id === sectionParam)
+  const activeSection: Section = sections.some(s => s.id === sectionParam)
     ? (sectionParam as Section)
     : sections[0].id;
 
-  // replace: true — flipping tabs is not a navigation the back button should
-  // have to walk through.
+  // Keep the address bar naming the view actually shown: bare /compete, an
+  // unknown scope, or a section the scope lacks all rewrite to the resolved
+  // path once data has loaded. replace: true — a canonicalising rewrite is not
+  // a navigation the back button should have to walk through.
+  useEffect(() => {
+    if (isLoading) return;
+    if (scopeParam !== activeScope || sectionParam !== activeSection) {
+      navigate(`/compete/${activeScope}/${activeSection}`, { replace: true });
+    }
+  }, [isLoading, scopeParam, sectionParam, activeScope, activeSection, navigate]);
+
   function pickScope(next: CompeteScope) {
     // Keep the section when the new scope also has it, so switching scope
     // compares like with like; otherwise land on that scope's first section so
     // the URL and the rendered tab never disagree.
     const nextSection = SECTIONS[next].some(s => s.id === activeSection) ? activeSection : SECTIONS[next][0].id;
-    setParams(prev => {
-      const p = new URLSearchParams(prev);
-      p.set('scope', next);
-      p.set('section', nextSection);
-      return p;
-    }, { replace: true });
+    navigate(`/compete/${next}/${nextSection}`, { replace: true });
   }
 
   function pickSection(next: Section) {
-    setParams(prev => {
-      const p = new URLSearchParams(prev);
-      p.set('scope', activeScope);
-      p.set('section', next);
-      return p;
-    }, { replace: true });
+    navigate(`/compete/${activeScope}/${next}`, { replace: true });
   }
 
   return (
@@ -1157,14 +1155,16 @@ export function Compete() {
         <div className="page-loading">Loading…</div>
       ) : (
         <>
-          <div className="stats-tabs">
+          <div className="cmp-scope-tabs" role="tablist">
             {SCOPES.map(s => (
               <button
                 key={s.id}
-                className={`stats-tab-btn${activeScope === s.id ? ' active' : ''}`}
+                role="tab"
+                aria-selected={activeScope === s.id}
+                className={`cmp-scope-tab${activeScope === s.id ? ' active' : ''}`}
                 onClick={() => pickScope(s.id)}
               >
-                <span><Icon name={s.icon} /></span> {s.label}
+                <Icon name={s.icon} size={14} /> {s.label}
               </button>
             ))}
           </div>
