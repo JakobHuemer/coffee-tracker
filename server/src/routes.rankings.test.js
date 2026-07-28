@@ -35,6 +35,7 @@ beforeEach(() => {
     DELETE FROM group_members;
     DELETE FROM competition_groups;
     DELETE FROM user_ratings;
+    DELETE FROM user_badges;
     DELETE FROM coffee_entries;
     DELETE FROM users;
   `);
@@ -55,6 +56,11 @@ function setRating(userId, rating, matches) {
 function logCoffee(userId, mg) {
   db.prepare('INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at) VALUES (?, ?, ?, ?, ?)')
     .run(randomUUID(), userId, 'espresso', mg, Date.now());
+}
+
+function badgesFor(userId) {
+  return db.prepare('SELECT badge_id FROM user_badges WHERE user_id = ?')
+    .all(userId).map((r) => r.badge_id).sort();
 }
 
 async function rankings(user) {
@@ -109,4 +115,39 @@ test('each row carries the player\'s group, or null', async () => {
   const board = await rankings(a);
   expect(board.find((r) => r.username === 'grouped').group_name).toBe('Bean Team');
   expect(board.find((r) => r.username === 'loner').group_name).toBeNull();
+});
+
+// The three standing #1 badges each go to a DIFFERENT board's leader, so the
+// scenario deliberately makes the Elo, caffeine and cups winners three separate
+// people — proving each metric is scored on its own board, not piggy-backing.
+test('the #1 badges go to each board\'s leader (Elo/caffeine/cups)', async () => {
+  const brewer = makeUser('elo-leader');
+  const addict = makeUser('caffeine-leader');
+  const collector = makeUser('cups-leader');
+
+  setRating(brewer.id, 1200, 5);   // tops the Elo ladder
+  setRating(addict.id, 1000, 2);
+  setRating(collector.id, 900, 2);
+
+  logCoffee(brewer.id, 10);        // 1 cup, 10mg
+  logCoffee(addict.id, 5000);      // 1 cup, most caffeine
+  for (let i = 0; i < 10; i++) logCoffee(collector.id, 1); // 10 cups, most cups
+
+  await rankings(brewer); // the all-time fetch triggers the award pass
+
+  expect(badgesFor(brewer.id)).toEqual(['rank_1']);
+  expect(badgesFor(addict.id)).toEqual(['addicted']);
+  expect(badgesFor(collector.id)).toEqual(['decorated']);
+});
+
+// An Elo board where nobody has settled a match must not crown the default-rated
+// field. Caffeine/cups still have a real leader and are awarded.
+test('Top Brewer is not awarded on an Elo board with no settled matches', async () => {
+  const a = makeUser('only-drinker');
+  // No user_ratings row → unrated. Still the caffeine and cups leader by default.
+  logCoffee(a.id, 100);
+
+  await rankings(a);
+
+  expect(badgesFor(a.id)).toEqual(['addicted', 'decorated']);
 });

@@ -68,18 +68,50 @@ function checkBadgesForAchievement(userId, achievementId) {
   return notifs;
 }
 
-function checkBadgeForRanking(userId) {
-  const row = db.prepare(`
-    SELECT u.id,
-           SUM(ce.caffeine_mg) AS total_caf
-    FROM users u
-    JOIN coffee_entries ce ON ce.user_id = u.id
-    GROUP BY u.id
-    ORDER BY total_caf DESC
+// The current leader of each all-time board, keyed by the `metric` a ranking
+// badge names in badges.js. Adding a board is a data edit there plus one query
+// here — never a change to the awarding loop below.
+const RANKING_LEADER_SQL = {
+  // Top of the Elo ladder — only players who have settled at least one match, so
+  // the 1000 default never crowns someone who has never competed.
+  elo: `
+    SELECT user_id AS id
+    FROM user_ratings
+    WHERE matches > 0
+    ORDER BY rating DESC
     LIMIT 1
-  `).get();
-  if (row && row.id === userId) {
-    unlockBadge(userId, 'rank_1');
+  `,
+  // Most caffeine logged, all time. HAVING keeps an empty board from crowning a
+  // zero-total row.
+  caffeine: `
+    SELECT user_id AS id
+    FROM coffee_entries
+    GROUP BY user_id
+    HAVING SUM(caffeine_mg) > 0
+    ORDER BY SUM(caffeine_mg) DESC
+    LIMIT 1
+  `,
+  // Most cups logged, all time.
+  cups: `
+    SELECT user_id AS id
+    FROM coffee_entries
+    GROUP BY user_id
+    ORDER BY COUNT(*) DESC
+    LIMIT 1
+  `,
+};
+
+// Award every "you're #1" badge to whoever currently leads its board. These are
+// permanent once earned — losing the lead later never revokes them. Driven by
+// each ranking badge's own `metric` (issue: Top Brewer moved to Elo, plus the
+// Addicted/Decorated volume boards), so this loop never names a specific badge.
+function checkBadgeForRanking() {
+  for (const badge of BADGES) {
+    if (badge.requirement.type !== 'ranking') continue;
+    const sql = RANKING_LEADER_SQL[badge.requirement.metric];
+    if (!sql) continue;
+    const leader = db.prepare(sql).get();
+    if (leader) unlockBadge(leader.id, badge.id);
   }
 }
 

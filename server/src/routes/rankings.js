@@ -44,11 +44,11 @@ router.get('/', requireAuth, (req, res) => {
 
   const ranked = rows.map((r, i) => ({ ...r, rank: i + 1 }));
 
-  // The rank_1 badge goes to the leader of the all-time board — now the top of
-  // the Elo ladder. Never award it when the leader is unrated (an empty ladder
-  // where nobody has settled a match), or it would land on an arbitrary row.
-  if (period === 'alltime' && ranked.length > 0 && ranked[0].matches > 0) {
-    checkBadgeForRanking(ranked[0].id);
+  // Award the standing #1 badges — Top Brewer (Elo), Addicted (caffeine) and
+  // Decorated (cups). Each finds its own board's current leader and skips empty
+  // boards, so this only has to fire on the all-time view.
+  if (period === 'alltime') {
+    checkBadgeForRanking();
   }
 
   const myRank = ranked.find(r => r.id === req.user.id);
