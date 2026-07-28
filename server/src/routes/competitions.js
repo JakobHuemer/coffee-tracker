@@ -138,40 +138,69 @@ router.get('/', requireAuth, (req, res) => {
   });
 });
 
-// GET /api/competitions/leaderboard — group standings by rating.
-router.get('/leaderboard', requireAuth, (req, res) => {
-  const group = groupOf(req.user.id);
-  if (!group) return res.json({ group: null, leaderboard: [] });
-
+// Every user, ordered the one way this app ranks people: by the single global
+// rating. Players who have never settled a match sort last regardless of
+// rating — the default 1000 would otherwise place someone who has done nothing
+// above an active player sitting just below it. Username breaks ties so the
+// order, and therefore the rank, is the same on every request.
+function globalStandings() {
+  // The ORDER BY repeats the COALESCEs rather than reusing the aliases: inside
+  // a larger expression SQLite resolves a bare name against the SOURCE columns,
+  // so `(matches = 0)` would read the raw NULL of a user with no rating row and
+  // sort them FIRST — the exact opposite of what this ordering is for.
   const rows = db.prepare(`
     SELECT u.id, u.username, u.avatar, u.profile_photo,
            COALESCE(r.rating, ?) AS rating,
            COALESCE(r.matches, 0) AS matches
-    FROM group_members m
-    JOIN users u ON u.id = m.user_id
+    FROM users u
     LEFT JOIN user_ratings r ON r.user_id = u.id
-    WHERE m.group_id = ?
-  `).all(BASE_RATING, group.id);
+    ORDER BY (COALESCE(r.matches, 0) = 0) ASC, COALESCE(r.rating, ?) DESC, u.username ASC
+  `).all(BASE_RATING, BASE_RATING);
 
-  // Players who have never settled a match sort last regardless of rating:
-  // the default 1000 would otherwise place someone who has done nothing above
-  // an active player sitting just below it.
-  rows.sort((a, b) => {
-    if ((a.matches === 0) !== (b.matches === 0)) return a.matches === 0 ? 1 : -1;
-    return b.rating - a.rating;
-  });
+  return rows.map((r, i) => ({
+    id: r.id,
+    username: r.username,
+    avatar: r.avatar,
+    profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
+    rating: r.rating,
+    matches: r.matches,
+    rank: i + 1,
+  }));
+}
+
+// A global board is unbounded, so it ships a page rather than every user. The
+// caller's own row is returned separately, so someone outside the cut still
+// sees where they stand.
+const LEADERBOARD_LIMIT = 50;
+
+// GET /api/competitions/leaderboard?scope=global|group — standings by rating.
+//
+// Rank is a single global number in BOTH scopes (issue #53): `group` filters
+// which players are listed, it does not re-rank them against each other. A
+// three-member group therefore reads e.g. #4, #17, #58 — their real standing —
+// rather than a private 1-2-3 that means something different per group.
+router.get('/leaderboard', requireAuth, (req, res) => {
+  const scope = req.query.scope === 'group' ? 'group' : 'global';
+  const standings = globalStandings();
+  const me = standings.find((r) => r.id === req.user.id) ?? null;
+
+  if (scope === 'global') {
+    return res.json({ scope, group: null, me, leaderboard: standings.slice(0, LEADERBOARD_LIMIT) });
+  }
+
+  const group = groupOf(req.user.id);
+  if (!group) return res.json({ scope, group: null, me, leaderboard: [] });
+
+  const memberIds = new Set(
+    db.prepare('SELECT user_id FROM group_members WHERE group_id = ?')
+      .all(group.id).map((r) => r.user_id)
+  );
 
   res.json({
+    scope,
     group: { id: group.id, name: group.name },
-    leaderboard: rows.map((r, i) => ({
-      id: r.id,
-      username: r.username,
-      avatar: r.avatar,
-      profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
-      rating: r.rating,
-      matches: r.matches,
-      rank: i + 1,
-    })),
+    me,
+    leaderboard: standings.filter((r) => memberIds.has(r.id)),
   });
 });
 

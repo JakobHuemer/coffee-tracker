@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, uploadUrl } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
@@ -7,11 +8,30 @@ import { Icon } from '../components/Icon';
 import { TimezonePicker } from '../components/TimezonePicker';
 import { useAuthStore } from '../store/auth';
 import type {
-  CompetitionsResponse, CompetitionHistoryResponse, GroupsResponse, GroupDetailResponse,
-  LeaderboardResponse, Match, MatchMode, MatchParticipant, PersonalHistoryEntry, User,
+  CompeteScope, CompetitionsResponse, CompetitionHistoryResponse, GroupsResponse, GroupDetailResponse,
+  LeaderboardEntry, LeaderboardResponse, Match, MatchMode, MatchParticipant, PersonalHistoryEntry, User,
 } from '../types';
 
-type Tab = 'matches' | 'ranking' | 'history' | 'global' | 'group';
+// Global vs Group is the top-level split (issue #53): it scopes WHICH matches,
+// players and history the page is about. Rating itself is one global number and
+// is deliberately identical in both scopes.
+type Section = 'matches' | 'ranking' | 'history' | 'preferences';
+
+const SECTIONS: Record<CompeteScope, { id: Section; label: string }[]> = {
+  global: [
+    { id: 'matches', label: 'Matches' },
+    { id: 'ranking', label: 'Ranking' },
+    { id: 'history', label: 'History' },
+  ],
+  // Auto-join and the group's own settings are the only preferences that exist,
+  // and both are group-scoped — hence no Preferences section under Global.
+  group: [
+    { id: 'matches', label: 'Matches' },
+    { id: 'ranking', label: 'Ranking' },
+    { id: 'history', label: 'History' },
+    { id: 'preferences', label: 'Preferences' },
+  ],
+};
 
 const MODE_LABEL: Record<MatchMode, string> = {
   daily: 'Daily', weekly: 'Weekly', ondemand: 'Free-for-all', '1v1': '1v1', team: 'Team',
@@ -558,54 +578,79 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
   );
 }
 
-function MatchesTab({ data }: { data: CompetitionsResponse }) {
+// Both scopes render the same rating card, because the rating IS the same
+// number — only the pool of matches below it changes (issue #53). Finished
+// matches live in the History section (issue #34), not here.
+function MatchesSection({ scope, data }: { scope: CompeteScope; data: CompetitionsResponse }) {
+  const global = scope === 'global';
+  const buckets = global ? data.global : data;
+
   return (
     <>
       <RatingCard rating={data.my_rating} matches={data.my_matches} />
-      {/* Finished matches live in the History tab (issue #34), not here. */}
-      <MatchList open={data.open} live={data.live} settled={data.settled} finished={false} />
+      {global && <div className="field-hint">Open to anyone — no group needed.</div>}
+      <MatchList
+        open={buckets.open} live={buckets.live} settled={buckets.settled}
+        global={global} finished={false}
+      />
     </>
   );
 }
 
-// Group-less matches, open to everyone. Reachable with or without a group, so
-// it carries its own rating card (issue #35).
-function GlobalTab({ data }: { data: CompetitionsResponse }) {
+function LeaderboardRow({ r, me }: { r: LeaderboardEntry; me: boolean }) {
   return (
-    <>
-      <RatingCard rating={data.my_rating} matches={data.my_matches} />
-      <div className="field-hint">Open to anyone — no group needed.</div>
-      <MatchList open={data.global.open} live={data.global.live} settled={data.global.settled} global />
-    </>
+    <div className={`lb-row${me ? ' me' : ''}`}>
+      <span className="lb-rank">{r.matches === 0 ? '—' : `#${r.rank}`}</span>
+      <Avatar p={r} />
+      <span className="lb-user">
+        <span className="lb-username">{r.username}</span>
+        <span className="lb-stats">
+          {r.matches === 0 ? 'no matches yet' : `${r.matches} ${r.matches === 1 ? 'match' : 'matches'}`}
+        </span>
+      </span>
+      <span className="lb-caf">{fmtRating(r.rating)}</span>
+    </div>
   );
 }
 
-function RankingTab() {
+// One board, two windows onto it. The rank shown is the player's global rank in
+// both scopes; Group only narrows the list down to the people in it.
+function RankingSection({ scope }: { scope: CompeteScope }) {
+  const userId = useAuthStore(s => s.user?.id);
+
   const { data, isLoading } = useQuery<LeaderboardResponse>({
-    queryKey: ['competitions', 'leaderboard'],
-    queryFn: () => api.get('/competitions/leaderboard'),
+    queryKey: ['competitions', 'leaderboard', scope],
+    queryFn: () => api.get(`/competitions/leaderboard?scope=${scope}`),
   });
 
   if (isLoading) return <div className="page-loading">Loading…</div>;
   const rows = data?.leaderboard ?? [];
+  // The global board ships a page, so a player below the cut would otherwise
+  // not appear on their own leaderboard at all.
+  const me = data?.me ?? null;
+  const meListed = !!me && rows.some(r => r.id === me.id);
 
   return (
-    <div className="leaderboard">
-      {rows.map(r => (
-        <div key={r.id} className="lb-row">
-          <span className="lb-rank">{r.matches === 0 ? '—' : `#${r.rank}`}</span>
-          <Avatar p={r} />
-          <span className="lb-user">
-            <span className="lb-username">{r.username}</span>
-            <span className="lb-stats">
-              {r.matches === 0 ? 'no matches yet' : `${r.matches} ${r.matches === 1 ? 'match' : 'matches'}`}
-            </span>
-          </span>
-          <span className="lb-caf">{fmtRating(r.rating)}</span>
-        </div>
-      ))}
-      {rows.length === 0 && <div className="cmp-empty">No members yet.</div>}
-    </div>
+    <>
+      {/* The one thing that is not self-evident: a group's ranks are the global
+          ones, so they are not 1..n. */}
+      {scope === 'group' && <div className="field-hint">Global rank, group members only.</div>}
+
+      {rows.length === 0
+        ? <div className="cmp-empty">{scope === 'global' ? 'No players yet.' : 'No members yet.'}</div>
+        : (
+          <div className="leaderboard">
+            {rows.map(r => <LeaderboardRow key={r.id} r={r} me={r.id === userId} />)}
+          </div>
+        )}
+
+      {me && !meListed && (
+        <>
+          <div className="section-label">Your standing</div>
+          <div className="leaderboard"><LeaderboardRow r={me} me /></div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -740,9 +785,14 @@ function HistoryRow({ e }: { e: PersonalHistoryEntry }) {
   );
 }
 
-// Personal rating history (graph + elo-change list) and the group's finished
+// Personal rating history (graph + elo-change list) and the scope's finished
 // matches as end-match cards (issue #34).
-function HistoryTab() {
+//
+// The graph is NOT scoped: it plots the one global rating, so it is the same
+// curve under both tabs (issue #53). Only the lists below it are scoped — the
+// elo changes to the matches of this scope, and the finished-match cards to the
+// group's history or the caller's global matches.
+function HistorySection({ scope, globalSettled }: { scope: CompeteScope; globalSettled: Match[] }) {
   const { data, isLoading } = useQuery<CompetitionHistoryResponse>({
     queryKey: ['competitions', 'history'],
     queryFn: () => api.get('/competitions/history'),
@@ -751,24 +801,35 @@ function HistoryTab() {
 
   if (isLoading || !data) return <div className="page-loading">Loading…</div>;
 
+  const global = scope === 'global';
+  // The two filters are complements, so every settled match the caller played
+  // appears under exactly one tab. Matching on the CURRENT group id instead
+  // would black-hole the matches they played in a group they have since left —
+  // the rating those matches moved is still in the graph above.
+  const changes = data.personal.filter(e => (e.group_id === null) === global);
+  const finished = global ? globalSettled : data.group_history;
+
   return (
     <>
       <RatingGraph personal={data.personal} currentRating={data.my_rating} />
 
       <div className="section-label">Your elo changes</div>
-      {data.personal.length === 0
-        ? <div className="cmp-empty">No settled matches yet.</div>
-        : <div className="cmp-hist-list">{data.personal.map(e => <HistoryRow key={e.match_id} e={e} />)}</div>}
+      {changes.length === 0
+        ? <div className="cmp-empty">{global ? 'No settled global matches yet.' : 'No settled group matches yet.'}</div>
+        : <div className="cmp-hist-list">{changes.map(e => <HistoryRow key={e.match_id} e={e} />)}</div>}
 
-      <div className="section-label">Group history</div>
-      {data.group_history.length === 0
+      <div className="section-label">{global ? 'Your global matches' : 'Group history'}</div>
+      {finished.length === 0
         ? <div className="cmp-empty">No finished matches yet.</div>
-        : data.group_history.map(m => <MatchCard key={m.id} match={m} />)}
+        : finished.map(m => <MatchCard key={m.id} match={m} />)}
     </>
   );
 }
 
-function GroupTab() {
+// The group itself: what it is, how to get into it, and the preferences that
+// only mean anything inside one (auto-join, and the owner's group settings).
+// The member list is not repeated here — Ranking is the member list now.
+function PreferencesSection() {
   const qc = useQueryClient();
   const userId = useAuthStore(s => s.user?.id);
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -794,6 +855,9 @@ function GroupTab() {
   if (!group) return <div className="cmp-empty">You are not in a group.</div>;
 
   const isOwner = group.owner_id === userId;
+  // Ranking replaced the member list, and it has no notion of an owner — so the
+  // group card is now the only place a non-owner can see whose group this is.
+  const owner = (data?.members ?? []).find(m => m.id === group.owner_id);
 
   return (
     <>
@@ -802,6 +866,7 @@ function GroupTab() {
         {group.description && <div className="cmp-group-desc">{group.description}</div>}
         <div className="cmp-group-meta">
           <span><Icon name="users" size={12} /> {group.member_count} members</span>
+          {owner && <span><Icon name="crown" size={12} /> {owner.username}</span>}
           <span><Icon name="clock" size={12} /> {group.timezone}</span>
           <span>{group.is_public ? 'Public' : <><Icon name="lock" size={12} /> Private</>}</span>
         </div>
@@ -817,22 +882,6 @@ function GroupTab() {
       <AutoJoinCard />
 
       {isOwner && <GroupSettings group={group} />}
-
-      <div className="section-label">Members</div>
-      <div className="leaderboard">
-        {(data?.members ?? []).map(m => (
-          <div key={m.id} className="lb-row">
-            <Avatar p={m} />
-            <span className="lb-user">
-              <span className="lb-username">
-                {m.username}{m.id === group.owner_id && <span className="cmp-owner-tag">owner</span>}
-              </span>
-              <span className="lb-stats">{m.matches} settled</span>
-            </span>
-            <span className="lb-caf">{fmtRating(m.rating)}</span>
-          </div>
-        ))}
-      </div>
 
       {error && <div className="auth-error">{error}</div>}
 
@@ -1032,8 +1081,21 @@ function GroupGate() {
 
 /* ── page ──────────────────────────────────────────────────────────────────── */
 
+const SCOPES: { id: CompeteScope; label: string; icon: string }[] = [
+  { id: 'global', label: 'Global', icon: 'globe' },
+  { id: 'group', label: 'Group', icon: 'users' },
+];
+
+function isScope(v: string | undefined): v is CompeteScope {
+  return v === 'global' || v === 'group';
+}
+
 export function Compete() {
-  const [tab, setTab] = useState<Tab>('matches');
+  // Scope and section live in the path (/compete/group/ranking) so a refresh or
+  // a shared link lands on the same tab instead of snapping back to
+  // Group/Matches. Bare or invalid paths fall back to the load-time default.
+  const { scope: scopeParam, section: sectionParam } = useParams();
+  const navigate = useNavigate();
 
   const { data, isLoading } = useQuery<CompetitionsResponse>({
     queryKey: ['competitions'],
@@ -1044,22 +1106,39 @@ export function Compete() {
   });
 
   const hasGroup = !!data?.group;
+  // Someone in a group is here for their group; someone without one has nothing
+  // to show under Group but the invitation to join one, so Global leads.
+  const activeScope: CompeteScope = isScope(scopeParam) ? scopeParam : (hasGroup ? 'group' : 'global');
 
-  // Global and Group are always reachable; the group-scoped Matches/Ranking tabs
-  // only exist once the user is in a group (issue #35).
-  const TABS: { id: Tab; label: string; icon: string }[] = [
-    ...(hasGroup ? [
-      { id: 'matches' as Tab, label: 'Matches', icon: 'trophy' },
-      { id: 'ranking' as Tab, label: 'Ranking', icon: 'medal' },
-      { id: 'history' as Tab, label: 'History', icon: 'chart-line' },
-    ] : []),
-    { id: 'global', label: 'Global', icon: 'globe' },
-    { id: 'group', label: 'Group', icon: 'users' },
-  ];
+  const sections = SECTIONS[activeScope];
+  // The section segment can name a section the current scope does not have (a
+  // stale link, or a scope switch), so fall back to the first for rendering.
+  const activeSection: Section = sections.some(s => s.id === sectionParam)
+    ? (sectionParam as Section)
+    : sections[0].id;
 
-  // `tab` is user state and can name a tab that no longer exists (e.g. after
-  // leaving a group), so fall back to the first available tab for rendering.
-  const activeTab = TABS.some(t => t.id === tab) ? tab : TABS[0].id;
+  // Keep the address bar naming the view actually shown: bare /compete, an
+  // unknown scope, or a section the scope lacks all rewrite to the resolved
+  // path once data has loaded. replace: true — a canonicalising rewrite is not
+  // a navigation the back button should have to walk through.
+  useEffect(() => {
+    if (isLoading) return;
+    if (scopeParam !== activeScope || sectionParam !== activeSection) {
+      navigate(`/compete/${activeScope}/${activeSection}`, { replace: true });
+    }
+  }, [isLoading, scopeParam, sectionParam, activeScope, activeSection, navigate]);
+
+  function pickScope(next: CompeteScope) {
+    // Keep the section when the new scope also has it, so switching scope
+    // compares like with like; otherwise land on that scope's first section so
+    // the URL and the rendered tab never disagree.
+    const nextSection = SECTIONS[next].some(s => s.id === activeSection) ? activeSection : SECTIONS[next][0].id;
+    navigate(`/compete/${next}/${nextSection}`, { replace: true });
+  }
+
+  function pickSection(next: Section) {
+    navigate(`/compete/${activeScope}/${next}`, { replace: true });
+  }
 
   return (
     <div className="page">
@@ -1068,7 +1147,7 @@ export function Compete() {
       <div className="page-header">
         <h2>Compete</h2>
         <p className="page-sub">
-          {data?.group ? data.group.name : 'Rated matches'}
+          {activeScope === 'group' && data?.group ? data.group.name : 'Rated matches'}
         </p>
       </div>
 
@@ -1076,24 +1155,45 @@ export function Compete() {
         <div className="page-loading">Loading…</div>
       ) : (
         <>
-          <div className="stats-tabs">
-            {TABS.map(t => (
+          <div className="cmp-scope-tabs" role="tablist">
+            {SCOPES.map(s => (
               <button
-                key={t.id}
-                className={`stats-tab-btn${activeTab === t.id ? ' active' : ''}`}
-                onClick={() => setTab(t.id)}
+                key={s.id}
+                role="tab"
+                aria-selected={activeScope === s.id}
+                className={`cmp-scope-tab${activeScope === s.id ? ' active' : ''}`}
+                onClick={() => pickScope(s.id)}
               >
-                <span><Icon name={t.icon} /></span> {t.label}
+                <Icon name={s.icon} size={14} /> {s.label}
               </button>
             ))}
           </div>
 
           <div className="stats-tab-body cmp-body">
-            {activeTab === 'matches' && <MatchesTab data={data} />}
-            {activeTab === 'ranking' && <RankingTab />}
-            {activeTab === 'history' && <HistoryTab />}
-            {activeTab === 'global' && <GlobalTab data={data} />}
-            {activeTab === 'group' && (hasGroup ? <GroupTab /> : <GroupGate />)}
+            {/* Every group-scoped section needs a group. Without one the whole
+                tab is the invitation to get into one. */}
+            {activeScope === 'group' && !hasGroup ? <GroupGate /> : (
+              <>
+                <div className="tab-row">
+                  {sections.map(s => (
+                    <button
+                      key={s.id}
+                      className={`tab-btn${activeSection === s.id ? ' active' : ''}`}
+                      onClick={() => pickSection(s.id)}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+
+                {activeSection === 'matches' && <MatchesSection scope={activeScope} data={data} />}
+                {activeSection === 'ranking' && <RankingSection scope={activeScope} />}
+                {activeSection === 'history' && (
+                  <HistorySection scope={activeScope} globalSettled={data.global.settled} />
+                )}
+                {activeSection === 'preferences' && <PreferencesSection />}
+              </>
+            )}
           </div>
         </>
       )}

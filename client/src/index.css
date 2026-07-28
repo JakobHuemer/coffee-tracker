@@ -1063,10 +1063,38 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 
 /* ── Compete page ────────────────────────────────────────────────────────── */
+/* Global vs Group is the primary split, so it reads as a real tab bar (an
+   underline indicator on a shared baseline) rather than the pill row Stats
+   uses for its many equal filters. Its own class — the shared .stats-tabs must
+   stay pill-shaped for Stats. */
+.cmp-scope-tabs {
+  display: flex;
+  /* Match the rest of the page column: capped at --content-max and centred on
+     desktop (like .page-header/.stats-tab-body), 16px inset via padding so the
+     tabs line up with the cards below instead of overflowing the layout. */
+  max-width: var(--content-max);
+  margin: 12px auto 0;
+  padding: 0 16px;
+  border-bottom: 1.5px solid var(--border);
+}
+.cmp-scope-tab {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 8px;
+  margin-bottom: -1.5px; /* pull the indicator onto the row's baseline */
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.cmp-scope-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
 /* Scoped to .cmp-body so the shared .stats-tab-body layout used by Stats keeps
    its existing spacing untouched. */
 .cmp-body > .empty-state,
 .cmp-body > .leaderboard,
+.cmp-body > .field-hint,
+.cmp-body > .cmp-hist-list,
 .cmp-body > .auth-error { padding-left: 16px; padding-right: 16px; }
 
 /* Section headings carry the divider that separates one run of match cards
@@ -1231,10 +1259,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   color: var(--text-muted); transition: color 0.15s, border-color 0.15s;
 }
 .cmp-copy-btn:hover { color: var(--accent); border-color: var(--accent); }
-.cmp-owner-tag {
-  margin-left: 6px; font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--text-muted);
-}
 .cmp-settings-btn, .cmp-leave-btn { margin: 0 16px; width: calc(100% - 32px); }
 
 /* Two rosters side by side need roughly a tablet's width before the standings

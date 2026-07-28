@@ -564,10 +564,74 @@ test('the leaderboard sorts unrated players last, whatever their default rating'
   db.prepare('INSERT INTO user_ratings (user_id, rating, matches, updated_at) VALUES (?, ?, ?, ?)')
     .run(a.id, 980, 3, Date.now());
 
-  const res = await get(a, '/api/competitions/leaderboard');
+  const res = await get(a, '/api/competitions/leaderboard?scope=global');
   expect(res.body.leaderboard.map((r) => r.username)).toEqual(['active', 'idle']);
   expect(res.body.leaderboard[0]).toMatchObject({ rank: 1, rating: 980, matches: 3 });
   expect(res.body.leaderboard[1]).toMatchObject({ rank: 2, rating: 1000, matches: 0 });
+});
+
+// Issue #53. The group scope is a FILTER over the global board, not a second
+// ranking: a member's number is where they stand among everyone, so a small
+// group does not read 1..n. Getting this wrong is invisible in a one-group test
+// database, which is why the outsiders here rate ABOVE the members.
+test('the group scope filters the global board without re-ranking it', async () => {
+  const top = makeUser('top');
+  const second = makeUser('second');
+  const member = makeUser('member');
+  const mate = makeUser('mate');
+
+  const group = await createGroup(member);
+  await post(mate, '/api/groups/join', { group_id: group.id });
+
+  const rate = (u, rating) => db
+    .prepare('INSERT INTO user_ratings (user_id, rating, matches, updated_at) VALUES (?, ?, ?, ?)')
+    .run(u.id, rating, 5, Date.now());
+  rate(top, 1300);
+  rate(second, 1200);
+  rate(member, 1100);
+  rate(mate, 1000);
+
+  const global = await get(member, '/api/competitions/leaderboard?scope=global');
+  expect(global.body.scope).toBe('global');
+  expect(global.body.group).toBeNull();
+  expect(global.body.leaderboard.map((r) => r.username)).toEqual(['top', 'second', 'member', 'mate']);
+
+  const scoped = await get(member, '/api/competitions/leaderboard?scope=group');
+  expect(scoped.body.scope).toBe('group');
+  expect(scoped.body.group.id).toBe(group.id);
+  expect(scoped.body.leaderboard.map((r) => r.username)).toEqual(['member', 'mate']);
+  // The whole point: 3 and 4, never 1 and 2.
+  expect(scoped.body.leaderboard.map((r) => r.rank)).toEqual([3, 4]);
+});
+
+test('the leaderboard always reports the caller their own global standing', async () => {
+  const a = makeUser('a');
+  const b = makeUser('b');
+  db.prepare('INSERT INTO user_ratings (user_id, rating, matches, updated_at) VALUES (?, ?, ?, ?)')
+    .run(b.id, 1400, 2, Date.now());
+
+  // `a` is in no group at all, so the group scope lists nobody — but `me` is
+  // what the UI pins when the caller is not in the visible rows, so it has to
+  // survive an empty board.
+  const scoped = await get(a, '/api/competitions/leaderboard?scope=group');
+  expect(scoped.status).toBe(200);
+  expect(scoped.body.group).toBeNull();
+  expect(scoped.body.leaderboard).toEqual([]);
+  expect(scoped.body.me).toMatchObject({ id: a.id, rank: 2, matches: 0 });
+
+  expect((await get(b, '/api/competitions/leaderboard?scope=global')).body.me)
+    .toMatchObject({ id: b.id, rank: 1, rating: 1400 });
+});
+
+test('an unrecognised leaderboard scope falls back to the global board', async () => {
+  const a = makeUser('a');
+  await createGroup(a);
+
+  for (const q of ['', '?scope=', '?scope=GROUP', '?scope=nonsense', "?scope=group' OR 1=1--"]) {
+    const res = await get(a, `/api/competitions/leaderboard${q}`);
+    expect({ q, status: res.status, scope: res.body.scope })
+      .toEqual({ q, status: 200, scope: 'global' });
+  }
 });
 
 test('a live match reports scores from the window so far, a settled one the stored values', async () => {
