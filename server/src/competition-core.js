@@ -15,34 +15,45 @@
 // ── Tuning surface ───────────────────────────────────────────────────────────
 // Changing these only affects matches settled after the change; settled
 // match_participants rows are an immutable log and are never recomputed.
-// docs/competitions-rating-v2.md documents what has to be re-derived alongside
-// each one — in particular, moving a POINT_WEIGHT silently re-scales
-// MARGIN_SCALE, because both are denominated in points.
+// docs/competitions-rating-v2.1.md documents what has to be re-derived alongside
+// each one — in particular, moving a POINT_WEIGHT silently re-scales the margin,
+// because MARGIN_PER_DAY is denominated in the same points.
 
 // Points per unit of each metric: caffeine per mg, cups per logged entry,
 // variety per distinct coffee_id. Linear and uncapped — the Nth cup is worth
 // exactly what the first was, and one new kind of drink is worth one extra cup.
 const POINT_WEIGHTS = { caffeine: 1, cups: 15, variety: 15 };
 
-// Score gap, in points, at which a matchup is roughly 76/24 rather than 50/50.
-// Small D makes every win look like a blowout; large D flattens everything
-// toward a draw.
-const MARGIN_SCALE = 150;
+// The margin scale grows with the window (v2.1): a weekly accumulates ~7x a
+// daily's points, so a fixed gap threshold would grade the two on completely
+// different curves. Instead the scale is derived per match from its duration —
+// see marginScaleFor(). MARGIN_PER_DAY is the gap, per day of window, that grades
+// as roughly 90/10; MARGIN_FLOOR is the shortest window's scale, below which a
+// single drink would be an automatic shutout.
+const MARGIN_PER_DAY = 500;
+const MARGIN_FLOOR = 150;
+const DAY_MS = 86400000;
 
-// Rating gap at which the favourite is expected to score 76/24. Classic Elo.
+// Rating gap at which the favourite is expected to score ~91/9 (a full scale;
+// 76/24 lands at half of it). Classic Elo.
 const ELO_SCALE = 400;
 
 // Starting rating for an unrated user. Baked into every settled rating_before
 // in the database — moving it would make historical rows incomparable.
 const BASE_RATING = 1000;
 
-// K lives on the match row, copied from here at creation time, so a match keeps
-// the K it was created with even if this table changes before it settles. The
-// most a rating can move in a two-player match is K/2, and less in a bigger
-// field. Daily fires ~365x/year on one day's luck so it stays low-weight;
-// weekly aggregates 7 days and is a far better sample; 1v1/ondemand are rare and
-// deliberate, so they carry the full ±40 swing v2 targets.
-const K_BY_MODE = { daily: 24, weekly: 48, '1v1': 80, ondemand: 80 };
+// One K for every mode (v2.1). Daily, weekly, ondemand and 1v1 settle
+// identically — the duration-scaled margin already grades a short window's
+// closeness, so K no longer has to also dampen it. The only thing that
+// distinguishes daily/weekly is that the server opens them automatically. K is
+// copied onto the match row at creation, so a match keeps the K it was created
+// with; v1 matches keep whatever K they were created with. ~40 is the swing an
+// emphatic 1v1 produces (delta is K*(A-E), so K/2 between equal ratings).
+const K = 80;
+
+// Retained as a map keyed by every current mode so callers can index it by
+// `match.mode` exactly as before; every entry is the single K above.
+const K_BY_MODE = { daily: K, weekly: K, '1v1': K, ondemand: K };
 
 const MODES = Object.keys(K_BY_MODE);
 
@@ -63,6 +74,21 @@ function points({ caffeine = 0, cups = 0, variety = 0 } = {}) {
 
 // ── Layer 2: rating ──────────────────────────────────────────────────────────
 
+// The margin scale for one match, from its window length (v2.1). `scopeEnd` is
+// inclusive, so the window is (end - start + 1) ms. Grows linearly with duration
+// above the floor: ~7.2h and shorter all sit at MARGIN_FLOOR; a daily is 500, a
+// weekly 3500. Derived rather than stored — it is a pure function of scope_start
+// and scope_end, which are already on the match row, already immutable, and
+// already shown to participants.
+//
+// A whole match uses ONE scale, applied to every pair in it. It may differ
+// between matches but must never vary within one, or the zero-sum antisymmetry
+// (A_ij + A_ji = 1) breaks.
+function marginScaleFor(scopeStart, scopeEnd) {
+  const durationMs = scopeEnd - scopeStart + 1;
+  return Math.max(MARGIN_FLOOR, MARGIN_PER_DAY * (durationMs / DAY_MS));
+}
+
 // Standard Elo logistic on the usual 400-point scale.
 function expectedScore(rating, opponentRating) {
   return 1 / (1 + Math.pow(10, (opponentRating - rating) / ELO_SCALE));
@@ -77,10 +103,11 @@ function expectedScore(rating, opponentRating) {
 // the same structural reason: A_ij + A_ji = 1 by construction, which is what
 // keeps the settlement zero-sum. A normalised score share would not be.
 //
-// It saturates: past roughly 4 * MARGIN_SCALE the result is within a rounding
-// error of 1, so running up the score stops paying.
-function actualFromMargin(score, opponentScore) {
-  return 1 / (1 + Math.pow(10, (opponentScore - score) / MARGIN_SCALE));
+// It saturates: past roughly 4 * marginScale the result is within a rounding
+// error of 1, so running up the score stops paying. `marginScale` comes from
+// marginScaleFor() at the call site.
+function actualFromMargin(score, opponentScore, marginScale) {
+  return 1 / (1 + Math.pow(10, (opponentScore - score) / marginScale));
 }
 
 // Ratings move in whole points only, and the whole-number deltas still have to
@@ -109,9 +136,14 @@ function apportion(raw, total) {
 
 // Free-for-all over N participants, decomposed into all N*(N-1)/2 pairs.
 //
-//   A_ij    = 1 / (1 + 10^((P_j - P_i)/MARGIN_SCALE))
+//   A_ij    = 1 / (1 + 10^((P_j - P_i)/marginScale))
 //   E_ij    = 1 / (1 + 10^((R_j - R_i)/ELO_SCALE))
 //   delta_i = K/(N-1) * sum_{j!=i} (A_ij - E_ij)
+//
+// `marginScale` is one value for the whole match — marginScaleFor(scope_start,
+// scope_end) at the call site. Passing it in (rather than reading a module
+// constant) is what lets a daily and a weekly grade on curves matched to their
+// own length while every pair inside one match still shares a scale.
 //
 // Zero-sum is STRUCTURAL, not tested-after-the-fact: A_ij + A_ji = 1 and
 // E_ij + E_ji = 1 always, so every pair's contribution to sum(delta_i) cancels
@@ -131,7 +163,7 @@ function apportion(raw, total) {
 // feed back into rating_before.
 //
 // participants: [{ userId, rating, score }]  ->  [{ userId, delta, ratingAfter }]
-function settleFfa(participants, k) {
+function settleFfa(participants, k, marginScale) {
   const n = participants.length;
   if (n < 2) throw new Error('settleFfa needs at least 2 participants');
 
@@ -139,7 +171,7 @@ function settleFfa(participants, k) {
     let sum = 0;
     for (const q of participants) {
       if (q === p) continue;
-      sum += actualFromMargin(p.score, q.score) - expectedScore(p.rating, q.rating);
+      sum += actualFromMargin(p.score, q.score, marginScale) - expectedScore(p.rating, q.rating);
     }
     return (k / (n - 1)) * sum;
   });
@@ -156,6 +188,7 @@ function settleFfa(participants, k) {
 }
 
 module.exports = {
-  POINT_WEIGHTS, MARGIN_SCALE, BASE_RATING, ELO_SCALE, K_BY_MODE, MODES,
-  points, expectedScore, actualFromMargin, apportion, settleFfa,
+  POINT_WEIGHTS, MARGIN_PER_DAY, MARGIN_FLOOR, BASE_RATING, ELO_SCALE,
+  K, K_BY_MODE, MODES,
+  points, marginScaleFor, expectedScore, actualFromMargin, apportion, settleFfa,
 };

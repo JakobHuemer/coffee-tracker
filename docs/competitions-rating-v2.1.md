@@ -1,6 +1,6 @@
 # Competitions — rating v2.1 (amendment)
 
-Status: **specified, not implemented.**
+Status: **implemented.**
 
 This amends [competitions-rating-v2.md](./competitions-rating-v2.md). Everything
 in that document still holds except where contradicted here. It is an amendment

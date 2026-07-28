@@ -14,7 +14,7 @@ const { randomUUID } = require('crypto');
 const db = require('./db');
 const {
   BASE_RATING, K_BY_MODE,
-  points, settleFfa,
+  points, settleFfa, marginScaleFor,
 } = require('./competition-core');
 const { localDateStr, localWallInstant, localDayBounds, isValidTz, DEFAULT_TZ } = require('./time');
 const { scoreMgSql } = require('./data/coffee-scores');
@@ -312,7 +312,11 @@ function settleMatch(match, now = Date.now()) {
   }));
 
   if (players.length < 2) return cancel(match.id, now);
-  const results = settleFfa(players, match.k_factor);
+  // The margin scale is derived from the match's own window (v2.1), so a daily
+  // and a weekly grade on curves matched to their length. k_factor is the K the
+  // match was created with; both are immutable inputs to a one-shot settlement.
+  const marginScale = marginScaleFor(match.scope_start, match.scope_end);
+  const results = settleFfa(players, match.k_factor, marginScale);
 
   const scoreByUser = new Map(players.map((p) => [p.userId, p.score]));
   // `side` and `contribution_share` only ever meant something in team mode,

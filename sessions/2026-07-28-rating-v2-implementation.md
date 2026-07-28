@@ -1,6 +1,31 @@
 ---
-topics: [rating-v2, competitions, elo, migration-015, public-entry-filter, team-mode-removal, fixtures]
+topics: [rating-v2, rating-v2.1, competitions, elo, migration-015, public-entry-filter, team-mode-removal, fixtures, margin-scale, duration-scaling]
 ---
+
+# Implementing docs/competitions-rating-v2.md (+ v2.1 amendment)
+
+## v2.1: duration-scaled margin + flat K
+
+Spec: `docs/competitions-rating-v2.1.md`. Committed on top of the v2 impl.
+
+- `MARGIN_SCALE` constant is gone. Scale is now derived per match:
+  `marginScaleFor(scope_start, scope_end) = max(150, 500 * durationDays)`.
+  `actualFromMargin` and `settleFfa` take it as a parameter; `settleMatch`
+  derives it from the match's own window. No new column — it's a pure function
+  of the two immutable scope fields already on the row.
+- **Why it was needed:** at a fixed 150, every realistic daily gap graded
+  98–100% and every weekly gap 100/0 — i.e. v1's rank-only defect, reinstated
+  for any window longer than a couple of drinks. Verified against the group's
+  real logging (weak/avg/heavy day = 350/420/665 pts).
+- `K_BY_MODE` collapsed to `K = 80` for all modes (daily/weekly no longer
+  dampened, since the scale already grades their closeness). `K_BY_MODE` kept as
+  a map so callers still index by `match.mode`. Worked daily now +14/+7/-21.
+- Fixtures: `scoring.json` untouched. `rating.json` — only the `worked daily`
+  case regenerated (k 24→80, scale 150→500); the other 13 keep their explicit
+  `(k, marginScale)` as pure-math inputs. Header gained `marginPerDay`/
+  `marginFloor`, dropped the single `marginScale`.
+- The K-per-mode differences in v1 are preserved in `settle-v1.js` (daily 8,
+  weekly 20, team 24, 1v1/ondemand 32) — migration 015 unaffected.
 
 # Implementing docs/competitions-rating-v2.md
 

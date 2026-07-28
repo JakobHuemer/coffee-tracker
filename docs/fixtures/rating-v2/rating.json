@@ -5,7 +5,8 @@
     "cups": 15,
     "variety": 15
   },
-  "marginScale": 150,
+  "marginPerDay": 500,
+  "marginFloor": 150,
   "cases": [
     {
       "name": "identical points, nobody moves",
@@ -585,9 +586,9 @@
       ]
     },
     {
-      "name": "worked daily example, K=24",
-      "k": 24,
-      "marginScale": 150,
+      "name": "worked daily example, K=80, scale 500",
+      "k": 80,
+      "marginScale": 500,
       "participants": [
         {
           "name": "Max Mustermann",
@@ -608,18 +609,18 @@
       "expect": [
         {
           "name": "Max Mustermann",
-          "delta": 8,
-          "ratingAfter": 1008
+          "delta": 14,
+          "ratingAfter": 1014
         },
         {
           "name": "Erika Mustermann",
-          "delta": 3,
-          "ratingAfter": 1003
+          "delta": 7,
+          "ratingAfter": 1007
         },
         {
           "name": "John Doe",
-          "delta": -11,
-          "ratingAfter": 989
+          "delta": -21,
+          "ratingAfter": 979
         }
       ]
     }
