@@ -1,17 +1,23 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const db = require('../db');
+const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
 // Shape a raw joined row into the API post object. bookmarked_by_me is derived
 // from a correlated EXISTS (not a join) so it can't inflate the likes COUNT.
+// image / profile_image carry the responsive variant lists; the *_url fields
+// stay for legacy single-file photos and as a fallback.
 function mapPost(p) {
+  const { image_id, profile_image_id, ...rest } = p;
   return {
-    ...p,
+    ...rest,
     photo_url: p.photo_path ? `/uploads/${p.photo_path}` : null,
     profile_photo_url: p.profile_photo ? `/uploads/${p.profile_photo}` : null,
+    image: images.variantsFor(image_id),
+    profile_image: images.variantsFor(profile_image_id),
     liked_by_me: p.liked_by_me === 1,
     bookmarked_by_me: p.bookmarked_by_me === 1,
   };
@@ -19,8 +25,8 @@ function mapPost(p) {
 
 const POST_COLUMNS = `
   e.id, e.user_id, e.coffee_id, e.caffeine_mg, e.logged_at,
-  e.photo_path, e.description, e.is_public,
-  u.username, u.avatar, u.profile_photo,
+  e.photo_path, e.image_id AS image_id, e.description, e.is_public,
+  u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id,
   COUNT(pl.id) AS likes_count,
   MAX(CASE WHEN pl.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
   EXISTS(SELECT 1 FROM post_bookmarks pb WHERE pb.entry_id = e.id AND pb.user_id = ?) AS bookmarked_by_me

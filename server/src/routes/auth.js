@@ -3,33 +3,21 @@ const bcrypt   = require('bcryptjs');
 const jwt      = require('jsonwebtoken');
 const { rateLimit } = require('express-rate-limit');
 const { randomUUID } = require('crypto');
-const path     = require('path');
-const fs       = require('fs');
 const multer   = require('multer');
 const db       = require('../db');
+const images   = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { isValidTz, DEFAULT_TZ } = require('../time');
 const { clampHalfLife } = require('../energy');
 const { isValidPassword } = require('../password');
 
-const UPLOAD_DIR = process.env.DB_DIR
-  ? path.join(process.env.DB_DIR, 'uploads')
-  : path.join(__dirname, '..', '..', 'data', 'uploads');
+const UPLOAD_DIR = images.UPLOAD_DIR;
 
-const MIME_EXT = {
-  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
-  'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heif',
-};
-
-const profilePhotoStorage = multer.diskStorage({
-  destination: UPLOAD_DIR,
-  filename: (_req, file, cb) => {
-    const ext = MIME_EXT[file.mimetype] || 'jpg';
-    cb(null, `pfp_${randomUUID()}.${ext}`);
-  },
-});
+// In-memory upload; ../images derives the variants and writes every file. The
+// `pfp_` filename prefix (applied by deriveAndStore) is what lets the serving
+// route treat profile photos as visible to any authenticated user.
 const profilePhotoUpload = multer({
-  storage: profilePhotoStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -48,7 +36,7 @@ function handleUpload(mw) {
 
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, is_admin, is_super_admin, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, image_id, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, is_admin, is_super_admin, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous
@@ -64,10 +52,12 @@ const authLimiter = rateLimit({
 
 function parseUser(u) {
   if (!u) return u;
+  const { image_id, ...rest } = u;
   return {
-    ...u,
+    ...rest,
     featured_badges: u.featured_badges ? u.featured_badges.split(',').filter(Boolean) : [],
     profile_photo_url: u.profile_photo ? `/uploads/${u.profile_photo}` : null,
+    profile_image: images.variantsFor(image_id),
   };
 }
 
@@ -207,37 +197,61 @@ router.patch('/me', requireAuth, (req, res) => {
   res.json(user);
 });
 
-router.patch('/me/photo', requireAuth, handleUpload(profilePhotoUpload.single('photo')), (req, res) => {
+router.patch('/me/photo', requireAuth, handleUpload(profilePhotoUpload.single('photo')), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No photo provided' });
-  const existing = db.prepare('SELECT profile_photo FROM users WHERE id = ?').get(req.user.id);
-  if (existing?.profile_photo) {
-    try { fs.unlinkSync(path.join(UPLOAD_DIR, existing.profile_photo)); } catch { /* ignore */ }
+  const existing = db.prepare('SELECT profile_photo, image_id FROM users WHERE id = ?').get(req.user.id);
+
+  let image_id;
+  try {
+    image_id = await images.deriveAndStore({
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype,
+      ownerId: req.user.id,
+      createdAt: Date.now(),
+      prefix: 'pfp_',
+    });
+  } catch (err) {
+    console.error('profile photo processing failed', err);
+    return res.status(400).json({ error: 'Could not process image' });
   }
-  db.prepare('UPDATE users SET profile_photo = ? WHERE id = ?').run(req.file.filename, req.user.id);
+
+  // Link the new image, then remove the old one. A new upload drops the legacy
+  // profile_photo (it lives under image_id now).
+  db.prepare('UPDATE users SET profile_photo = NULL, image_id = ? WHERE id = ?').run(image_id, req.user.id);
+  if (existing?.image_id) images.deleteImage(existing.image_id);
+  if (existing?.profile_photo) images.unlinkPaths([existing.profile_photo]);
+
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
   res.json(user);
 });
 
 router.delete('/me/photo', requireAuth, (req, res) => {
-  const existing = db.prepare('SELECT profile_photo FROM users WHERE id = ?').get(req.user.id);
-  if (existing?.profile_photo) {
-    try { fs.unlinkSync(path.join(UPLOAD_DIR, existing.profile_photo)); } catch { /* ignore */ }
-    db.prepare('UPDATE users SET profile_photo = NULL WHERE id = ?').run(req.user.id);
+  const existing = db.prepare('SELECT profile_photo, image_id FROM users WHERE id = ?').get(req.user.id);
+  if (existing?.image_id || existing?.profile_photo) {
+    db.prepare('UPDATE users SET profile_photo = NULL, image_id = NULL WHERE id = ?').run(req.user.id);
+    if (existing.image_id) images.deleteImage(existing.image_id);
+    if (existing.profile_photo) images.unlinkPaths([existing.profile_photo]);
   }
   const user = parseUser(db.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).get(req.user.id));
   res.json(user);
 });
 
 router.delete('/me', requireAuth, (req, res) => {
-  const coffeePhotos = db.prepare('SELECT photo_path FROM coffee_entries WHERE user_id = ? AND photo_path IS NOT NULL').all(req.user.id);
+  // Gather every file to unlink BEFORE the cascade removes the rows that name
+  // them (deleting the user cascades images/image_variants + coffee_entries, but
+  // a cascade never touches disk). Covers both new variant files and any legacy
+  // single files still recorded in photo_path / profile_photo.
+  const variantPaths = images.imagePathsForOwner(req.user.id);
+  const legacyCoffee = db.prepare(
+    'SELECT photo_path FROM coffee_entries WHERE user_id = ? AND photo_path IS NOT NULL'
+  ).all(req.user.id).map(r => r.photo_path);
   const { profile_photo } = db.prepare('SELECT profile_photo FROM users WHERE id = ?').get(req.user.id) ?? {};
+
   db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
-  for (const { photo_path } of coffeePhotos) {
-    try { fs.unlinkSync(path.join(UPLOAD_DIR, photo_path)); } catch { /* ignore */ }
-  }
-  if (profile_photo) {
-    try { fs.unlinkSync(path.join(UPLOAD_DIR, profile_photo)); } catch { /* ignore */ }
-  }
+
+  images.unlinkPaths(variantPaths);
+  images.unlinkPaths(legacyCoffee);
+  if (profile_photo) images.unlinkPaths([profile_photo]);
   res.status(204).end();
 });
 

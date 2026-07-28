@@ -2,6 +2,7 @@ const express = require('express');
 const { rateLimit } = require('express-rate-limit');
 const { randomUUID, randomInt } = require('crypto');
 const db = require('../db');
+const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { isValidTz, getUserTz } = require('../time');
 const { BASE_RATING } = require('../competition-core');
@@ -62,7 +63,7 @@ function publicGroup(group, { includeCode = false } = {}) {
 
 function membersOf(groupId) {
   return db.prepare(`
-    SELECT u.id, u.username, u.avatar, u.profile_photo, m.joined_at,
+    SELECT u.id, u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id, m.joined_at,
            COALESCE(r.rating, ?) AS rating,
            COALESCE(r.matches, 0) AS matches
     FROM group_members m
@@ -75,6 +76,7 @@ function membersOf(groupId) {
     username: m.username,
     avatar: m.avatar,
     profile_photo_url: m.profile_photo ? `/uploads/${m.profile_photo}` : null,
+    profile_image: images.variantsFor(m.profile_image_id),
     joined_at: m.joined_at,
     rating: m.rating,
     matches: m.matches,

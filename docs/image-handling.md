@@ -1,9 +1,22 @@
 # Image handling — plan (issue #15)
 
-Status: **plan only, nothing implemented yet.** Issue #15 is `effort:large`
-("multi-session, needs a plan first"), so this doc is that plan. It records the
-decisions and the phasing; the code lands in follow-up PRs, each its own
-numbered migration where schema is touched.
+Status: **phases 1 + 2 implemented.** Client downscales to a WebP master before
+upload; the server derives thumb/medium/large WebP variants (`images` +
+`image_variants`, migration `016`), delivers them via `srcset` through the new
+`<ResponsiveImage>` component, and a resumable backfill (`server/scripts/
+backfill-images.js`) re-encodes legacy files. Phases 3 (AVIF + `<picture>`) and
+4 (tagging) are not started.
+
+Two decisions differ from the original draft below and supersede it:
+
+- **Migration number.** The draft says `014`; the head had moved on, so the
+  real migration is `016_add_image_variants.js` and the eventual `photo_path`
+  drop will be `017`. Numbers below are left as first written for history.
+- **Client encodes WebP with `canvas.toBlob`, not `@jsquash`.** Open question #1
+  is resolved: `@jsquash/webp` + `@jsquash/resize` run clean under the
+  container's Bun, so the **server** uses them (no native libvips). The client
+  stays codec-free — `canvas.toBlob('image/webp')` is reliable everywhere and
+  avoids shipping WASM to the browser. AVIF stays server-only in phase 3.
 
 ## The goal, restated
 

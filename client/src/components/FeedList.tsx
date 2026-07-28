@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, uploadUrl } from '../api/client';
+import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { Icon } from './Icon';
 import { PhotoLightbox } from './PhotoLightbox';
+import { ResponsiveImage } from './ResponsiveImage';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { FeedPost } from '../types';
 
@@ -81,8 +82,8 @@ function PostCard({
   return (
     <article className="feed-post">
       <div className="feed-post-header feed-post-header-clickable" onClick={handleUserClick} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleUserClick(); } }}>
-        {post.profile_photo_url
-          ? <img src={uploadUrl(post.profile_photo_url)} alt={post.username} className="feed-avatar-img" />
+        {post.profile_image || post.profile_photo_url
+          ? <ResponsiveImage image={post.profile_image} fallback={post.profile_photo_url} alt={post.username} className="feed-avatar-img" sizes="48px" />
           : <span className="feed-avatar">{post.avatar}</span>}
         <div className="feed-post-meta">
           <span className="feed-username">{post.username}</span>
@@ -97,17 +98,18 @@ function PostCard({
         )}
       </div>
 
-      {post.photo_url && (
+      {(post.image || post.photo_url) && (
         // In the card the photo is capped at 1.1× its width; tapping it opens
         // the uncropped frame.
         <button className="feed-photo-wrap" onClick={() => setZoomed(true)} aria-label="View photo">
-          <img className="feed-photo" src={uploadUrl(post.photo_url)} alt={post.coffee_id} loading="lazy" />
+          <ResponsiveImage className="feed-photo" image={post.image} fallback={post.photo_url} alt={post.coffee_id} loading="lazy" sizes="(max-width: 600px) 100vw, 600px" />
         </button>
       )}
 
-      {zoomed && post.photo_url && (
+      {zoomed && (post.image || post.photo_url) && (
         <PhotoLightbox
-          src={uploadUrl(post.photo_url)}
+          image={post.image}
+          fallback={post.photo_url}
           alt={post.coffee_id}
           onClose={() => setZoomed(false)}
         >

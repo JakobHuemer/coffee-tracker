@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../db');
+const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { checkAfterCompare } = require('../achievements');
 const { COFFEES } = require('../data/coffees');
@@ -61,7 +62,7 @@ function resolvedFeaturedBadges(userId) {
 
 router.get('/:username', requireAuth, (req, res) => {
   const target = db.prepare(
-    'SELECT id, username, avatar, profile_photo FROM users WHERE username = ?'
+    'SELECT id, username, avatar, profile_photo, image_id FROM users WHERE username = ?'
   ).get(req.params.username);
 
   if (!target) return res.status(404).json({ error: 'User not found' });
@@ -70,10 +71,15 @@ router.get('/:username', requireAuth, (req, res) => {
   const myStats = buildUserStats(req.user.id);
   const theirStats = buildUserStats(target.id);
   const unlocked = checkAfterCompare(req.user.id, target.id);
-  const me = db.prepare('SELECT id, username, avatar, profile_photo FROM users WHERE id = ?').get(req.user.id);
+  const me = db.prepare('SELECT id, username, avatar, profile_photo, image_id FROM users WHERE id = ?').get(req.user.id);
 
   function withPhotoUrl(u) {
-    return { ...u, profile_photo_url: u.profile_photo ? `/uploads/${u.profile_photo}` : null };
+    const { image_id, ...rest } = u;
+    return {
+      ...rest,
+      profile_photo_url: u.profile_photo ? `/uploads/${u.profile_photo}` : null,
+      profile_image: images.variantsFor(image_id),
+    };
   }
 
   res.json({

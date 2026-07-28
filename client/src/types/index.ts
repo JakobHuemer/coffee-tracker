@@ -8,6 +8,22 @@ export interface Coffee {
   class: string;
 }
 
+// One stored rendition of an image. `width` is the pixel width for srcset; a
+// legacy single-file image (pre-backfill) has one variant with width null.
+export interface ImageVariant {
+  url: string;
+  width: number | null;
+  format: string;
+}
+
+// The server's responsive-image payload (issue #15): variants ascending by
+// width, plus the original aspect. null when the row carries no image.
+export interface ImageField {
+  width: number | null;
+  height: number | null;
+  variants: ImageVariant[];
+}
+
 export interface CoffeeEntry {
   id: string;
   user_id: string;
@@ -17,6 +33,8 @@ export interface CoffeeEntry {
   created_at?: number;
   photo_path: string | null;
   photo_url?: string | null;
+  // Responsive variants for a new-scheme photo; falls back to photo_url.
+  image?: ImageField | null;
   description: string | null;
   is_public: 0 | 1;
 }
@@ -29,11 +47,13 @@ export interface FeedPost {
   logged_at: number;
   photo_path: string | null;
   photo_url: string | null;
+  image?: ImageField | null;
   description: string | null;
   is_public: 0 | 1;
   username: string;
   avatar: string;
   profile_photo_url: string | null;
+  profile_image?: ImageField | null;
   likes_count: number;
   liked_by_me: boolean;
   bookmarked_by_me: boolean;
@@ -44,6 +64,7 @@ export interface User {
   username: string;
   avatar: string;
   profile_photo_url?: string | null;
+  profile_image?: ImageField | null;
   featured_badges: string[];
   timezone?: string;
   // Personal caffeine half-life in hours, driving the Buzz decay curve. null
@@ -213,6 +234,7 @@ export interface CompareUserProfile {
   username: string;
   avatar: string;
   profile_photo_url?: string | null;
+  profile_image?: ImageField | null;
   featured_badges: FeaturedBadge[];
   stats: CompareUserStats;
 }
@@ -318,6 +340,7 @@ export interface GroupMember {
   username: string;
   avatar: string;
   profile_photo_url: string | null;
+  profile_image?: ImageField | null;
   joined_at: number;
   rating: number;
   matches: number;
@@ -328,6 +351,7 @@ export interface MatchParticipant {
   username: string;
   avatar: string;
   profile_photo_url: string | null;
+  profile_image?: ImageField | null;
   joined_at: number;
   // Live for a running match (window so far), frozen at settlement afterwards.
   // A linear, uncapped integer — there is no maximum to render it against, so
@@ -388,6 +412,7 @@ export interface LeaderboardEntry {
   username: string;
   avatar: string;
   profile_photo_url: string | null;
+  profile_image?: ImageField | null;
   rating: number;
   matches: number;
   rank: number;

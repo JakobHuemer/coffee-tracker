@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, uploadUrl } from '../api/client';
+import { api } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
+import { ResponsiveImage } from '../components/ResponsiveImage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Icon } from '../components/Icon';
 import { TimezonePicker } from '../components/TimezonePicker';
@@ -10,7 +11,7 @@ import { UnlockToast } from '../components/UnlockToast';
 import { useAuthStore } from '../store/auth';
 import type {
   Challenge, CompeteScope, CompetitionsResponse, CompetitionHistoryResponse, GroupsResponse, GroupDetailResponse,
-  LeaderboardEntry, LeaderboardResponse, Match, MatchMode, MatchParticipant, PersonalHistoryEntry, UnlockNotification, User,
+  LeaderboardEntry, LeaderboardResponse, Match, MatchMode, MatchParticipant, PersonalHistoryEntry, UnlockNotification, User, ImageField,
 } from '../types';
 
 // Global vs Group is the top-level split (issue #53): it scopes WHICH matches,
@@ -240,10 +241,9 @@ function InviteCode({ code }: { code: string }) {
   );
 }
 
-function Avatar({ p }: { p: { avatar: string; profile_photo_url: string | null; username: string } }) {
-  const url = uploadUrl(p.profile_photo_url);
-  return url
-    ? <img className="cmp-avatar-img" src={url} alt="" />
+function Avatar({ p }: { p: { avatar: string; profile_photo_url: string | null; profile_image?: ImageField | null; username: string } }) {
+  return p.profile_image || p.profile_photo_url
+    ? <ResponsiveImage className="cmp-avatar-img" image={p.profile_image} fallback={p.profile_photo_url} alt="" sizes="40px" />
     : <span className="cmp-avatar">{p.avatar}</span>;
 }
 
