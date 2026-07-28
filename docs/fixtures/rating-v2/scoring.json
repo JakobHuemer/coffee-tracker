@@ -1,0 +1,209 @@
+{
+  "_comment": "Fixtures for docs/competitions-rating-v2.md. The expected values ARE the spec: they were generated from the reference implementation in that document and reviewed. Do not edit by hand to make a failing test pass. All participants are fictional.",
+  "pointWeights": {
+    "caffeine": 1,
+    "cups": 15,
+    "variety": 15
+  },
+  "marginScale": 150,
+  "cases": [
+    {
+      "name": "empty window",
+      "metrics": {
+        "caffeine": 0,
+        "cups": 0,
+        "variety": 0
+      },
+      "expect": {
+        "points": 0
+      }
+    },
+    {
+      "name": "one espresso",
+      "metrics": {
+        "caffeine": 63,
+        "cups": 1,
+        "variety": 1
+      },
+      "expect": {
+        "points": 93
+      }
+    },
+    {
+      "name": "one doppio",
+      "metrics": {
+        "caffeine": 128,
+        "cups": 1,
+        "variety": 1
+      },
+      "expect": {
+        "points": 158
+      }
+    },
+    {
+      "name": "5x espresso",
+      "metrics": {
+        "caffeine": 315,
+        "cups": 5,
+        "variety": 1
+      },
+      "expect": {
+        "points": 405
+      }
+    },
+    {
+      "name": "12x espresso, linearity holds at the top",
+      "metrics": {
+        "caffeine": 756,
+        "cups": 12,
+        "variety": 1
+      },
+      "expect": {
+        "points": 951
+      }
+    },
+    {
+      "name": "5x tea, same cup count as 5x espresso",
+      "metrics": {
+        "caffeine": 25,
+        "cups": 5,
+        "variety": 1
+      },
+      "expect": {
+        "points": 115
+      }
+    },
+    {
+      "name": "5x doppio",
+      "metrics": {
+        "caffeine": 640,
+        "cups": 5,
+        "variety": 1
+      },
+      "expect": {
+        "points": 730
+      }
+    },
+    {
+      "name": "six distinct coffees",
+      "metrics": {
+        "caffeine": 641,
+        "cups": 6,
+        "variety": 6
+      },
+      "expect": {
+        "points": 821
+      }
+    },
+    {
+      "name": "high caffeine, low variety",
+      "metrics": {
+        "caffeine": 662,
+        "cups": 5,
+        "variety": 2
+      },
+      "expect": {
+        "points": 767
+      }
+    },
+    {
+      "name": "volume only, 10x tea",
+      "metrics": {
+        "caffeine": 50,
+        "cups": 10,
+        "variety": 1
+      },
+      "expect": {
+        "points": 215
+      }
+    },
+    {
+      "name": "zero caffeine, 5 cups 2 kinds",
+      "metrics": {
+        "caffeine": 0,
+        "cups": 5,
+        "variety": 2
+      },
+      "expect": {
+        "points": 105
+      }
+    },
+    {
+      "name": "zero-caffeine variety farm, 8 cups 3 kinds — intentionally beats one doppio",
+      "metrics": {
+        "caffeine": 15,
+        "cups": 8,
+        "variety": 3
+      },
+      "expect": {
+        "points": 180
+      }
+    },
+    {
+      "name": "worked ondemand example, Max Mustermann",
+      "metrics": {
+        "caffeine": 180,
+        "cups": 5,
+        "variety": 3
+      },
+      "expect": {
+        "points": 300
+      }
+    },
+    {
+      "name": "worked ondemand example, Erika Mustermann",
+      "metrics": {
+        "caffeine": 130,
+        "cups": 4,
+        "variety": 4
+      },
+      "expect": {
+        "points": 250
+      }
+    },
+    {
+      "name": "worked ondemand example, John Doe",
+      "metrics": {
+        "caffeine": 128,
+        "cups": 4,
+        "variety": 2
+      },
+      "expect": {
+        "points": 218
+      }
+    },
+    {
+      "name": "worked daily example, Max Mustermann",
+      "metrics": {
+        "caffeine": 400,
+        "cups": 8,
+        "variety": 5
+      },
+      "expect": {
+        "points": 595
+      }
+    },
+    {
+      "name": "worked daily example, Erika Mustermann",
+      "metrics": {
+        "caffeine": 310,
+        "cups": 8,
+        "variety": 7
+      },
+      "expect": {
+        "points": 535
+      }
+    },
+    {
+      "name": "worked daily example, John Doe",
+      "metrics": {
+        "caffeine": 245,
+        "cups": 2,
+        "variety": 2
+      },
+      "expect": {
+        "points": 305
+      }
+    }
+  ]
+}
