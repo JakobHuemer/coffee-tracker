@@ -72,7 +72,7 @@ async function postEntry(user, { isPublic = '1', withPhoto = true, description =
 
 const fileExists = (p) => fs.existsSync(path.join(images.UPLOAD_DIR, p));
 
-test('coffee upload derives three responsive WebP variants, capped at the source width', async () => {
+test('coffee upload derives AVIF + WebP at three sizes, capped at the source width', async () => {
   const u = makeUser('alice');
   const { status, body } = await postEntry(u);
   expect(status).toBe(200);
@@ -81,8 +81,10 @@ test('coffee upload derives three responsive WebP variants, capped at the source
   expect(img).toBeTruthy();
   expect(img.width).toBe(1000);
   expect(img.height).toBe(600);
-  expect(img.variants.map((v) => v.width)).toEqual([320, 800, 1000]); // never upscaled to 1600
-  expect(img.variants.every((v) => v.format === 'webp')).toBe(true);
+  // Three widths (never upscaled to 1600) x two formats.
+  expect(img.variants.map((v) => v.width)).toEqual([320, 320, 800, 800, 1000, 1000]);
+  const byWidth = (w) => new Set(img.variants.filter((v) => v.width === w).map((v) => v.format));
+  for (const w of [320, 800, 1000]) expect(byWidth(w)).toEqual(new Set(['avif', 'webp']));
   for (const v of img.variants) expect(fileExists(v.url.replace('/uploads/', ''))).toBe(true);
 
   // The new scheme lives entirely under image_id; the legacy column is left null.
@@ -97,7 +99,7 @@ test('GET /coffees/photos returns the variant list', async () => {
   const res = await fetch(`${base}/api/coffees/photos`, { headers: { authorization: `Bearer ${u.token}` } });
   const photos = await res.json();
   expect(photos.length).toBe(1);
-  expect(photos[0].image.variants.length).toBe(3);
+  expect(photos[0].image.variants.length).toBe(6); // 3 sizes x avif+webp
   expect(photos[0].photo_url).toBeNull();
 });
 
@@ -146,7 +148,7 @@ test('profile photo upload is prefixed pfp_ and produces variants', async () => 
   });
   expect(res.status).toBe(200);
   const user = await res.json();
-  expect(user.profile_image.variants.length).toBe(3);
+  expect(user.profile_image.variants.length).toBe(6); // 3 sizes x avif+webp
   expect(user.profile_photo_url).toBeNull();
   // The pfp_ prefix is what keeps profile photos publicly viewable in the feed.
   expect(user.profile_image.variants.every((v) => v.url.startsWith('/uploads/pfp_'))).toBe(true);
@@ -187,4 +189,29 @@ test('generateWebpVariants never upscales past the source', async () => {
   expect(variants.map((v) => v.width)).toEqual([200]);
   expect(images.targetWidths(1000)).toEqual([320, 800, 1000]);
   expect(images.targetWidths(4000)).toEqual([320, 800, 1600]); // capped at large
+});
+
+test('generateVariants produces AVIF + WebP per size, decodable back', async () => {
+  const { encode } = await import('@jsquash/webp');
+  const W = 900, H = 600;
+  const data = new Uint8ClampedArray(W * H * 4);
+  for (let i = 0; i < W * H; i++) {
+    data[i * 4] = i % 255; data[i * 4 + 1] = 40; data[i * 4 + 2] = (i * 5) % 255; data[i * 4 + 3] = 255;
+  }
+  const master = Buffer.from(await encode({ data, width: W, height: H }, { quality: 80 }));
+  const decoded = await images.decodeBuffer(master, 'webp');
+
+  const variants = await images.generateVariants(decoded);
+  // 320/800/900 x avif+webp, interleaved avif-first per width.
+  expect(variants.map((v) => `${v.format}:${v.width}`)).toEqual([
+    'avif:320', 'webp:320', 'avif:800', 'webp:800', 'avif:900', 'webp:900',
+  ]);
+  expect(variants.every((v) => v.bytes > 0)).toBe(true);
+
+  // The AVIF bytes are real AVIF: they decode back to the right dimensions.
+  const avif800 = variants.find((v) => v.format === 'avif' && v.width === 800);
+  const { decode: decodeAvif } = await import('@jsquash/avif');
+  const ab = avif800.data.buffer.slice(avif800.data.byteOffset, avif800.data.byteOffset + avif800.data.byteLength);
+  const round = await decodeAvif(ab);
+  expect(round.width).toBe(800);
 });

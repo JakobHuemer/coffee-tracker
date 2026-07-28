@@ -2,26 +2,28 @@
 //
 //   bun server/scripts/backfill-images.js
 //
-// Run ONCE after migration 016 has shipped. Migration 016 only *wrapped* each
-// existing photo in an images + image_variants row (DB-only, no pixels touched),
-// so every legacy image still has a single un-sized variant in its original
-// format. This job does the heavy, failure-prone work the boot migration must
-// never do: decode each legacy file once, record its real dimensions, and
-// generate the missing responsive WebP sizes.
+// Run ONCE after migration 016 ships, and again after phase 3 to add AVIF.
+// Migration 016 only *wrapped* each existing photo in an images + image_variants
+// row (DB-only, no pixels touched), so every legacy image still has a single
+// un-sized variant in its original format. This job does the heavy,
+// failure-prone work the boot migration must never do: decode each image once,
+// record its real dimensions, and generate the missing responsive variants
+// (WebP + AVIF) at every size.
 //
 // It is NOT a migration and nothing depends on it finishing — the single legacy
 // variant already serves throughout. Properties:
-//   - Resumable / idempotent: keyed on "a variant with this (image_id, webp,
-//     width) already exists", so an interrupted run only fills gaps.
+//   - Resumable / idempotent: keyed on "a variant with this (image_id, format,
+//     width) already exists", so an interrupted run only fills gaps. Re-running
+//     after phase 3 tops up AVIF on images that already have WebP.
 //   - Best-effort: one unreadable file is logged and skipped, never fatal.
 //   - Never strands an image: the legacy file is only removed for formats a
 //     browser can't render (HEIC) AND only once a WebP variant exists. Renderable
 //     legacy files (jpeg/png/webp) are kept as the full-size variant.
 //   - Throttled: pauses between batches so it doesn't peg CPU on a live box.
 //
-// Scope note: WebP/JPEG/PNG legacy files are decoded and re-sized here. GIF and
-// HEIC have no decoder wired (see server/src/images.js), so they are left as
-// their single original variant — HEIC conversion is tracked as a follow-up in
+// Scope note: WebP/JPEG/PNG files are decoded and re-encoded here. GIF and HEIC
+// have no decoder wired (see server/src/images.js), so they are left as their
+// single original variant — HEIC conversion is tracked as a follow-up in
 // docs/image-handling.md.
 const path = require('path');
 const fs = require('fs');
@@ -35,8 +37,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function run() {
   // Candidates: any image not yet measured (a fresh legacy wrap has orig_width
-  // NULL). Already-backfilled images have their dimensions set and are skipped.
-  const candidates = db.prepare('SELECT id FROM images WHERE orig_width IS NULL').all();
+  // NULL) OR one that has no AVIF variant yet (phase-2 images, which have WebP
+  // only). Fully-derived images match neither and are skipped. gif/heic-only
+  // images always match the AVIF clause but are cheaply skipped below (no
+  // decodable source), so re-runs stay a no-op for them.
+  const candidates = db.prepare(`
+    SELECT DISTINCT i.id FROM images i
+    WHERE i.orig_width IS NULL
+       OR NOT EXISTS (SELECT 1 FROM image_variants v WHERE v.image_id = i.id AND v.format = 'avif')
+  `).all();
   console.log(`backfill: ${candidates.length} image(s) to process`);
 
   let done = 0, skipped = 0, failed = 0, variantsWritten = 0;
@@ -45,8 +54,12 @@ async function run() {
     const imageId = candidates[i].id;
     try {
       const variants = db.prepare('SELECT rowid, format, width, path FROM image_variants WHERE image_id = ?').all(imageId);
-      // Find a source we can actually decode (the legacy original).
-      const source = variants.find((v) => ['webp', 'jpeg', 'png'].includes(v.format));
+      // Decode the WIDEST available original/derived file so every target size
+      // can be produced without upscaling. For a legacy wrap that is the single
+      // original; for a phase-2 image it is the largest stored WebP.
+      const source = variants
+        .filter((v) => ['webp', 'jpeg', 'png'].includes(v.format))
+        .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
       if (!source) { skipped++; continue; } // gif/heic only — leave untouched
 
       const filePath = path.join(images.UPLOAD_DIR, source.path);
@@ -61,23 +74,24 @@ async function run() {
       db.prepare('UPDATE image_variants SET width = ?, bytes = ? WHERE rowid = ?')
         .run(decoded.width, fs.statSync(filePath).size, source.rowid);
 
-      // Derive the responsive WebP sizes, writing only the ones not already there.
+      // Derive the responsive variants (WebP + AVIF), writing only the
+      // (format,width) pairs not already present.
       const have = new Set(
-        variants.filter((v) => v.format === 'webp' && v.width != null).map((v) => v.width),
+        variants.filter((v) => v.width != null).map((v) => `${v.format}:${v.width}`),
       );
-      // The legacy file keeps its base name so profile photos retain the `pfp_`
-      // prefix the serving route relies on.
+      // Derived files keep the source's base name so profile photos retain the
+      // `pfp_` prefix the serving route relies on.
       const base = source.path.replace(/\.[^.]+$/, '');
       const insVariant = db.prepare('INSERT INTO image_variants (image_id, format, width, path, bytes) VALUES (?, ?, ?, ?, ?)');
 
-      for (const v of await images.generateWebpVariants(decoded)) {
-        if (have.has(v.width)) continue;
-        // Don't duplicate the source file as a webp of the same width/format.
-        if (source.format === 'webp' && v.width === decoded.width) continue;
-        const filename = `${base}_${v.width}.webp`;
+      for (const v of await images.generateVariants(decoded)) {
+        if (have.has(`${v.format}:${v.width}`)) continue;
+        // Don't duplicate the source file as the same format+width already on disk.
+        if (v.format === source.format && v.width === decoded.width) continue;
+        const filename = `${base}_${v.width}.${v.format}`;
         fs.writeFileSync(path.join(images.UPLOAD_DIR, filename), Buffer.from(v.data));
         try {
-          insVariant.run(imageId, 'webp', v.width, filename, v.bytes);
+          insVariant.run(imageId, v.format, v.width, filename, v.bytes);
           variantsWritten++;
         } catch (err) {
           // Row already existed (UNIQUE) from a prior interrupted run — the file
@@ -106,6 +120,12 @@ async function run() {
   console.log(`backfill done: ${done} processed, ${skipped} skipped (no decoder), ${failed} failed, ${variantsWritten} variants written`);
 }
 
+// Keep the process alive across the awaited WASM encodes. Bun otherwise drains
+// the event loop and exits mid-`await` in a plain script (the pending WASM work
+// doesn't ref the loop), which would silently end the run after the first image.
+// The interval is cleared once run() settles so the process can exit normally.
+const keepAlive = setInterval(() => {}, 1 << 30);
+
 // Checkpoint the WAL into the main DB file before exiting, then let the process
 // end on its own. A forced process.exit(0) here raced the flush and could leave
 // just-written variant rows only in the WAL — closing cleanly is what makes the
@@ -119,4 +139,5 @@ run()
     console.error('backfill fatal:', err);
     try { db.close(); } catch { /* already closed */ }
     process.exitCode = 1;
-  });
+  })
+  .finally(() => clearInterval(keepAlive));

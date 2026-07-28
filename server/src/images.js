@@ -9,8 +9,16 @@
 // lazily with dynamic import() inside async functions (the module cache makes
 // repeat imports free).
 //
-// AVIF and <picture type> negotiation are phase 3 — this module produces WebP
-// only, which is universally decodable and already the big bandwidth win.
+// Phase 3 adds AVIF alongside WebP: every size is encoded to both formats and
+// the client negotiates via <picture type>. AVIF is server-only (browsers can't
+// reliably encode it) and gives the best ratio for slow connections; WebP stays
+// as the universally decodable fallback.
+//
+// Encode cost note (VALUES 1): AVIF is CPU-heavy and @jsquash runs synchronously
+// on the single JS thread, so a large encode briefly blocks the event loop.
+// AVIF_SPEED is tuned to the fast end (near-instant on photographic content, a
+// few seconds worst case on a 1600px noise image) to keep uploads from stalling
+// the server. If concurrency ever grows, move encoding to a worker thread.
 const path = require('path');
 const fs = require('fs');
 const { randomUUID } = require('crypto');
@@ -32,6 +40,15 @@ const SIZES = [
   { name: 'large', width: 1600 },
 ];
 const WEBP_QUALITY = 80;
+// AVIF quality knobs. cqLevel is 0 (lossless) .. 63 (worst); ~32 tracks WebP
+// quality 80. speed is 0 (slowest/best) .. 10; 8 keeps encode time bounded (see
+// the event-loop note above) at a negligible size cost over the default 6.
+const AVIF_CQ = 32;
+const AVIF_SPEED = 8;
+
+// Formats produced per size, best-ratio first. The client emits one <picture>
+// <source> per format in this order, so the browser picks AVIF when it can.
+const VARIANT_FORMATS = ['avif', 'webp'];
 
 const MIME_FORMAT = {
   'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp',
@@ -75,22 +92,40 @@ async function decodeBuffer(buffer, format) {
   }
 }
 
-// From one decoded master, produce a WebP file for every target width. Returns
-// [{ width, data: Uint8Array, bytes }] ascending. Shared by uploads and the
-// legacy backfill so both derive sizes identically.
-async function generateWebpVariants(decoded) {
+async function encodeTo(format, img) {
+  if (format === 'webp') {
+    return new Uint8Array(await (await import('@jsquash/webp')).encode(img, { quality: WEBP_QUALITY }));
+  }
+  if (format === 'avif') {
+    return new Uint8Array(await (await import('@jsquash/avif')).encode(img, { cqLevel: AVIF_CQ, speed: AVIF_SPEED }));
+  }
+  throw new Error(`unknown variant format: ${format}`);
+}
+
+// From one decoded master, produce a file for every (format x target width).
+// Returns [{ format, width, data: Uint8Array, bytes }]. Each width is resized
+// once and then encoded to every requested format, so the expensive resize is
+// shared. Ascending by width, formats in VARIANT_FORMATS order per width.
+// Shared by uploads and the legacy backfill so both derive variants identically.
+async function generateVariants(decoded, formats = VARIANT_FORMATS) {
   const { width: ow, height: oh } = decoded;
-  const { encode: encodeWebp } = await import('@jsquash/webp');
   const resize = (await import('@jsquash/resize')).default;
   const out = [];
   for (const w of targetWidths(ow)) {
     const img = w === ow
       ? decoded
       : await resize(decoded, { width: w, height: Math.max(1, Math.round((oh * w) / ow)) });
-    const data = new Uint8Array(await encodeWebp(img, { quality: WEBP_QUALITY }));
-    out.push({ width: w, data, bytes: data.length });
+    for (const format of formats) {
+      const data = await encodeTo(format, img);
+      out.push({ format, width: w, data, bytes: data.length });
+    }
   }
   return out;
+}
+
+// WebP-only helper, kept for callers that want the single-format subset.
+async function generateWebpVariants(decoded) {
+  return generateVariants(decoded, ['webp']);
 }
 
 // Full upload path: master bytes -> derived files on disk -> images +
@@ -113,8 +148,8 @@ async function deriveAndStore({ buffer, mimetype, ownerId, createdAt, prefix = '
   if (decoded) {
     origWidth = decoded.width;
     origHeight = decoded.height;
-    for (const v of await generateWebpVariants(decoded)) {
-      files.push({ format: 'webp', width: v.width, filename: `${prefix}${imageId}_${v.width}.webp`, bytes: v.bytes, data: v.data });
+    for (const v of await generateVariants(decoded)) {
+      files.push({ format: v.format, width: v.width, filename: `${prefix}${imageId}_${v.width}.${v.format}`, bytes: v.bytes, data: v.data });
     }
   } else {
     // Undecodable format (gif/heic) or corrupt bytes: keep the upload verbatim
@@ -209,6 +244,7 @@ module.exports = {
   mimeToFormat,
   targetWidths,
   decodeBuffer,
+  generateVariants,
   generateWebpVariants,
   deriveAndStore,
   variantsFor,

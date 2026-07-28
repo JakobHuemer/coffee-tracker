@@ -1,22 +1,33 @@
 # Image handling — plan (issue #15)
 
-Status: **phases 1 + 2 implemented.** Client downscales to a WebP master before
-upload; the server derives thumb/medium/large WebP variants (`images` +
-`image_variants`, migration `016`), delivers them via `srcset` through the new
-`<ResponsiveImage>` component, and a resumable backfill (`server/scripts/
-backfill-images.js`) re-encodes legacy files. Phases 3 (AVIF + `<picture>`) and
-4 (tagging) are not started.
+Status: **phases 1 + 2 + 3 implemented.** Client downscales to a WebP master
+before upload; the server derives thumb/medium/large variants in **both AVIF and
+WebP** (`images` + `image_variants`, migration `016`), delivers them via a
+`<picture>` with per-format `<source>` + `srcset` through the `<ResponsiveImage>`
+component, and a resumable backfill (`server/scripts/backfill-images.js`)
+re-encodes legacy files (re-run it after phase 3 to add AVIF to existing images).
+Phase 4 (tagging) is not started.
 
-Two decisions differ from the original draft below and supersede it:
+Three decisions differ from the original draft below and supersede it:
 
 - **Migration number.** The draft says `014`; the head had moved on, so the
   real migration is `016_add_image_variants.js` and the eventual `photo_path`
   drop will be `017`. Numbers below are left as first written for history.
 - **Client encodes WebP with `canvas.toBlob`, not `@jsquash`.** Open question #1
-  is resolved: `@jsquash/webp` + `@jsquash/resize` run clean under the
-  container's Bun, so the **server** uses them (no native libvips). The client
-  stays codec-free — `canvas.toBlob('image/webp')` is reliable everywhere and
-  avoids shipping WASM to the browser. AVIF stays server-only in phase 3.
+  is resolved: `@jsquash/webp`, `@jsquash/resize` **and `@jsquash/avif`** run
+  clean under the container's Bun, so the **server** uses them (no native
+  libvips). The client stays codec-free — `canvas.toBlob('image/webp')` is
+  reliable everywhere and avoids shipping WASM to the browser. AVIF is
+  server-only.
+- **AVIF encode is synchronous and CPU-bound (phase 3).** `@jsquash/avif`
+  encodes on the single JS thread, so a large image briefly blocks the event
+  loop (`AVIF_SPEED = 8` keeps this to well under a second on real photos, a few
+  seconds worst case on a 1600px noise image). Acceptable at this app's
+  concurrency; if that changes, move encoding to a worker thread. Two related
+  fixes: the `/uploads` route sets `Content-Type: image/avif` explicitly
+  (Express's mime table doesn't know `.avif`, and the `nosniff` header would
+  otherwise stop the browser decoding it), and the backfill script holds the
+  event loop open across its awaits (Bun would otherwise exit mid-run).
 
 ## The goal, restated
 
@@ -259,8 +270,11 @@ Properties:
    the [existing-image migration](#migrating-existing-images): `014` wraps every
    legacy file (Part 1), then the backfill job (Part 2) re-encodes them into the
    new sizes.
-3. **AVIF variants** via server WASM encode + `<picture type>` negotiation. The
-   same backfill job gains AVIF output, so legacy images pick it up too.
+3. **AVIF variants** via server WASM encode + `<picture type>` negotiation.
+   *(Done.)* `deriveAndStore` encodes every size to AVIF and WebP;
+   `<ResponsiveImage>` emits `<source type="image/avif">` before the WebP `<img>`
+   fallback; the backfill job gained AVIF output, so legacy images pick it up on
+   a re-run.
 4. **(Optional) tagging/classification** — separate, own issue-sized effort;
    out of scope for the core delivery and only worth doing if a lightweight
    model can run in-container without violating VALUES 1/5.

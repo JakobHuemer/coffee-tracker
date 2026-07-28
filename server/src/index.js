@@ -92,6 +92,12 @@ app.get('/uploads/:filename', (req, res) => {
     }
   }
 
+  // Express's bundled mime table doesn't know .avif (it would send
+  // application/octet-stream), and the nosniff header above then stops the
+  // browser decoding it as an image. Set the type explicitly; sendFile leaves an
+  // already-set Content-Type untouched.
+  if (filename.endsWith('.avif')) res.type('image/avif');
+
   res.sendFile(path.join(UPLOAD_DIR, filename));
 });
 
