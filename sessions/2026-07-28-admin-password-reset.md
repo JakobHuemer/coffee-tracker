@@ -23,7 +23,16 @@ has no email, so an admin sets the password and tells the user out of band.
 - Verified the real boot path on an isolated port (not just the unit tests):
   register-before-boot → restart promotes; reset lets the target log in with the
   new pw; last-admin demote → 409. `PRAGMA integrity_check` = ok after mig 016.
-- Manual React-UI-in-browser check was skipped on purpose: same-origin/no-CORS
-  means the Vite dev server must proxy to the API's fixed port, and AGENTS.md
-  forbids risking the developer's own dev server there. UI compiles (build+lint
-  clean); the AdminCard in Profile.tsx has a trivial data flow.
+- Admin UI is **search-by-username** (mirrors the Compare page), NOT a user
+  list — an instance can have any number of users. Backend is therefore
+  GET /admin/users/:username (exact lookup, 404), not a list-all.
+- CSS gotcha: `.field input { width: 100% }` (index.css) applies to ANY input
+  inside a `.field`, so wrapping a `.search-row` in `.field` blows the inline
+  input to full width and breaks the row. Use the bare `.section-label` +
+  `.search-row` structure (like Compare) for an inline input+button, never
+  `.field` around it.
+- To render the real UI in the browser under same-origin/no-CORS: build the
+  client, copy client/dist -> server/public, seed a scratch DB_DIR before boot
+  (exclusive access, no WAL lock fight), run index.js on a high port. Screenshots
+  time out when the pane isn't displayed — verify via read_page + javascript_tool
+  geometry/computed-style instead.
