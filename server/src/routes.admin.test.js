@@ -1,9 +1,10 @@
 // HTTP-level tests for the admin routes (routes/admin.js).
 //
 // A router mounted on a real server and driven with fetch — no supertest,
-// mirroring routes.rankings.test.js. requireAdmin reads is_admin live from the
-// DB, so these tests set the flag directly and exercise the access control,
-// password reset, promotion, and the last-admin guard.
+// mirroring routes.rankings.test.js. Two admin tiers: the protected super admin
+// (is_super_admin) may manage everyone and is untouchable; a regular admin may
+// manage non-admins and promote non-admins, but may not touch any admin.
+// requireAdmin reads status live from the DB, so tests set the flags directly.
 
 import { test, expect, beforeEach, afterAll } from 'bun:test';
 
@@ -34,10 +35,13 @@ beforeEach(() => {
   db.exec('DELETE FROM users;');
 });
 
-function makeUser(username, { admin = false, password = 'secret' } = {}) {
+// tier: 'super' | 'admin' | undefined (regular user)
+function makeUser(username, { tier, password = 'secret' } = {}) {
   const id = randomUUID();
-  db.prepare('INSERT INTO users (id, username, password_hash, created_at, timezone, is_admin) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, username, bcrypt.hashSync(password, 10), Date.now(), 'UTC', admin ? 1 : 0);
+  const isAdmin = tier === 'super' || tier === 'admin' ? 1 : 0;
+  const isSuper = tier === 'super' ? 1 : 0;
+  db.prepare('INSERT INTO users (id, username, password_hash, created_at, timezone, is_admin, is_super_admin) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(id, username, bcrypt.hashSync(password, 10), Date.now(), 'UTC', isAdmin, isSuper);
   return { id, username, token: jwt.sign({ id, username }, process.env.JWT_SECRET, { expiresIn: '1h' }) };
 }
 
@@ -52,18 +56,19 @@ function req(method, pathname, token, body) {
   });
 }
 
+const isAdmin = (id) => db.prepare('SELECT is_admin FROM users WHERE id = ?').get(id).is_admin;
+const pwMatches = (id, pw) => bcrypt.compareSync(pw, db.prepare('SELECT password_hash FROM users WHERE id = ?').get(id).password_hash);
+
+// ── access control ───────────────────────────────────────────────────────────
+
 test('non-admin is forbidden on every admin route', async () => {
-  const admin = makeUser('boss', { admin: true });
+  makeUser('boss', { tier: 'super' });
+  const alice = makeUser('alice');
   const plain = makeUser('nobody');
 
-  const lookup = await req('GET', '/api/admin/users/boss', plain.token);
-  expect(lookup.status).toBe(403);
-
-  const reset = await req('POST', `/api/admin/users/${admin.id}/reset-password`, plain.token, { password: 'x' });
-  expect(reset.status).toBe(403);
-
-  const promote = await req('POST', `/api/admin/users/${plain.id}/admin`, plain.token, { is_admin: true });
-  expect(promote.status).toBe(403);
+  expect((await req('GET', '/api/admin/users/boss', plain.token)).status).toBe(403);
+  expect((await req('POST', `/api/admin/users/${alice.id}/reset-password`, plain.token, { password: 'x' })).status).toBe(403);
+  expect((await req('POST', `/api/admin/users/${alice.id}/admin`, plain.token, { is_admin: true })).status).toBe(403);
 });
 
 test('missing token is unauthorized', async () => {
@@ -71,81 +76,130 @@ test('missing token is unauthorized', async () => {
   expect(res.status).toBe(401);
 });
 
-test('admin looks up a user by username without the password hash', async () => {
-  const admin = makeUser('boss', { admin: true });
+// ── lookup ───────────────────────────────────────────────────────────────────
+
+test('admin looks up a user by username, incl. tier flags, no password hash', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
   makeUser('alice');
 
-  const res = await req('GET', '/api/admin/users/alice', admin.token);
+  const res = await req('GET', '/api/admin/users/alice', boss.token);
   expect(res.status).toBe(200);
   const user = await res.json();
   expect(user.username).toBe('alice');
   expect(user.is_admin).toBe(0);
+  expect(user.is_super_admin).toBe(0);
   expect('password_hash' in user).toBe(false);
 });
 
 test('looking up an unknown username is 404', async () => {
-  const admin = makeUser('boss', { admin: true });
-  const res = await req('GET', '/api/admin/users/ghost', admin.token);
+  const boss = makeUser('boss', { tier: 'super' });
+  const res = await req('GET', '/api/admin/users/ghost', boss.token);
   expect(res.status).toBe(404);
 });
 
-test('admin resets a user password to a new value', async () => {
-  const admin = makeUser('boss', { admin: true });
-  const alice = makeUser('alice', { password: 'old-pw' });
+// ── managing non-admins: open to any admin ────────────────────────────────────
 
-  const res = await req('POST', `/api/admin/users/${alice.id}/reset-password`, admin.token, { password: 'brand-new' });
+test('a regular admin can reset a non-admin password', async () => {
+  const mod = makeUser('mod', { tier: 'admin' });
+  const alice = makeUser('alice', { password: 'old' });
+
+  const res = await req('POST', `/api/admin/users/${alice.id}/reset-password`, mod.token, { password: 'new-pw' });
   expect(res.status).toBe(200);
+  expect(pwMatches(alice.id, 'new-pw')).toBe(true);
+  expect(pwMatches(alice.id, 'old')).toBe(false);
+});
 
-  const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(alice.id);
-  expect(bcrypt.compareSync('brand-new', row.password_hash)).toBe(true);
-  expect(bcrypt.compareSync('old-pw', row.password_hash)).toBe(false);
+test('a regular admin can promote a non-admin', async () => {
+  const mod = makeUser('mod', { tier: 'admin' });
+  const alice = makeUser('alice');
+
+  const res = await req('POST', `/api/admin/users/${alice.id}/admin`, mod.token, { is_admin: true });
+  expect(res.status).toBe(200);
+  expect((await res.json()).is_admin).toBe(1);
+  expect(isAdmin(alice.id)).toBe(1);
 });
 
 test('reset rejects an empty / oversized / non-string password', async () => {
-  const admin = makeUser('boss', { admin: true });
+  const boss = makeUser('boss', { tier: 'super' });
   const alice = makeUser('alice');
-
   for (const password of ['', 'x'.repeat(73), 123, null]) {
-    const res = await req('POST', `/api/admin/users/${alice.id}/reset-password`, admin.token, { password });
+    const res = await req('POST', `/api/admin/users/${alice.id}/reset-password`, boss.token, { password });
     expect(res.status).toBe(400);
   }
 });
 
 test('reset on an unknown user is 404', async () => {
-  const admin = makeUser('boss', { admin: true });
-  const res = await req('POST', `/api/admin/users/${randomUUID()}/reset-password`, admin.token, { password: 'x' });
+  const boss = makeUser('boss', { tier: 'super' });
+  const res = await req('POST', `/api/admin/users/${randomUUID()}/reset-password`, boss.token, { password: 'x' });
   expect(res.status).toBe(404);
 });
 
-test('admin promotes another user', async () => {
-  const admin = makeUser('boss', { admin: true });
-  const alice = makeUser('alice');
-
-  const res = await req('POST', `/api/admin/users/${alice.id}/admin`, admin.token, { is_admin: true });
-  expect(res.status).toBe(200);
-  const body = await res.json();
-  expect(body.is_admin).toBe(1);
-  expect(db.prepare('SELECT is_admin FROM users WHERE id = ?').get(alice.id).is_admin).toBe(1);
-});
-
 test('admin promote rejects a non-boolean flag', async () => {
-  const admin = makeUser('boss', { admin: true });
+  const boss = makeUser('boss', { tier: 'super' });
   const alice = makeUser('alice');
-  const res = await req('POST', `/api/admin/users/${alice.id}/admin`, admin.token, { is_admin: 'yes' });
+  const res = await req('POST', `/api/admin/users/${alice.id}/admin`, boss.token, { is_admin: 'yes' });
   expect(res.status).toBe(400);
 });
 
-test('demoting the last admin is refused', async () => {
-  const admin = makeUser('boss', { admin: true });
-  const res = await req('POST', `/api/admin/users/${admin.id}/admin`, admin.token, { is_admin: false });
-  expect(res.status).toBe(409);
-  expect(db.prepare('SELECT is_admin FROM users WHERE id = ?').get(admin.id).is_admin).toBe(1);
+// ── managing admins: super only ────────────────────────────────────────────────
+
+test('a regular admin cannot reset another admin password', async () => {
+  const mod = makeUser('mod', { tier: 'admin' });
+  const other = makeUser('other', { tier: 'admin', password: 'keep' });
+
+  const res = await req('POST', `/api/admin/users/${other.id}/reset-password`, mod.token, { password: 'hacked' });
+  expect(res.status).toBe(403);
+  expect(pwMatches(other.id, 'keep')).toBe(true);
 });
 
-test('demoting is allowed while another admin remains', async () => {
-  const admin = makeUser('boss', { admin: true });
-  const other = makeUser('boss2', { admin: true });
-  const res = await req('POST', `/api/admin/users/${other.id}/admin`, admin.token, { is_admin: false });
+test('a regular admin cannot demote another admin', async () => {
+  const mod = makeUser('mod', { tier: 'admin' });
+  const other = makeUser('other', { tier: 'admin' });
+
+  const res = await req('POST', `/api/admin/users/${other.id}/admin`, mod.token, { is_admin: false });
+  expect(res.status).toBe(403);
+  expect(isAdmin(other.id)).toBe(1);
+});
+
+test('the super admin can reset a regular admin password', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  const mod = makeUser('mod', { tier: 'admin', password: 'old' });
+
+  const res = await req('POST', `/api/admin/users/${mod.id}/reset-password`, boss.token, { password: 'new-pw' });
   expect(res.status).toBe(200);
-  expect(db.prepare('SELECT is_admin FROM users WHERE id = ?').get(other.id).is_admin).toBe(0);
+  expect(pwMatches(mod.id, 'new-pw')).toBe(true);
+});
+
+test('the super admin can demote a regular admin', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  const mod = makeUser('mod', { tier: 'admin' });
+
+  const res = await req('POST', `/api/admin/users/${mod.id}/admin`, boss.token, { is_admin: false });
+  expect(res.status).toBe(200);
+  expect(isAdmin(mod.id)).toBe(0);
+});
+
+// ── the protected super admin is untouchable ──────────────────────────────────
+
+test('the super admin cannot be demoted — not even by itself', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  expect((await req('POST', `/api/admin/users/${boss.id}/admin`, boss.token, { is_admin: false })).status).toBe(403);
+  expect(isAdmin(boss.id)).toBe(1);
+});
+
+test("the super admin's password cannot be reset via the admin route", async () => {
+  const boss = makeUser('boss', { tier: 'super', password: 'boss-pw' });
+  const res = await req('POST', `/api/admin/users/${boss.id}/reset-password`, boss.token, { password: 'changed' });
+  expect(res.status).toBe(403);
+  expect(pwMatches(boss.id, 'boss-pw')).toBe(true);
+});
+
+test('a regular admin cannot touch the super admin', async () => {
+  const mod = makeUser('mod', { tier: 'admin' });
+  const boss = makeUser('boss', { tier: 'super', password: 'boss-pw' });
+
+  expect((await req('POST', `/api/admin/users/${boss.id}/reset-password`, mod.token, { password: 'x' })).status).toBe(403);
+  expect((await req('POST', `/api/admin/users/${boss.id}/admin`, mod.token, { is_admin: false })).status).toBe(403);
+  expect(pwMatches(boss.id, 'boss-pw')).toBe(true);
+  expect(isAdmin(boss.id)).toBe(1);
 });

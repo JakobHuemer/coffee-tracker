@@ -1,13 +1,22 @@
 ---
-topics: [admin, password-reset, is-admin, migration-016, admin-bootstrap, requireAdmin, ADMIN_USERNAME]
+topics: [admin, password-reset, is-admin, is-super-admin, super-admin, migration-016, migration-017, admin-bootstrap, requireAdmin, ADMIN_USERNAME]
 ---
 
 # Admin password reset (feat/admin-password-reset)
 
-Added an admin capability: admins reset any user's password (direct set, no
-current-password needed) and promote/demote admins. Single `is_admin` flag, no
-role system (out of scope by request). Reset-link/token idea dropped — the app
-has no email, so an admin sets the password and tells the user out of band.
+Added an admin capability: admins reset a user's password (direct set, no
+current-password needed) and promote users to admin. Reset-link/token idea
+dropped — the app has no email, so an admin sets the password and tells the user
+out of band.
+
+**Two tiers** (no general role system): `is_super_admin` = the protected primary
+admin from ADMIN_USERNAME; `is_admin` = a regular admin. Rules (enforced in
+routes/admin.js AND mirrored in the Profile UI):
+- super admin: manages everyone; is the ONLY one who can manage other admins
+  (reset their password / demote them); is itself untouchable via the admin
+  routes (can't be demoted or reset, not even by itself — uses self-service).
+- regular admin: manages non-admins (reset pw) and can promote non-admins to
+  admin, but cannot touch any admin.
 
 ## Non-obvious notes
 - **JWTs are not invalidated on password reset or demotion.** There is no
@@ -17,12 +26,17 @@ has no email, so an admin sets the password and tells the user out of band.
   — but a reset target's old sessions keep working. Same limitation the
   self-service password change already had. Accepted, not a bug.
 - **Bootstrap is non-fatal on a missing user** (unlike JWT_SECRET). `ADMIN_USERNAME`
-  promotes the named user on every boot if they exist; if absent it logs and
-  continues, so it self-heals once that user registers. Runs in index.js after
-  migrate(), before routes mount.
+  makes the named user the super admin on every boot if they exist, and strips
+  is_super_admin from anyone else (single super admin, tracks the env value). If
+  the user is absent, or the var is unset, it touches nothing and self-heals.
+  Runs in index.js after migrate(), before routes mount.
+- **No last-admin count guard needed.** The super admin can't be demoted and is
+  always an admin, and only the super admin can demote admins, so zero-admins is
+  unreachable — the protected-admin rule subsumes the old count guard, which was
+  removed.
 - Verified the real boot path on an isolated port (not just the unit tests):
-  register-before-boot → restart promotes; reset lets the target log in with the
-  new pw; last-admin demote → 409. `PRAGMA integrity_check` = ok after mig 016.
+  register-before-boot → restart promotes to super; reset lets the target log in
+  with the new pw. `PRAGMA integrity_check` = ok after the migrations.
 - Admin UI is **search-by-username** (mirrors the Compare page), NOT a user
   list — an instance can have any number of users. Backend is therefore
   GET /admin/users/:username (exact lookup, 404), not a list-all.

@@ -182,13 +182,17 @@ interface AdminUser {
   username: string;
   avatar: string;
   is_admin: 0 | 1;
+  is_super_admin: 0 | 1;
   created_at: number;
 }
 
 // Actions on the found user: set a new password, and toggle admin. Its own
-// state so a lookup of a new user starts these controls clean.
+// state so a lookup of a new user starts these controls clean. Controls are
+// shown only when the current admin is allowed to use them — the server
+// enforces the same rules, this just avoids offering a button that would 403.
 function AdminActions({ u }: { u: AdminUser }) {
   const qc = useQueryClient();
+  const meIsSuper = useAuthStore(s => s.user?.is_super_admin === 1);
   const [pw, setPw] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -218,37 +222,57 @@ function AdminActions({ u }: { u: AdminUser }) {
     resetMutation.mutate(pw);
   }
 
+  // Permission model (mirrors routes/admin.js): the protected primary admin is
+  // untouchable by anyone; managing any other admin (resetting their password
+  // or demoting them) needs super; a non-admin is open to any admin — including
+  // promoting them. Both actions share the same gate.
+  const targetIsSuper = u.is_super_admin === 1;
+  const targetIsAdmin = u.is_admin === 1;
+  const canManage = !targetIsSuper && (targetIsAdmin ? meIsSuper : true);
+
   return (
     <div className="card">
       <div className="admin-user-head">
         <div className="admin-user-id">
           <span className="admin-user-avatar">{u.avatar}</span>
           <span className="admin-user-name">{u.username}</span>
-          {u.is_admin ? <span className="admin-tag">Admin</span> : null}
+          {targetIsSuper
+            ? <span className="admin-tag">Primary admin</span>
+            : targetIsAdmin ? <span className="admin-tag">Admin</span> : null}
         </div>
-        <button
-          className="btn-secondary"
-          onClick={() => adminMutation.mutate(!u.is_admin)}
-          disabled={adminMutation.isPending}
-        >
-          {u.is_admin ? 'Remove admin' : 'Make admin'}
-        </button>
+        {canManage && (
+          <button
+            className="btn-secondary"
+            onClick={() => adminMutation.mutate(!u.is_admin)}
+            disabled={adminMutation.isPending}
+          >
+            {targetIsAdmin ? 'Remove admin' : 'Make admin'}
+          </button>
+        )}
       </div>
 
-      <div className="section-label" style={{ marginTop: 16 }}>Reset password</div>
-      <form onSubmit={submitReset} className="search-row">
-        <input
-          type="text"
-          className="search-input"
-          value={pw}
-          onChange={e => setPw(e.target.value)}
-          placeholder="New password"
-          autoComplete="off"
-        />
-        <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }} disabled={resetMutation.isPending}>
-          {resetMutation.isPending ? 'Setting…' : 'Set'}
-        </button>
-      </form>
+      {canManage ? (
+        <>
+          <div className="section-label" style={{ marginTop: 16 }}>Reset password</div>
+          <form onSubmit={submitReset} className="search-row">
+            <input
+              type="text"
+              className="search-input"
+              value={pw}
+              onChange={e => setPw(e.target.value)}
+              placeholder="New password"
+              autoComplete="off"
+            />
+            <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }} disabled={resetMutation.isPending}>
+              {resetMutation.isPending ? 'Setting…' : 'Set'}
+            </button>
+          </form>
+        </>
+      ) : (
+        <div className="empty-state" style={{ marginTop: 12, textAlign: 'left' }}>
+          {targetIsSuper ? 'Protected admin — cannot be modified.' : 'Only the primary admin can manage other admins.'}
+        </div>
+      )}
       {msg && <div className="pw-success" style={{ marginTop: 8 }}>{msg}</div>}
       {error && <div className="auth-error" style={{ marginTop: 8 }}>{error}</div>}
     </div>
