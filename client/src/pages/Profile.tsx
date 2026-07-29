@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api, uploadUrl } from '../api/client';
@@ -185,13 +185,16 @@ interface AdminUser {
   created_at: number;
 }
 
-// One user row in the admin card: set a new password, and toggle admin. Local
-// state per row so a reset on one user doesn't clear the input of another.
-function AdminUserRow({ u }: { u: AdminUser }) {
+// Actions on the found user: set a new password, and toggle admin. Its own
+// state so a lookup of a new user starts these controls clean.
+function AdminActions({ u }: { u: AdminUser }) {
   const qc = useQueryClient();
   const [pw, setPw] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+
+  // Reset the local controls whenever the found user changes.
+  useEffect(() => { setPw(''); setMsg(''); setError(''); }, [u.id]);
 
   const resetMutation = useMutation({
     mutationFn: (password: string) => api.post(`/admin/users/${u.id}/reset-password`, { password }),
@@ -204,7 +207,8 @@ function AdminUserRow({ u }: { u: AdminUser }) {
 
   const adminMutation = useMutation({
     mutationFn: (is_admin: boolean) => api.post(`/admin/users/${u.id}/admin`, { is_admin }),
-    onSuccess: () => { setError(''); qc.invalidateQueries({ queryKey: ['admin-users'] }); },
+    // Refetch the lookup so the admin tag reflects the new state.
+    onSuccess: () => { setError(''); qc.invalidateQueries({ queryKey: ['admin-user', u.username] }); },
     onError: (e: Error) => setError(e.message),
   });
 
@@ -215,9 +219,13 @@ function AdminUserRow({ u }: { u: AdminUser }) {
   }
 
   return (
-    <div style={{ padding: '10px 0', borderTop: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-        <span>{u.avatar} {u.username}{u.is_admin ? ' · admin' : ''}</span>
+    <div className="card">
+      <div className="admin-user-head">
+        <div className="admin-user-id">
+          <span className="admin-user-avatar">{u.avatar}</span>
+          <span className="admin-user-name">{u.username}</span>
+          {u.is_admin ? <span className="admin-tag">Admin</span> : null}
+        </div>
         <button
           className="btn-secondary"
           onClick={() => adminMutation.mutate(!u.is_admin)}
@@ -226,39 +234,66 @@ function AdminUserRow({ u }: { u: AdminUser }) {
           {u.is_admin ? 'Remove admin' : 'Make admin'}
         </button>
       </div>
-      <form onSubmit={submitReset} style={{ display: 'flex', gap: 8 }}>
+
+      <div className="section-label" style={{ marginTop: 16 }}>Reset password</div>
+      <form onSubmit={submitReset} className="search-row">
         <input
           type="text"
+          className="search-input"
           value={pw}
           onChange={e => setPw(e.target.value)}
           placeholder="New password"
           autoComplete="off"
-          style={{ flex: 1 }}
         />
-        <button type="submit" className="btn-primary" disabled={resetMutation.isPending}>
-          {resetMutation.isPending ? 'Setting…' : 'Set password'}
+        <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }} disabled={resetMutation.isPending}>
+          {resetMutation.isPending ? 'Setting…' : 'Set'}
         </button>
       </form>
-      {msg && <div className="pw-success">{msg}</div>}
-      {error && <div className="auth-error">{error}</div>}
+      {msg && <div className="pw-success" style={{ marginTop: 8 }}>{msg}</div>}
+      {error && <div className="auth-error" style={{ marginTop: 8 }}>{error}</div>}
     </div>
   );
 }
 
-// Admin-only card. Rendered only when the current user is an admin (see the
-// guard at the call site), but the endpoints enforce that server-side too.
+// Admin-only section. Search a single user by username (like the Compare page)
+// and act on them — never a full user list. Rendered only when the current user
+// is an admin (guard at the call site); the endpoints also enforce it.
 function AdminCard() {
-  const { data: users = [], isLoading } = useQuery<AdminUser[]>({
-    queryKey: ['admin-users'],
-    queryFn: () => api.get('/admin/users'),
+  const [searchInput, setSearchInput] = useState('');
+  const [activeUsername, setActiveUsername] = useState('');
+
+  const { data, isLoading, error } = useQuery<AdminUser>({
+    queryKey: ['admin-user', activeUsername],
+    queryFn: () => api.get<AdminUser>(`/admin/users/${activeUsername}`),
+    enabled: !!activeUsername,
+    retry: false,
   });
 
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const q = searchInput.trim();
+    if (q) setActiveUsername(q);
+  }
+
   return (
-    <div className="card">
-      <div className="section-label">Admin</div>
-      {isLoading && <div className="profile-placeholder-body">Loading…</div>}
-      {users.map(u => <AdminUserRow key={u.id} u={u} />)}
-    </div>
+    <>
+      <div className="card">
+        <div className="section-label">Admin</div>
+        <form onSubmit={handleSearch} className="search-row">
+          <input
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            placeholder="Find a user by username…"
+            className="search-input"
+          />
+          <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }}>Find</button>
+        </form>
+      </div>
+
+      {isLoading && <div className="page-loading">Searching…</div>}
+      {error && <div className="card error-card">{(error as Error).message}</div>}
+      {data && <AdminActions u={data} />}
+    </>
   );
 }
 

@@ -56,8 +56,8 @@ test('non-admin is forbidden on every admin route', async () => {
   const admin = makeUser('boss', { admin: true });
   const plain = makeUser('nobody');
 
-  const list = await req('GET', '/api/admin/users', plain.token);
-  expect(list.status).toBe(403);
+  const lookup = await req('GET', '/api/admin/users/boss', plain.token);
+  expect(lookup.status).toBe(403);
 
   const reset = await req('POST', `/api/admin/users/${admin.id}/reset-password`, plain.token, { password: 'x' });
   expect(reset.status).toBe(403);
@@ -67,21 +67,26 @@ test('non-admin is forbidden on every admin route', async () => {
 });
 
 test('missing token is unauthorized', async () => {
-  const res = await req('GET', '/api/admin/users', undefined);
+  const res = await req('GET', '/api/admin/users/boss', undefined);
   expect(res.status).toBe(401);
 });
 
-test('admin lists all users without password hashes', async () => {
-  makeUser('boss', { admin: true });
-  const admin = makeUser('boss2', { admin: true });
+test('admin looks up a user by username without the password hash', async () => {
+  const admin = makeUser('boss', { admin: true });
   makeUser('alice');
 
-  const res = await req('GET', '/api/admin/users', admin.token);
+  const res = await req('GET', '/api/admin/users/alice', admin.token);
   expect(res.status).toBe(200);
-  const users = await res.json();
-  expect(users.length).toBe(3);
-  expect(users.map(u => u.username)).toEqual(['alice', 'boss', 'boss2']); // ordered
-  expect(users.every(u => !('password_hash' in u))).toBe(true);
+  const user = await res.json();
+  expect(user.username).toBe('alice');
+  expect(user.is_admin).toBe(0);
+  expect('password_hash' in user).toBe(false);
+});
+
+test('looking up an unknown username is 404', async () => {
+  const admin = makeUser('boss', { admin: true });
+  const res = await req('GET', '/api/admin/users/ghost', admin.token);
+  expect(res.status).toBe(404);
 });
 
 test('admin resets a user password to a new value', async () => {

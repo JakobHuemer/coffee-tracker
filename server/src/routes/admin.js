@@ -17,10 +17,14 @@ const ADMIN_USER_COLS = 'id, username, avatar, is_admin, created_at';
 
 router.use(requireAdmin);
 
-// Every user, for the admin list. Ordered by username so the UI is stable.
-router.get('/users', (req, res) => {
-  const users = db.prepare(`SELECT ${ADMIN_USER_COLS} FROM users ORDER BY username`).all();
-  res.json(users);
+// Look up a single user by exact username. The admin UI is search-based (like
+// the Compare page), not a full user list — an instance can have any number of
+// users, so dumping them all is neither useful nor scalable. Exact match,
+// mirroring login/compare. 404 when there is no such user.
+router.get('/users/:username', (req, res) => {
+  const user = db.prepare(`SELECT ${ADMIN_USER_COLS} FROM users WHERE username = ?`).get(req.params.username);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(user);
 });
 
 // Reset a user's password to a new value. Deliberately does NOT require the
