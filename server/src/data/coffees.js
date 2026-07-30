@@ -36,6 +36,7 @@ const COFFEES = [
   { id: 'black_tea',       name: 'Black Tea',       caffeine: 7,   icon: 'tea',       class: 'tea' },
   { id: 'fruit_tea',       name: 'Fruit Tea',       caffeine: 6,   icon: 'tea',       class: 'tea' },
   { id: 'monster_white',   name: 'Monster White',   caffeine: 150, icon: 'energy',    class: 'energy' },
+  { id: 'red_bull',        name: 'Red Bull',        caffeine: 80,  icon: 'energy',    class: 'energy' },
 ];
 
 module.exports = { COFFEES };
