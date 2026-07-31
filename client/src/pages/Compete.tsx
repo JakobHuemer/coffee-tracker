@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react';
 import { api } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
 import { ResponsiveImage } from '../components/ResponsiveImage';
@@ -51,6 +52,20 @@ const MODE_ICON: Record<MatchMode, string> = {
 const USER_MODES: MatchMode[] = ['1v1', 'ondemand'];
 
 const HOUR = 3600000;
+
+// A once-a-second clock so cards re-render as their scheduled start/end instants
+// pass, without waiting for the 60s data refetch. This is what lets the client
+// predict a match's next state the moment it is due (issue #65): the server
+// still owns the real transition, the tick only keeps the displayed prediction
+// honest between refetches.
+function useNow(intervalMs = 1000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
 
 function fmtDateTime(ts: number) {
   return new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -281,41 +296,82 @@ function MatchStandings({ match }: { match: Match }) {
 
 /* ── one match card ────────────────────────────────────────────────────────── */
 
-function MatchCard({ match, onJoin, onLeave, busy }: {
+function MatchCard({ match, now, onJoin, onLeave, busy }: {
   match: Match;
+  // The parent's single ticking clock (issue #65). One clock for the whole list
+  // so a card's predicted state and the section it is bucketed into can never
+  // disagree by a boundary second.
+  now: number;
   onJoin?: () => void;
   onLeave?: () => void;
   busy?: boolean;
 }) {
   const userId = useAuthStore(s => s.user?.id);
   const inMatch = match.participants.some(p => p.user_id === userId);
-  const isLobby = match.state === 'open';
-  // The window has started and the match is neither settled nor cancelled — it
-  // is running, whether it is locked ('pending') or still an open weekly lobby
-  // on its first day (issue #44). Drives the "live" badge and the "Ends …" line
-  // together, so a running match never shows an "open" badge or a "Starts …"
-  // time while it sits in the Live now section.
-  const isRunning = (match.state === 'pending' || match.state === 'open') && match.scope_start <= Date.now();
+  const started = match.scope_start <= now;
+  const ended = match.scope_end <= now;
   const isDone = match.state === 'settled' || match.state === 'cancelled';
 
+  // Transitions the client predicts while the server's scheduler is still catching
+  // up (issue #65). Both are shown with a spinning pill so it reads as "moving",
+  // and both are corrected on the next refetch once the server actually commits.
+  //
+  // settling: its window has ended but it is not settled yet — it WILL settle
+  //   regardless of mode, so predict 'settled' and drop the broken "Ends … ago"
+  //   wording. This is the state that used to read "Ended in less than a minute".
+  // locking: a non-weekly lobby whose start passed but that is not locked yet.
+  //   A weekly stays a genuine, joinable lobby through its first day (issue #44),
+  //   so it is never treated as locking — its start passing is not a server lag.
+  const settling = (match.state === 'pending' || match.state === 'open') && ended;
+  const locking = match.state === 'open' && started && !ended && match.mode !== 'weekly';
+
+  // Running: window started, not yet ended, not done. Drives the "live" badge and
+  // the "Ends …" line so a running match never shows an "open" badge or a
+  // "Starts …" time while it sits in the Live now section.
+  const isRunning = (match.state === 'pending' || match.state === 'open') && started && !ended;
+  const isLobby = match.state === 'open' && !ended;
+  const transitioning = settling || locking;
+
+  const pillClass = settling ? 'settled' : (isRunning || locking) ? 'pending' : match.state;
+  const pillLabel = settling ? 'settling' : (isRunning || locking) ? 'live' : match.state;
+
   return (
-    <div className="card cmp-match">
+    // layoutId lets Motion slide this exact card between sections when the client
+    // repredicts its state (waiting → live → finished, issue #65) instead of
+    // snapping. layout="position" animates only the card's position, not its
+    // size: when a row is added/removed (e.g. the join button) the height snaps
+    // and neighbours slide, instead of Motion scaleY-squashing the whole card
+    // from its old height to the new one. It also avoids the scale-vs-layout
+    // transform conflict with the enter/exit scale below.
+    // Enter/exit fade+scale is driven by the AnimatePresence around each list.
+    <motion.div
+      className="card cmp-match"
+      layout="position"
+      layoutId={match.id}
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+    >
       <div className="cmp-match-head">
         <span className="cmp-mode">
           <Icon name={MODE_ICON[match.mode]} size={13} /> {MODE_LABEL[match.mode]}
         </span>
         {match.title && <span className="cmp-match-title">{match.title}</span>}
-        <span className={`cmp-state ${isRunning ? 'pending' : match.state}`}>
-          {isRunning ? 'live' : match.state}
+        <span className={`cmp-state ${pillClass}`}>
+          {transitioning && <Icon name="spinner" size={10} className="cmp-state-spin" />}
+          {pillLabel}
         </span>
       </div>
 
       <div className="cmp-match-when">
         {isDone
           ? <>{fmtDateTime(match.scope_start)} — {fmtDateTime(match.scope_end)}</>
-          : isRunning
-            ? <>Ends {fmtRelative(match.scope_end)} · {fmtDateTime(match.scope_end)}</>
-            : <>Starts {fmtRelative(match.scope_start)} · {fmtDateTime(match.scope_start)}</>}
+          : settling
+            ? <>Ending… · {fmtDateTime(match.scope_end)}</>
+            : isRunning
+              ? <>Ends {fmtRelative(match.scope_end, now)} · {fmtDateTime(match.scope_end)}</>
+              : <>Starts {fmtRelative(match.scope_start, now)} · {fmtDateTime(match.scope_start)}</>}
       </div>
 
       {match.state === 'cancelled' ? (
@@ -324,24 +380,44 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
         <MatchStandings match={match} />
       )}
 
-      {isLobby && (
-        <div className="cmp-lobby-actions">
-          {inMatch ? (
-            <button className="btn-secondary" disabled={busy} onClick={() => onLeave && onLeave()}>
-              Leave match
-            </button>
-          ) : (
-            <button
-              className="btn-primary"
-              disabled={busy || (match.mode === '1v1' && match.participant_count >= 2)}
-              onClick={() => onJoin && onJoin()}
-            >
-              {match.mode === '1v1' && match.participant_count >= 2 ? 'Match is full' : 'Join match'}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+      {/* Collapse the actions row by animating its OWN height, so the card's
+          height reduces for real instead of the box being scaled. marginTop
+          cancels the parent's 10px flex gap as it collapses, so no residual gap
+          is left behind. layout="position" on the card then just slides the
+          neighbours up. */}
+      <AnimatePresence initial={false}>
+        {isLobby && (
+          <motion.div
+            key="lobby"
+            className="cmp-lobby-actions"
+            style={{ overflow: 'hidden' }}
+            initial={{ height: 0, opacity: 0, marginTop: -10 }}
+            animate={{ height: 'auto', opacity: 1, marginTop: 0 }}
+            exit={{ height: 0, opacity: 0, marginTop: -10 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            {inMatch ? (
+              <button className="btn-secondary" disabled={busy} onClick={() => onLeave && onLeave()}>
+                Leave match
+              </button>
+            ) : (
+              <button
+                className="btn-primary"
+                disabled={busy || (match.mode === '1v1' && match.participant_count >= 2)}
+                onClick={() => onJoin && onJoin()}
+              >
+                {/* Once the window has opened the lobby is still joinable but the
+                    match is already starting/running, so the label makes the
+                    urgency explicit instead of reading like a normal open lobby. */}
+                {match.mode === '1v1' && match.participant_count >= 2
+                  ? 'Match is full'
+                  : started ? 'Join last minute' : 'Join match'}
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -464,13 +540,15 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
 
   // A match whose window has already started is live — even while it is still an
   // open, joinable lobby (a weekly stays joinable through its first day, issue
-  // #44). Only matches that have not started yet are "waiting to start".
-  const now = Date.now();
+  // #44). Only matches that have not started yet are "waiting to start". `now`
+  // ticks (issue #65) so a lobby crosses into Live now the second it is due,
+  // without waiting for the refetch.
+  const now = useNow();
   const openStarted = [...open].filter(m => m.scope_start <= now).sort((a, b) => a.scope_start - b.scope_start);
   const upcoming = [...open].filter(m => m.scope_start > now).sort((a, b) => a.scope_start - b.scope_start);
   const joinCard = (m: Match) => (
     <MatchCard
-      key={m.id} match={m} busy={busy}
+      key={m.id} match={m} now={now} busy={busy}
       onJoin={() => { setError(null); join.mutate(m.id); }}
       onLeave={() => { setError(null); leave.mutate(m.id); }}
     />
@@ -488,27 +566,36 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
           </button>
         )}
 
-      <div className="section-label">Live now</div>
-      {live.length === 0 && openStarted.length === 0
-        ? <div className="cmp-empty">{global ? 'No global matches running.' : 'Nothing running yet.'}</div>
-        /* Running matches: locked ones (pending) first, then any still-joinable
-           lobby whose window has already started. */
-        : <>{live.map(m => <MatchCard key={m.id} match={m} />)}{openStarted.map(joinCard)}</>}
+      {/* One LayoutGroup so a card keeps its layoutId identity while it moves
+          between the sections below — Motion slides it across instead of letting
+          it vanish here and reappear there. initial={false} keeps the first
+          paint still; only later add/remove/reorder animates. */}
+      <LayoutGroup>
+        <div className="section-label">Live now</div>
+        {live.length === 0 && openStarted.length === 0
+          ? <div className="cmp-empty">{global ? 'No global matches running.' : 'Nothing running yet.'}</div>
+          /* Running matches: locked ones (pending) first, then any still-joinable
+             lobby whose window has already started. */
+          : <AnimatePresence initial={false}>
+              {live.map(m => <MatchCard key={m.id} match={m} now={now} />)}
+              {openStarted.map(joinCard)}
+            </AnimatePresence>}
 
-      <div className="section-label">{global ? 'Open lobbies' : 'Waiting to start'}</div>
-      {upcoming.length === 0
-        ? <div className="cmp-empty">{global ? 'No open global matches — create one.' : 'Nothing waiting. Daily opens a day ahead, weekly two.'}</div>
-        /* Soonest first. */
-        : upcoming.map(joinCard)}
+        <div className="section-label">{global ? 'Open lobbies' : 'Waiting to start'}</div>
+        {upcoming.length === 0
+          ? <div className="cmp-empty">{global ? 'No open global matches — create one.' : 'Nothing waiting. Daily opens a day ahead, weekly two.'}</div>
+          /* Soonest first. */
+          : <AnimatePresence initial={false}>{upcoming.map(joinCard)}</AnimatePresence>}
 
-      {finished && (
-        <>
-          <div className="section-label">Finished</div>
-          {settled.length === 0
-            ? <div className="cmp-empty">Nothing settled yet.</div>
-            : settled.map(m => <MatchCard key={m.id} match={m} />)}
-        </>
-      )}
+        {finished && (
+          <>
+            <div className="section-label">Finished</div>
+            {settled.length === 0
+              ? <div className="cmp-empty">Nothing settled yet.</div>
+              : <AnimatePresence initial={false}>{settled.map(m => <MatchCard key={m.id} match={m} now={now} />)}</AnimatePresence>}
+          </>
+        )}
+      </LayoutGroup>
     </>
   );
 }
@@ -756,7 +843,9 @@ function HistorySection({ scope, globalSettled }: { scope: CompeteScope; globalS
       <div className="section-label">{global ? 'Your global matches' : 'Group history'}</div>
       {finished.length === 0
         ? <div className="cmp-empty">No finished matches yet.</div>
-        : finished.map(m => <MatchCard key={m.id} match={m} />)}
+        /* Done matches only — `now` never drives a settled/cancelled card, so a
+           static clock is fine here (no tick needed). */
+        : finished.map(m => <MatchCard key={m.id} match={m} now={Date.now()} />)}
     </>
   );
 }

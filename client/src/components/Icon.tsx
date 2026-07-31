@@ -9,7 +9,7 @@ import {
   FaSkull, FaTriangleExclamation, FaUsers, FaCalendarDays, FaCamera,
   FaXmark, FaBookmark, FaRegBookmark, FaPlus, FaArrowRight, FaLock, FaTrash, FaRegCopy,
   FaLayerGroup, FaImages,
-  FaChevronUp, FaChevronDown, FaGithub, FaGlobe,
+  FaChevronUp, FaChevronDown, FaGithub, FaGlobe, FaSpinner,
 } from 'react-icons/fa6';
 import type { IconType } from 'react-icons';
 
@@ -68,6 +68,7 @@ const ICONS: Record<string, IconType> = {
   // ── Status / UI chrome ──
   check: FaCheck,
   'check-circle': FaCircleCheck,
+  spinner: FaSpinner,
   'square-empty': FaRegSquare,
   skull: FaSkull,
   warning: FaTriangleExclamation,
