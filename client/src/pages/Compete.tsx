@@ -335,11 +335,15 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
   return (
     // layoutId lets Motion slide this exact card between sections when the client
     // repredicts its state (waiting → live → finished, issue #65) instead of
-    // snapping. layout also tweens its own height as the pill/wording changes.
+    // snapping. layout="position" animates only the card's position, not its
+    // size: when a row is added/removed (e.g. the join button) the height snaps
+    // and neighbours slide, instead of Motion scaleY-squashing the whole card
+    // from its old height to the new one. It also avoids the scale-vs-layout
+    // transform conflict with the enter/exit scale below.
     // Enter/exit fade+scale is driven by the AnimatePresence around each list.
     <motion.div
       className="card cmp-match"
-      layout
+      layout="position"
       layoutId={match.id}
       initial={{ opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
