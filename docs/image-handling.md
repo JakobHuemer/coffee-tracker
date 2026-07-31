@@ -2,7 +2,7 @@
 
 Status: **phases 1 + 2 + 3 implemented.** Client downscales to a WebP master
 before upload; the server derives thumb/medium/large variants in **both AVIF and
-WebP** (`images` + `image_variants`, migration `016`), delivers them via a
+WebP** (`images` + `image_variants`, migration `018`), delivers them via a
 `<picture>` with per-format `<source>` + `srcset` through the `<ResponsiveImage>`
 component, and a resumable backfill (`server/scripts/backfill-images.js`)
 re-encodes legacy files (re-run it after phase 3 to add AVIF to existing images).
@@ -11,8 +11,9 @@ Phase 4 (tagging) is not started.
 Three decisions differ from the original draft below and supersede it:
 
 - **Migration number.** The draft says `014`; the head had moved on, so the
-  real migration is `016_add_image_variants.js` and the eventual `photo_path`
-  drop will be `017`. Numbers below are left as first written for history.
+  real migration is `018_add_image_variants.js` and the eventual `photo_path`
+  drop will be a later number. Numbers below are left as first written for
+  history.
 - **Client encodes WebP with `canvas.toBlob`, not `@jsquash`.** Open question #1
   is resolved: `@jsquash/webp`, `@jsquash/resize` **and `@jsquash/avif`** run
   clean under the container's Bun, so the **server** uses them (no native

@@ -1,6 +1,6 @@
 // HTTP + module tests for the responsive-image pipeline (issue #15):
 // server/src/images.js, the upload/serve/delete wiring in routes/coffees.js and
-// routes/auth.js, and the 016 legacy-wrap migration.
+// routes/auth.js, and the 018 legacy-wrap migration.
 //
 // There was zero coverage of photos before this. The security-critical piece is
 // coffeeAccessForFile (a private photo must not resolve as public), so it is
@@ -154,8 +154,8 @@ test('profile photo upload is prefixed pfp_ and produces variants', async () => 
   expect(user.profile_image.variants.every((v) => v.url.startsWith('/uploads/pfp_'))).toBe(true);
 });
 
-test('migration 016 wraps a legacy single file into a single-variant image', () => {
-  // A pre-016 coffee entry: a bare photo_path, no image_id.
+test('migration 018 wraps a legacy single file into a single-variant image', () => {
+  // A pre-018 coffee entry: a bare photo_path, no image_id.
   const u = makeUser('gus');
   const entryId = randomUUID();
   db.prepare(
@@ -164,7 +164,7 @@ test('migration 016 wraps a legacy single file into a single-variant image', () 
 
   // Re-running the migration's up() wraps the new legacy row (guarded on
   // image_id IS NULL, so it is idempotent).
-  require('./migrations/016_add_image_variants').up(db);
+  require('./migrations/018_add_image_variants').up(db);
 
   const row = db.prepare('SELECT image_id FROM coffee_entries WHERE id = ?').get(entryId);
   expect(row.image_id).toBeTruthy();

@@ -1,4 +1,4 @@
-// 016 — responsive image variants (issue #15, phase 2).
+// 018 — responsive image variants (issue #15, phase 2).
 //
 // Moves images from the single-file scheme (coffee_entries.photo_path /
 // users.profile_photo, one path each) to a queryable multi-variant one:

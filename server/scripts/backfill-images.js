@@ -2,8 +2,8 @@
 //
 //   bun server/scripts/backfill-images.js
 //
-// Run ONCE after migration 016 ships, and again after phase 3 to add AVIF.
-// Migration 016 only *wrapped* each existing photo in an images + image_variants
+// Run ONCE after migration 018 ships, and again after phase 3 to add AVIF.
+// Migration 018 only *wrapped* each existing photo in an images + image_variants
 // row (DB-only, no pixels touched), so every legacy image still has a single
 // un-sized variant in its original format. This job does the heavy,
 // failure-prone work the boot migration must never do: decode each image once,
