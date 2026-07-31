@@ -385,7 +385,12 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
               disabled={busy || (match.mode === '1v1' && match.participant_count >= 2)}
               onClick={() => onJoin && onJoin()}
             >
-              {match.mode === '1v1' && match.participant_count >= 2 ? 'Match is full' : 'Join match'}
+              {/* Once the window has opened the lobby is still joinable but the
+                  match is already starting/running, so the label makes the
+                  urgency explicit instead of reading like a normal open lobby. */}
+              {match.mode === '1v1' && match.participant_count >= 2
+                ? 'Match is full'
+                : started ? 'Join last minute' : 'Join match'}
             </button>
           )}
         </div>
