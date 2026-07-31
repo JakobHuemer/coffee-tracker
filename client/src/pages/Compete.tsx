@@ -377,28 +377,43 @@ function MatchCard({ match, onJoin, onLeave, busy }: {
         <MatchStandings match={match} />
       )}
 
-      {isLobby && (
-        <div className="cmp-lobby-actions">
-          {inMatch ? (
-            <button className="btn-secondary" disabled={busy} onClick={() => onLeave && onLeave()}>
-              Leave match
-            </button>
-          ) : (
-            <button
-              className="btn-primary"
-              disabled={busy || (match.mode === '1v1' && match.participant_count >= 2)}
-              onClick={() => onJoin && onJoin()}
-            >
-              {/* Once the window has opened the lobby is still joinable but the
-                  match is already starting/running, so the label makes the
-                  urgency explicit instead of reading like a normal open lobby. */}
-              {match.mode === '1v1' && match.participant_count >= 2
-                ? 'Match is full'
-                : started ? 'Join last minute' : 'Join match'}
-            </button>
-          )}
-        </div>
-      )}
+      {/* Collapse the actions row by animating its OWN height, so the card's
+          height reduces for real instead of the box being scaled. marginTop
+          cancels the parent's 10px flex gap as it collapses, so no residual gap
+          is left behind. layout="position" on the card then just slides the
+          neighbours up. */}
+      <AnimatePresence initial={false}>
+        {isLobby && (
+          <motion.div
+            key="lobby"
+            className="cmp-lobby-actions"
+            style={{ overflow: 'hidden' }}
+            initial={{ height: 0, opacity: 0, marginTop: -10 }}
+            animate={{ height: 'auto', opacity: 1, marginTop: 0 }}
+            exit={{ height: 0, opacity: 0, marginTop: -10 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+          >
+            {inMatch ? (
+              <button className="btn-secondary" disabled={busy} onClick={() => onLeave && onLeave()}>
+                Leave match
+              </button>
+            ) : (
+              <button
+                className="btn-primary"
+                disabled={busy || (match.mode === '1v1' && match.participant_count >= 2)}
+                onClick={() => onJoin && onJoin()}
+              >
+                {/* Once the window has opened the lobby is still joinable but the
+                    match is already starting/running, so the label makes the
+                    urgency explicit instead of reading like a normal open lobby. */}
+                {match.mode === '1v1' && match.participant_count >= 2
+                  ? 'Match is full'
+                  : started ? 'Join last minute' : 'Join match'}
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
