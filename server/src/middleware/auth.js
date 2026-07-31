@@ -20,16 +20,18 @@ function requireAuth(req, res, next) {
   }
 }
 
-// Admin gate. Composes requireAuth, then reads is_admin LIVE from the DB rather
-// than trusting the token: the JWT carries only id/username (see makeToken in
-// routes/auth.js), and reading fresh means a demoted admin loses access on the
-// very next request without anyone re-issuing tokens.
+// Admin gate. Composes requireAuth, then reads the actor's row LIVE from the DB
+// rather than trusting the token: the JWT carries only id/username (see makeToken
+// in routes/auth.js), and reading fresh means a demoted admin loses access on the
+// very next request without anyone re-issuing tokens. Stashes the row on
+// req.actor (id + both admin flags) so handlers can reuse it without re-querying.
 function requireAdmin(req, res, next) {
   requireAuth(req, res, () => {
-    const row = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(req.user.id);
+    const row = db.prepare('SELECT id, is_admin, is_super_admin FROM users WHERE id = ?').get(req.user.id);
     if (!row || row.is_admin !== 1) {
       return res.status(403).json({ error: 'Admin only' });
     }
+    req.actor = row;
     next();
   });
 }

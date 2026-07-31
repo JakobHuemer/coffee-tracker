@@ -10,6 +10,7 @@ const db       = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { isValidTz, DEFAULT_TZ } = require('../time');
 const { clampHalfLife } = require('../energy');
+const { isValidPassword } = require('../password');
 
 const UPLOAD_DIR = process.env.DB_DIR
   ? path.join(process.env.DB_DIR, 'uploads')
@@ -165,7 +166,7 @@ router.patch('/me', requireAuth, (req, res) => {
     db.prepare('UPDATE users SET timezone = ? WHERE id = ?').run(timezone, req.user.id);
   }
   if (password !== undefined) {
-    if (typeof password !== 'string' || password.length === 0 || password.length > 72) {
+    if (!isValidPassword(password)) {
       return res.status(400).json({ error: 'Password must be 1–72 characters' });
     }
     // Require the current password to rotate the hash. A valid JWT alone is not

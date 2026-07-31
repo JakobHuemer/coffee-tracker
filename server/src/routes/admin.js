@@ -15,6 +15,7 @@ const express = require('express');
 const bcrypt  = require('bcryptjs');
 const db      = require('../db');
 const { requireAdmin } = require('../middleware/auth');
+const { isValidPassword } = require('../password');
 
 const router = express.Router();
 
@@ -22,10 +23,6 @@ const router = express.Router();
 const ADMIN_USER_COLS = 'id, username, avatar, is_admin, is_super_admin, created_at';
 
 router.use(requireAdmin);
-
-function actorRow(req) {
-  return db.prepare('SELECT id, is_admin, is_super_admin FROM users WHERE id = ?').get(req.user.id);
-}
 
 // Whether `actor` may manage `target` (reset password / change admin status).
 // Returns an error string to reject with, or null when allowed. The rules:
@@ -54,13 +51,13 @@ router.get('/users/:username', (req, res) => {
 // mirror the self-service rule in routes/auth.js (1..72 chars).
 router.post('/users/:id/reset-password', (req, res) => {
   const { password } = req.body;
-  if (typeof password !== 'string' || password.length === 0 || password.length > 72) {
+  if (!isValidPassword(password)) {
     return res.status(400).json({ error: 'Password must be 1–72 characters' });
   }
   const target = db.prepare('SELECT id, is_admin, is_super_admin FROM users WHERE id = ?').get(req.params.id);
   if (!target) return res.status(404).json({ error: 'User not found' });
 
-  const block = manageBlock(actorRow(req), target);
+  const block = manageBlock(req.actor, target);
   if (block) return res.status(403).json({ error: block });
 
   const password_hash = bcrypt.hashSync(password, 10);
@@ -79,14 +76,12 @@ router.post('/users/:id/admin', (req, res) => {
   const target = db.prepare('SELECT id, is_admin, is_super_admin FROM users WHERE id = ?').get(req.params.id);
   if (!target) return res.status(404).json({ error: 'User not found' });
 
-  if (target.is_super_admin === 1) {
-    return res.status(403).json({ error: 'The protected admin cannot be modified' });
-  }
-  // Demoting an existing admin is an admin-management action → super only.
-  // Promoting a non-admin (or a no-op promote of an admin) is open to any admin.
-  if (!is_admin && target.is_admin === 1 && actorRow(req).is_super_admin !== 1) {
-    return res.status(403).json({ error: 'Only the primary admin can manage other admins' });
-  }
+  // Same gate as reset-password: the protected admin is untouchable, and only the
+  // super admin may manage another admin. Which flag we're setting doesn't relax
+  // that — promoting a non-admin is the one admin-status change open to a regular
+  // admin, and manageBlock already permits it (the target isn't an admin yet).
+  const block = manageBlock(req.actor, target);
+  if (block) return res.status(403).json({ error: block });
 
   db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(is_admin ? 1 : 0, target.id);
   const user = db.prepare(`SELECT ${ADMIN_USER_COLS} FROM users WHERE id = ?`).get(target.id);
