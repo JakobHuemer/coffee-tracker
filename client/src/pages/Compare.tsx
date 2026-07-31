@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, uploadUrl } from '../api/client';
+import { api } from '../api/client';
 import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
+import { ResponsiveImage } from '../components/ResponsiveImage';
 import { Icon } from '../components/Icon';
 import type { CompareUserProfile, CompareUserStats, FeaturedBadge, UnlockNotification } from '../types';
 import { rarityColor } from '../rarity';
@@ -132,8 +133,8 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
         <div className="card compare-card">
           <div className="vs-header">
             <div className="vs-player me">
-              {data.me.profile_photo_url
-                ? <img src={uploadUrl(data.me.profile_photo_url)} alt={data.me.username} className="vs-avatar-img" />
+              {data.me.profile_image || data.me.profile_photo_url
+                ? <ResponsiveImage image={data.me.profile_image} fallback={data.me.profile_photo_url} alt={data.me.username} className="vs-avatar-img" sizes="96px" />
                 : <div className="vs-avatar">{data.me.avatar}</div>}
               <div className="vs-name">{data.me.username}</div>
               <div className="vs-tag">You</div>
@@ -141,8 +142,8 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
             </div>
             <div className="vs-badge">VS</div>
             <div className="vs-player them">
-              {data.them.profile_photo_url
-                ? <img src={uploadUrl(data.them.profile_photo_url)} alt={data.them.username} className="vs-avatar-img" />
+              {data.them.profile_image || data.them.profile_photo_url
+                ? <ResponsiveImage image={data.them.profile_image} fallback={data.them.profile_photo_url} alt={data.them.username} className="vs-avatar-img" sizes="96px" />
                 : <div className="vs-avatar">{data.them.avatar}</div>}
               <div className="vs-name">{data.them.username}</div>
               <div className="vs-tag">Them</div>

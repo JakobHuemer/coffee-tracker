@@ -9,6 +9,7 @@ import {
 } from '../components/PastTimePicker';
 import { getSkipSpacing } from '../devFlags';
 import { api } from '../api/client';
+import { prepareImageUpload } from '../lib/image';
 import type { Coffee, UnlockNotification } from '../types';
 
 // Display label per drink class (issue #11). The server sends the class id on
@@ -132,7 +133,9 @@ export function LogCoffee() {
     fd.append('timestamp', String(timestamp));
     fd.append('is_public', isPublic ? '1' : '0');
     if (description.trim()) fd.append('description', description.trim());
-    if (photo) fd.append('photo', photo);
+    // Downscale + WebP-encode the master before upload (issue #15); the
+    // original never leaves the device and the server derives the sizes.
+    if (photo) fd.append('photo', await prepareImageUpload(photo));
     // Debug switch from the Profile page. Ignored unless the server itself runs
     // with DEV_OVERRIDES=1 (see server/src/routes/coffees.js).
     if (getSkipSpacing()) fd.append('skip_spacing', '1');

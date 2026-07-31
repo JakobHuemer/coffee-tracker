@@ -1,6 +1,7 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const db = require('../db');
+const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { BASE_RATING, K_BY_MODE } = require('../competition-core');
 const { groupOf, scoresForMany, ratingsForMany, joinDeadline } = require('../competitions');
@@ -39,7 +40,7 @@ function matchOr404(res, id) {
 // made one page load hundreds of round trips.
 function participantsOf(match) {
   const rows = db.prepare(`
-    SELECT p.*, u.username, u.avatar, u.profile_photo
+    SELECT p.*, u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id
     FROM match_participants p
     JOIN users u ON u.id = p.user_id
     WHERE p.match_id = ?
@@ -52,12 +53,14 @@ function participantsOf(match) {
     ? new Map()
     : scoresForMany(userIds, match.scope_start, Math.min(Date.now(), match.scope_end));
   const liveRatings = settled ? new Map() : ratingsForMany(userIds);
+  const variants = images.variantsForMany(rows.map((r) => r.profile_image_id));
 
   const enriched = rows.map((r) => ({
     user_id: r.user_id,
     username: r.username,
     avatar: r.avatar,
     profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
+    profile_image: variants.get(r.profile_image_id) ?? null,
     joined_at: r.joined_at,
     // The stored `score` column IS the points a settled window was worth. A
     // match settled under v1 holds a 0..1000 number from the old curve instead —
@@ -148,7 +151,7 @@ function globalStandings() {
   // so `(matches = 0)` would read the raw NULL of a user with no rating row and
   // sort them FIRST — the exact opposite of what this ordering is for.
   const rows = db.prepare(`
-    SELECT u.id, u.username, u.avatar, u.profile_photo,
+    SELECT u.id, u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id,
            COALESCE(r.rating, ?) AS rating,
            COALESCE(r.matches, 0) AS matches
     FROM users u
@@ -156,11 +159,13 @@ function globalStandings() {
     ORDER BY (COALESCE(r.matches, 0) = 0) ASC, COALESCE(r.rating, ?) DESC, u.username ASC
   `).all(BASE_RATING, BASE_RATING);
 
+  const variants = images.variantsForMany(rows.map((r) => r.profile_image_id));
   return rows.map((r, i) => ({
     id: r.id,
     username: r.username,
     avatar: r.avatar,
     profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
+    profile_image: variants.get(r.profile_image_id) ?? null,
     rating: r.rating,
     matches: r.matches,
     rank: i + 1,

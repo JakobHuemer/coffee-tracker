@@ -1,9 +1,44 @@
 # Image handling — plan (issue #15)
 
-Status: **plan only, nothing implemented yet.** Issue #15 is `effort:large`
-("multi-session, needs a plan first"), so this doc is that plan. It records the
-decisions and the phasing; the code lands in follow-up PRs, each its own
-numbered migration where schema is touched.
+Status: **phases 1 + 2 + 3 implemented.** Client downscales to a WebP master
+before upload; the server derives thumb/medium/large variants in **both AVIF and
+WebP** (`images` + `image_variants`, migration `018`), delivers them via a
+`<picture>` with per-format `<source>` + `srcset` through the `<ResponsiveImage>`
+component, and a resumable backfill (`server/scripts/backfill-images.js`)
+re-encodes legacy files (re-run it after phase 3 to add AVIF to existing images).
+Phase 4 (tagging) is not started.
+
+Three decisions differ from the original draft below and supersede it:
+
+- **Migration number.** The draft says `014`; the head had moved on, so the
+  real migration is `018_add_image_variants.js` and the eventual `photo_path`
+  drop will be a later number. Numbers below are left as first written for
+  history.
+- **Client encodes WebP with `canvas.toBlob`, not `@jsquash`.** Open question #1
+  is resolved: `@jsquash/webp`, `@jsquash/resize` **and `@jsquash/avif`** run
+  clean under the container's Bun, so the **server** uses them (no native
+  libvips). The client stays codec-free — `canvas.toBlob('image/webp')` is
+  reliable everywhere and avoids shipping WASM to the browser. AVIF is
+  server-only.
+- **AVIF encode is CPU-bound and runs on a worker thread (phase 3).**
+  `@jsquash/avif` encodes synchronously, blocking whichever thread it runs on for
+  up to a few seconds on a large image (`AVIF_SPEED = 8` keeps typical photos well
+  under a second). So the upload pipeline runs decode/resize/encode on a small
+  fixed pool of worker threads (`server/src/image-worker.js`, driven by the pool
+  in `server/src/images.js`) and the main event loop never stalls mid-request.
+  The pure codec functions live in `server/src/image-codec.js` — no DB, no disk —
+  so a worker loads them without opening the SQLite handle; `images.js` keeps all
+  DB/disk work on the main thread. The backfill script runs the same codec inline
+  (offline one-shot, blocking is fine there). Two related fixes: the `/uploads`
+  route sets `Content-Type: image/avif` explicitly (Express's mime table doesn't
+  know `.avif`, and the `nosniff` header would otherwise stop the browser decoding
+  it), and the backfill script holds the event loop open across its awaits (Bun
+  would otherwise exit mid-run).
+- **Decompression-bomb guard.** Every upload's pixel dimensions are read from the
+  file header (`probeDimensions`, no decode) and rejected past a 50MP cap
+  (`MAX_MEGAPIXELS`) before any codec allocates a `width*height*4` RGBA buffer —
+  otherwise a few-KB file declaring 30000×30000 would OOM the process. The upload
+  routes turn the rejection into a 400; the backfill skips such a file.
 
 ## The goal, restated
 
@@ -202,11 +237,24 @@ legacy variant:
   converted here — this is the moment an un-renderable legacy image becomes
   viewable.
 
+**EXIF orientation.** `decodeBuffer()` reads the JPEG EXIF `Orientation` tag and
+bakes the rotation/flip into the pixels before any resize/encode. Phone cameras
+store portrait shots as landscape pixels + `Orientation = 6`; the WASM JPEG
+decoder ignores that tag, so without this the derived (tag-less) WebP/AVIF
+variants would render rotated 90°. The decode source is always the **original**
+legacy file (not a derived WebP), because only the original still carries the
+tag. Client uploads are unaffected — the browser bakes rotation in at
+`<img>`→canvas draw time, so masters arrive upright.
+
 Properties:
 
 - **Resumable / idempotent** — keyed on "a variant with this
   `(image_id, format, width)` already exists", so an interrupted run only fills
   gaps and re-running is safe.
+- **`--reencode`** — forces every image's derived variants to be dropped and
+  regenerated from its original. Used once after the orientation fix: a DB
+  backfilled by the earlier (rotation-dropping) code has mis-rotated variants
+  that count as "present", so a plain re-run would skip them.
 - **Never strands an image** — the legacy file is deleted only once at least one
   browser-renderable variant exists for that image; there is always ≥1 servable
   variant.
@@ -246,8 +294,11 @@ Properties:
    the [existing-image migration](#migrating-existing-images): `014` wraps every
    legacy file (Part 1), then the backfill job (Part 2) re-encodes them into the
    new sizes.
-3. **AVIF variants** via server WASM encode + `<picture type>` negotiation. The
-   same backfill job gains AVIF output, so legacy images pick it up too.
+3. **AVIF variants** via server WASM encode + `<picture type>` negotiation.
+   *(Done.)* `deriveAndStore` encodes every size to AVIF and WebP;
+   `<ResponsiveImage>` emits `<source type="image/avif">` before the WebP `<img>`
+   fallback; the backfill job gained AVIF output, so legacy images pick it up on
+   a re-run.
 4. **(Optional) tagging/classification** — separate, own issue-sized effort;
    out of scope for the core delivery and only worth doing if a lightweight
    model can run in-container without violating VALUES 1/5.

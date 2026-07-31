@@ -3,12 +3,6 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 
-// Photo uploads live on the same volume as the DB so they survive restarts.
-const UPLOAD_DIR = process.env.DB_DIR
-  ? path.join(process.env.DB_DIR, 'uploads')
-  : path.join(__dirname, '..', 'data', 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
 // Fail fast rather than signing/verifying tokens with an undefined or weak
 // secret. Tokens are only as trustworthy as this value, so it must be provided.
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
@@ -26,6 +20,11 @@ require('./migrate')(db);
 // Runs after migrations so the is_admin column is guaranteed present, and before
 // routes mount so admin access is correct from the first request. Non-fatal.
 require('./admin-bootstrap').promoteBootstrapAdmin(db);
+
+// Image pipeline (upload dir resolution, variant lookups, access checks). Loaded
+// after migrate so the images/image_variants tables exist before any request.
+const images = require('./images');
+const UPLOAD_DIR = images.UPLOAD_DIR;
 
 const app = express();
 
@@ -83,14 +82,21 @@ app.get('/uploads/:filename', (req, res) => {
 
   // Profile photos (pfp_ prefix) appear in the public feed/compare, so any
   // authenticated user may view them. Everything else must be a coffee photo
-  // that is either public or owned by the requester.
+  // that is either public or owned by the requester. The access lookup resolves
+  // both legacy single files and the new per-variant files.
   if (!filename.startsWith('pfp_')) {
-    const entry = db.prepare('SELECT user_id, is_public FROM coffee_entries WHERE photo_path = ?').get(filename);
+    const entry = images.coffeeAccessForFile(filename);
     if (!entry) return res.status(404).json({ error: 'Not found' });
     if (entry.is_public !== 1 && entry.user_id !== userId) {
       return res.status(403).json({ error: 'Forbidden' });
     }
   }
+
+  // Express's bundled mime table doesn't know .avif (it would send
+  // application/octet-stream), and the nosniff header above then stops the
+  // browser decoding it as an image. Set the type explicitly; sendFile leaves an
+  // already-set Content-Type untouched.
+  if (filename.endsWith('.avif')) res.type('image/avif');
 
   res.sendFile(path.join(UPLOAD_DIR, filename));
 });

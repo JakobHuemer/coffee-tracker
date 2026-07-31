@@ -4,6 +4,7 @@ const fs = require('fs');
 const { randomUUID } = require('crypto');
 const multer = require('multer');
 const db = require('../db');
+const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { COFFEES } = require('../data/coffees');
 const { checkAfterCoffeeLog } = require('../achievements');
@@ -12,26 +13,15 @@ const { getUserTz, localTodayStr, localDateStr, localDayBounds } = require('../t
 
 const router = express.Router();
 
-// Upload directory mirrors DB_DIR so photos survive restarts on the same volume.
-const UPLOAD_DIR = process.env.DB_DIR
-  ? path.join(process.env.DB_DIR, 'uploads')
-  : path.join(__dirname, '..', '..', 'data', 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// Uploads share the DB volume (resolved once in ../images). Only needed here to
+// unlink legacy single-file photos on delete; the variant pipeline owns the rest.
+const UPLOAD_DIR = images.UPLOAD_DIR;
 
-const MIME_EXT = {
-  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
-  'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heif',
-};
-
-const storage = multer.diskStorage({
-  destination: UPLOAD_DIR,
-  filename: (_req, file, cb) => {
-    const ext = MIME_EXT[file.mimetype] || 'jpg';
-    cb(null, `${randomUUID()}.${ext}`);
-  },
-});
+// Hold the upload in memory: the master is decoded and re-encoded into size
+// variants by ../images before anything touches disk, so there is no stray
+// file to clean up when validation rejects a request.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -112,28 +102,31 @@ router.get('/entries', requireAuth, (req, res) => {
 
 router.get('/photos', requireAuth, (req, res) => {
   const rows = db.prepare(
-    'SELECT id, coffee_id, logged_at, photo_path, description FROM coffee_entries WHERE user_id = ? AND photo_path IS NOT NULL ORDER BY logged_at DESC'
+    'SELECT id, coffee_id, logged_at, photo_path, image_id, description FROM coffee_entries WHERE user_id = ? AND (image_id IS NOT NULL OR photo_path IS NOT NULL) ORDER BY logged_at DESC'
   ).all(req.user.id);
-  res.json(rows.map(r => ({ ...r, photo_url: `/uploads/${r.photo_path}` })));
+  res.json(rows.map(r => ({
+    id: r.id,
+    coffee_id: r.coffee_id,
+    logged_at: r.logged_at,
+    description: r.description,
+    photo_url: r.photo_path ? `/uploads/${r.photo_path}` : null,
+    image: images.variantsFor(r.image_id),
+  })));
 });
 
 // Accepts multipart/form-data (photo optional) or falls back to JSON-parsed
 // body when no file part is present. The photo field must be named "photo".
-router.post('/entries', requireAuth, handleUpload(upload.single('photo')), (req, res) => {
+// Async because processing the uploaded master into variants (../images) awaits
+// the WASM codecs.
+router.post('/entries', requireAuth, handleUpload(upload.single('photo')), async (req, res) => {
   const { coffeeId, timestamp: rawTs, is_public: rawPublic, description, skip_spacing: rawSkip } = req.body;
   const coffee = COFFEES.find(c => c.id === coffeeId);
-  if (!coffee) {
-    if (req.file) fs.unlink(req.file.path, () => {});
-    return res.status(400).json({ error: 'Unknown coffee type' });
-  }
+  if (!coffee) return res.status(400).json({ error: 'Unknown coffee type' });
 
   let ts;
   if (rawTs !== undefined && rawTs !== '') {
     ts = Number(rawTs);
-    if (!validTimestamp(ts)) {
-      if (req.file) fs.unlink(req.file.path, () => {});
-      return res.status(400).json({ error: 'Invalid timestamp' });
-    }
+    if (!validTimestamp(ts)) return res.status(400).json({ error: 'Invalid timestamp' });
   }
 
   // Public only when explicitly opted in. Accepts the multipart string '1'/'true'
@@ -170,21 +163,48 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), (req,
       'SELECT id FROM coffee_entries WHERE user_id = ? AND ABS(logged_at - ?) < ? LIMIT 1'
     ).get(req.user.id, logged_at, 5 * 60 * 1000);
     if (clash) {
-      if (req.file) fs.unlink(req.file.path, () => {});
       return res.status(409).json({ error: 'Another coffee is already logged within 5 minutes of this time.' });
     }
   }
 
-  const photo_path = req.file ? req.file.filename : null;
   const desc = description?.trim() || null;
 
-  db.prepare(
-    'INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at, created_at, photo_path, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, req.user.id, coffeeId, coffee.caffeine, logged_at, now, photo_path, desc, is_public);
+  // Turn the uploaded master into responsive size variants and store the image
+  // rows. A new upload lives entirely under image_id; photo_path stays NULL
+  // (it exists only to carry legacy single-file photos through the transition).
+  let image_id = null;
+  if (req.file) {
+    try {
+      image_id = await images.deriveAndStore({
+        buffer: req.file.buffer,
+        mimetype: req.file.mimetype,
+        ownerId: req.user.id,
+        createdAt: now,
+      });
+    } catch (err) {
+      console.error('coffee photo processing failed', err);
+      return res.status(400).json({ error: 'Could not process image' });
+    }
+  }
+
+  try {
+    db.prepare(
+      'INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at, created_at, photo_path, image_id, description, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, req.user.id, coffeeId, coffee.caffeine, logged_at, now, null, image_id, desc, is_public);
+  } catch (err) {
+    // The entry never landed, so its just-created image would be an orphan.
+    if (image_id) images.deleteImage(image_id);
+    console.error(err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 
   const unlocked = checkAfterCoffeeLog(req.user.id);
 
-  const entry = { id, user_id: req.user.id, coffee_id: coffeeId, caffeine_mg: coffee.caffeine, logged_at, photo_path, description: desc, is_public };
+  const entry = {
+    id, user_id: req.user.id, coffee_id: coffeeId, caffeine_mg: coffee.caffeine,
+    logged_at, photo_path: null, photo_url: null, image: images.variantsFor(image_id),
+    description: desc, is_public,
+  };
   res.json({ entry, unlocked });
 });
 
@@ -201,10 +221,12 @@ router.patch('/entries/:id', requireAuth, (req, res) => {
 router.delete('/entries/:id', requireAuth, (req, res) => {
   const entry = db.prepare('SELECT * FROM coffee_entries WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
   if (!entry) return res.status(404).json({ error: 'Entry not found' });
-  if (entry.photo_path) {
-    fs.unlink(path.join(UPLOAD_DIR, entry.photo_path), () => {});
-  }
   db.prepare('DELETE FROM coffee_entries WHERE id = ?').run(req.params.id);
+  // Remove every image file/row (all variants) after the referencing entry is
+  // gone. photo_path is only set on legacy entries; for a wrapped legacy image
+  // its file is already a recorded variant, so this unlink is a harmless no-op.
+  if (entry.image_id) images.deleteImage(entry.image_id);
+  if (entry.photo_path) fs.unlink(path.join(UPLOAD_DIR, entry.photo_path), () => {});
   res.json({ ok: true });
 });
 

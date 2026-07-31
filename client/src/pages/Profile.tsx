@@ -1,21 +1,24 @@
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { api, uploadUrl } from '../api/client';
+import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { BuzzWidget } from '../components/BuzzWidget';
 import { PhotoLightbox } from '../components/PhotoLightbox';
+import { ResponsiveImage } from '../components/ResponsiveImage';
+import { prepareImageUpload } from '../lib/image';
 import { getSkipSpacing, setSkipSpacing } from '../devFlags';
-import type { User, Badge } from '../types';
+import type { User, Badge, ImageField } from '../types';
 import { rarityColor } from '../rarity';
 
 interface PhotoEntry {
   id: string;
   coffee_id: string;
   logged_at: number;
-  photo_url: string;
+  photo_url: string | null;
+  image?: ImageField | null;
   description: string | null;
 }
 
@@ -38,7 +41,7 @@ function GalleryCard() {
           <div className="gallery-grid">
             {photos.map(p => (
               <button key={p.id} className="gallery-thumb" onClick={() => setLightbox(p)} aria-label={p.coffee_id}>
-                <img src={uploadUrl(p.photo_url)} alt={p.coffee_id} loading="lazy" />
+                <ResponsiveImage image={p.image} fallback={p.photo_url} alt={p.coffee_id} loading="lazy" sizes="160px" />
               </button>
             ))}
           </div>
@@ -47,7 +50,8 @@ function GalleryCard() {
 
       {lightbox && (
         <PhotoLightbox
-          src={uploadUrl(lightbox.photo_url)}
+          image={lightbox.image}
+          fallback={lightbox.photo_url}
           alt={lightbox.coffee_id}
           onClose={() => setLightbox(null)}
         >
@@ -381,9 +385,11 @@ export function Profile() {
   });
 
   const photoMutation = useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: async (file: File) => {
       const form = new FormData();
-      form.append('photo', file);
+      // Downscale + WebP-encode before upload (issue #15) — the original never
+      // leaves the device.
+      form.append('photo', await prepareImageUpload(file));
       return api.patchForm<User>('/auth/me/photo', form);
     },
     onSuccess: (updated) => {
@@ -452,8 +458,8 @@ export function Profile() {
         <div className="card profile-card">
           <div className="profile-photo-area">
             <div className="profile-avatar-wrap">
-              {user?.profile_photo_url
-                ? <img src={uploadUrl(user.profile_photo_url)} alt="Profile" className="profile-avatar-img" />
+              {user?.profile_image || user?.profile_photo_url
+                ? <ResponsiveImage image={user.profile_image} fallback={user.profile_photo_url} alt="Profile" className="profile-avatar-img" sizes="96px" />
                 : <div className="profile-avatar">{user?.avatar}</div>}
               <button
                 className="profile-avatar-upload-btn"
@@ -464,7 +470,7 @@ export function Profile() {
               ><Icon name="camera" /></button>
               <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
             </div>
-            {user?.profile_photo_url && (
+            {(user?.profile_image || user?.profile_photo_url) && (
               <button
                 className="profile-remove-photo"
                 onClick={() => removePhotoMutation.mutate()}
