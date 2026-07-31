@@ -191,6 +191,70 @@ test('generateWebpVariants never upscales past the source', async () => {
   expect(images.targetWidths(4000)).toEqual([320, 800, 1600]); // capped at large
 });
 
+// --- EXIF orientation (issue #15 review) -------------------------------------
+
+// A little-endian EXIF APP1 segment carrying a single IFD0 Orientation tag.
+function exifApp1(orientation) {
+  const tiff = Buffer.from([
+    0x49, 0x49, 0x2a, 0x00,       // "II", magic 42
+    0x08, 0x00, 0x00, 0x00,       // IFD0 offset = 8
+    0x01, 0x00,                   // 1 entry
+    0x12, 0x01, 0x03, 0x00,       // tag 0x0112, type SHORT
+    0x01, 0x00, 0x00, 0x00,       // count 1
+    orientation, 0x00, 0x00, 0x00, // value (inline)
+    0x00, 0x00, 0x00, 0x00,       // next IFD = 0
+  ]);
+  const payload = Buffer.concat([Buffer.from('Exif\0\0', 'binary'), tiff]);
+  const header = Buffer.from([0xff, 0xe1, 0x00, 0x00]);
+  header.writeUInt16BE(payload.length + 2, 2);
+  return Buffer.concat([header, payload]);
+}
+
+// Splice an EXIF APP1 segment in right after the JPEG SOI marker.
+function withExif(jpeg, orientation) {
+  return Buffer.concat([jpeg.subarray(0, 2), exifApp1(orientation), jpeg.subarray(2)]);
+}
+
+test('readJpegOrientation reads the EXIF tag (and defaults to 1 without it)', async () => {
+  const { encode } = await import('@jsquash/jpeg');
+  const data = new Uint8ClampedArray(4 * 2 * 4).fill(120);
+  const jpeg = Buffer.from(await encode({ data, width: 4, height: 2 }));
+  expect(images.readJpegOrientation(jpeg)).toBe(1); // @jsquash writes no EXIF
+  expect(images.readJpegOrientation(withExif(jpeg, 6))).toBe(6);
+  expect(images.readJpegOrientation(withExif(jpeg, 8))).toBe(8);
+  expect(images.readJpegOrientation(Buffer.from([0x00, 0x01, 0x02]))).toBe(1); // not a JPEG
+});
+
+test('applyOrientation rotates axis-swapping orientations to upright', () => {
+  // A 2x1 landscape: pixel (0,0)=red, (1,0)=green.
+  const img = {
+    width: 2, height: 1,
+    data: new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255]),
+  };
+  // Orientation 6 (rotate 90 CW) -> 1x2 portrait, red on top, green below.
+  const r = images.applyOrientation(img, 6);
+  expect([r.width, r.height]).toEqual([1, 2]);
+  expect(Array.from(r.data.slice(0, 4))).toEqual([255, 0, 0, 255]);  // top = red
+  expect(Array.from(r.data.slice(4, 8))).toEqual([0, 255, 0, 255]);  // bottom = green
+  // Orientation 1 is a no-op passthrough.
+  expect(images.applyOrientation(img, 1)).toBe(img);
+});
+
+test('decodeBuffer honors EXIF orientation, so variants come out upright', async () => {
+  const { encode } = await import('@jsquash/jpeg');
+  // A 40x20 landscape source stored with Orientation = 6: displayed upright it is
+  // 20x40 portrait. decodeBuffer must swap the axes before resize/encode.
+  const W = 40, H = 20;
+  const data = new Uint8ClampedArray(W * H * 4).fill(160);
+  const jpeg = Buffer.from(await encode({ data, width: W, height: H }));
+
+  const plain = await images.decodeBuffer(jpeg, 'jpeg');
+  expect([plain.width, plain.height]).toEqual([40, 20]); // no tag: pixels as-is
+
+  const rotated = await images.decodeBuffer(withExif(jpeg, 6), 'jpeg');
+  expect([rotated.width, rotated.height]).toEqual([20, 40]); // baked upright
+});
+
 test('generateVariants produces AVIF + WebP per size, decodable back', async () => {
   const { encode } = await import('@jsquash/webp');
   const W = 900, H = 600;

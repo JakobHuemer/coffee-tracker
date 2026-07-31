@@ -226,11 +226,24 @@ legacy variant:
   converted here — this is the moment an un-renderable legacy image becomes
   viewable.
 
+**EXIF orientation.** `decodeBuffer()` reads the JPEG EXIF `Orientation` tag and
+bakes the rotation/flip into the pixels before any resize/encode. Phone cameras
+store portrait shots as landscape pixels + `Orientation = 6`; the WASM JPEG
+decoder ignores that tag, so without this the derived (tag-less) WebP/AVIF
+variants would render rotated 90°. The decode source is always the **original**
+legacy file (not a derived WebP), because only the original still carries the
+tag. Client uploads are unaffected — the browser bakes rotation in at
+`<img>`→canvas draw time, so masters arrive upright.
+
 Properties:
 
 - **Resumable / idempotent** — keyed on "a variant with this
   `(image_id, format, width)` already exists", so an interrupted run only fills
   gaps and re-running is safe.
+- **`--reencode`** — forces every image's derived variants to be dropped and
+  regenerated from its original. Used once after the orientation fix: a DB
+  backfilled by the earlier (rotation-dropping) code has mis-rotated variants
+  that count as "present", so a plain re-run would skip them.
 - **Never strands an image** — the legacy file is deleted only once at least one
   browser-renderable variant exists for that image; there is always ≥1 servable
   variant.

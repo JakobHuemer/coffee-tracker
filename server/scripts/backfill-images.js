@@ -33,6 +33,17 @@ const images = require('../src/images');
 const BATCH = 20;         // images per pause
 const THROTTLE_MS = 100;  // pause between batches
 
+// A derived variant's filename is `<originalBase>_<width>.<avif|webp>`; the
+// original legacy file has no such suffix. Used to tell the two apart when
+// picking a decode source and when purging under --reencode.
+const DERIVED_RE = /_\d+\.(?:avif|webp)$/;
+
+// --reencode: force every candidate's derived variants to be dropped and
+// regenerated from its original. Needed after the EXIF-orientation fix — a DB
+// backfilled by the old (rotation-dropping) code has mis-rotated WebP/AVIF
+// variants that are idempotent-"present", so a plain re-run would skip them.
+const REENCODE = process.argv.includes('--reencode');
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function run() {
@@ -41,12 +52,17 @@ async function run() {
   // only). Fully-derived images match neither and are skipped. gif/heic-only
   // images always match the AVIF clause but are cheaply skipped below (no
   // decodable source), so re-runs stay a no-op for them.
-  const candidates = db.prepare(`
+  //
+  // --reencode widens this to every image (the orientation fix must reach
+  // already-fully-derived ones too); undecodable images are still skipped below.
+  const candidates = REENCODE
+    ? db.prepare('SELECT id FROM images').all()
+    : db.prepare(`
     SELECT DISTINCT i.id FROM images i
     WHERE i.orig_width IS NULL
        OR NOT EXISTS (SELECT 1 FROM image_variants v WHERE v.image_id = i.id AND v.format = 'avif')
   `).all();
-  console.log(`backfill: ${candidates.length} image(s) to process`);
+  console.log(`backfill${REENCODE ? ' (reencode)' : ''}: ${candidates.length} image(s) to process`);
 
   let done = 0, skipped = 0, failed = 0, variantsWritten = 0;
 
@@ -54,11 +70,13 @@ async function run() {
     const imageId = candidates[i].id;
     try {
       const variants = db.prepare('SELECT rowid, format, width, path FROM image_variants WHERE image_id = ?').all(imageId);
-      // Decode the WIDEST available original/derived file so every target size
-      // can be produced without upscaling. For a legacy wrap that is the single
-      // original; for a phase-2 image it is the largest stored WebP.
-      const source = variants
-        .filter((v) => ['webp', 'jpeg', 'png'].includes(v.format))
+      // Decode the WIDEST decodable file, but prefer the ORIGINAL (non-derived)
+      // over any derived WebP of equal width. The original is what still carries
+      // the EXIF orientation tag, so decoding it (not a derived, already-baked
+      // WebP) is what lets decodeBuffer produce upright pixels.
+      const decodable = variants.filter((v) => ['webp', 'jpeg', 'png'].includes(v.format));
+      const originals = decodable.filter((v) => !DERIVED_RE.test(v.path));
+      const source = (originals.length ? originals : decodable)
         .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))[0];
       if (!source) { skipped++; continue; } // gif/heic only — leave untouched
 
@@ -68,6 +86,17 @@ async function run() {
       const decoded = await images.decodeBuffer(fs.readFileSync(filePath), source.format);
       if (!decoded) { skipped++; continue; }
 
+      // --reencode: drop every variant except the source before regenerating, so
+      // the stale (mis-rotated) derived files/rows are replaced rather than kept.
+      if (REENCODE) {
+        const delVar = db.prepare('DELETE FROM image_variants WHERE rowid = ?');
+        for (const v of variants) {
+          if (v.rowid === source.rowid) continue;
+          try { fs.unlinkSync(path.join(images.UPLOAD_DIR, v.path)); } catch { /* already gone */ }
+          delVar.run(v.rowid);
+        }
+      }
+
       // Record real dimensions on the image and on the source variant.
       db.prepare('UPDATE images SET orig_width = ?, orig_height = ? WHERE id = ?')
         .run(decoded.width, decoded.height, imageId);
@@ -75,9 +104,11 @@ async function run() {
         .run(decoded.width, fs.statSync(filePath).size, source.rowid);
 
       // Derive the responsive variants (WebP + AVIF), writing only the
-      // (format,width) pairs not already present.
+      // (format,width) pairs not already present. Under --reencode the derived
+      // rows were just purged, so only the surviving source counts as present.
+      const present = REENCODE ? [source] : variants;
       const have = new Set(
-        variants.filter((v) => v.width != null).map((v) => `${v.format}:${v.width}`),
+        present.filter((v) => v.width != null).map((v) => `${v.format}:${v.width}`),
       );
       // Derived files keep the source's base name so profile photos retain the
       // `pfp_` prefix the serving route relies on.

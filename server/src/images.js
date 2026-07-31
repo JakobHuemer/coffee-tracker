@@ -77,14 +77,105 @@ function toArrayBuffer(buf) {
   return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
 }
 
+// EXIF Orientation handling (issue #15 review). @jsquash/jpeg.decode returns raw
+// RGBA and ignores the EXIF Orientation tag, but phone cameras store portrait
+// shots as landscape pixels + Orientation = 6 ("rotate 90° CW to display"). If we
+// resize/re-encode those raw pixels the tag is lost and every WebP/AVIF variant
+// renders rotated. So we read the tag from the original JPEG and bake the
+// rotation into the pixels here — the variants come out upright, tag-free.
+
+// Read the EXIF Orientation (1..8) from a JPEG buffer; 1 (no transform) when the
+// tag is absent or the bytes don't parse. Only the APP1/"Exif" segment is walked;
+// scanning stops at SOS (start of compressed data). All reads are bounds-guarded.
+function readJpegOrientation(buffer) {
+  try {
+    if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return 1;
+    let offset = 2;
+    while (offset + 4 <= buffer.length) {
+      if (buffer[offset] !== 0xff) { offset++; continue; }
+      const marker = buffer[offset + 1];
+      // Standalone markers (SOI/EOI/TEM/RSTn) carry no length payload.
+      if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+        offset += 2; continue;
+      }
+      if (marker === 0xda) break; // SOS — image data starts, no more metadata
+      const size = buffer.readUInt16BE(offset + 2);
+      if (size < 2) return 1;
+      if (marker === 0xe1) { // APP1
+        const start = offset + 4;
+        if (start + 6 <= buffer.length && buffer.toString('ascii', start, start + 4) === 'Exif') {
+          return parseExifOrientation(buffer, start + 6); // skip "Exif\0\0"
+        }
+      }
+      offset += 2 + size;
+    }
+  } catch { /* unparseable — treat as upright */ }
+  return 1;
+}
+
+// Parse the TIFF block of an EXIF APP1 segment (starting at the byte-order mark)
+// and return IFD0's Orientation value, or 1 when it isn't present.
+function parseExifOrientation(buffer, tiffStart) {
+  const le = buffer.toString('ascii', tiffStart, tiffStart + 2) === 'II';
+  const u16 = (o) => (le ? buffer.readUInt16LE(o) : buffer.readUInt16BE(o));
+  const u32 = (o) => (le ? buffer.readUInt32LE(o) : buffer.readUInt32BE(o));
+  const ifd0 = tiffStart + u32(tiffStart + 4); // offset field skips the 0x002A magic
+  if (ifd0 + 2 > buffer.length) return 1;
+  const count = u16(ifd0);
+  for (let i = 0; i < count; i++) {
+    const entry = ifd0 + 2 + i * 12;
+    if (entry + 12 > buffer.length) break;
+    if (u16(entry) === 0x0112) { // Orientation, a SHORT stored inline in the value field
+      const val = u16(entry + 8);
+      return val >= 1 && val <= 8 ? val : 1;
+    }
+  }
+  return 1;
+}
+
+// Rotate/flip a decoded { data, width, height } bitmap to its upright form for the
+// given EXIF orientation. Orientations 5-8 swap the axes (portrait<->landscape).
+function applyOrientation(image, orientation) {
+  if (!orientation || orientation === 1) return image;
+  const { data, width: w, height: h } = image;
+  const swap = orientation >= 5;
+  const ow = swap ? h : w;
+  const oh = swap ? w : h;
+  const out = new Uint8ClampedArray(ow * oh * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let dx, dy;
+      switch (orientation) {
+        case 2: dx = w - 1 - x; dy = y; break;          // flip horizontal
+        case 3: dx = w - 1 - x; dy = h - 1 - y; break;  // rotate 180
+        case 4: dx = x; dy = h - 1 - y; break;          // flip vertical
+        case 5: dx = y; dy = x; break;                  // transpose
+        case 6: dx = h - 1 - y; dy = x; break;          // rotate 90 CW
+        case 7: dx = h - 1 - y; dy = w - 1 - x; break;  // transverse
+        case 8: dx = y; dy = w - 1 - x; break;          // rotate 90 CCW
+        default: dx = x; dy = y;
+      }
+      const si = (y * w + x) * 4;
+      const di = (dy * ow + dx) * 4;
+      out[di] = data[si]; out[di + 1] = data[si + 1];
+      out[di + 2] = data[si + 2]; out[di + 3] = data[si + 3];
+    }
+  }
+  return { data: out, width: ow, height: oh };
+}
+
 // Decode to ImageData ({ data, width, height }) or null when we have no codec
 // for the format (gif/heic) or the bytes are corrupt. Callers treat null as
 // "store the file as a single un-resized variant" — never a hard failure.
+// JPEGs are rotated to their upright EXIF orientation before returning.
 async function decodeBuffer(buffer, format) {
   try {
     const ab = toArrayBuffer(buffer);
     if (format === 'webp') return await (await import('@jsquash/webp')).decode(ab);
-    if (format === 'jpeg') return await (await import('@jsquash/jpeg')).decode(ab);
+    if (format === 'jpeg') {
+      const decoded = await (await import('@jsquash/jpeg')).decode(ab);
+      return applyOrientation(decoded, readJpegOrientation(buffer));
+    }
     if (format === 'png') return await (await import('@jsquash/png')).decode(ab);
     return null; // gif / heic — no decoder wired (see docs/image-handling.md)
   } catch {
@@ -243,6 +334,8 @@ module.exports = {
   SIZES,
   mimeToFormat,
   targetWidths,
+  readJpegOrientation,
+  applyOrientation,
   decodeBuffer,
   generateVariants,
   generateWebpVariants,
