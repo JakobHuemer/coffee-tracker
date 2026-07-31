@@ -9,18 +9,28 @@ const router = express.Router();
 // Shape a raw joined row into the API post object. bookmarked_by_me is derived
 // from a correlated EXISTS (not a join) so it can't inflate the likes COUNT.
 // image / profile_image carry the responsive variant lists; the *_url fields
-// stay for legacy single-file photos and as a fallback.
-function mapPost(p) {
+// stay for legacy single-file photos and as a fallback. `variants` is a prebuilt
+// Map<imageId, field> (images.variantsForMany) so a page of posts resolves its
+// images in two queries total, not two per post.
+function mapPost(p, variants) {
   const { image_id, profile_image_id, ...rest } = p;
   return {
     ...rest,
     photo_url: p.photo_path ? `/uploads/${p.photo_path}` : null,
     profile_photo_url: p.profile_photo ? `/uploads/${p.profile_photo}` : null,
-    image: images.variantsFor(image_id),
-    profile_image: images.variantsFor(profile_image_id),
+    image: variants.get(image_id) ?? null,
+    profile_image: variants.get(profile_image_id) ?? null,
     liked_by_me: p.liked_by_me === 1,
     bookmarked_by_me: p.bookmarked_by_me === 1,
   };
+}
+
+// Resolve every post's image + profile image in one batched lookup, then shape.
+function mapPosts(posts) {
+  const variants = images.variantsForMany(
+    posts.flatMap((p) => [p.image_id, p.profile_image_id]),
+  );
+  return posts.map((p) => mapPost(p, variants));
 }
 
 const POST_COLUMNS = `
@@ -47,7 +57,7 @@ router.get('/', requireAuth, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(req.user.id, req.user.id, limit, offset);
 
-  res.json(posts.map(mapPost));
+  res.json(mapPosts(posts));
 });
 
 // The current user's saved posts, newest-saved first. Someone else's post has to
@@ -70,7 +80,7 @@ router.get('/saved', requireAuth, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(req.user.id, req.user.id, req.user.id, req.user.id, limit, offset);
 
-  res.json(posts.map(mapPost));
+  res.json(mapPosts(posts));
 });
 
 // Everything the current user has posted, newest coffee first — public and
@@ -91,7 +101,7 @@ router.get('/mine', requireAuth, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(req.user.id, req.user.id, req.user.id, limit, offset);
 
-  res.json(posts.map(mapPost));
+  res.json(mapPosts(posts));
 });
 
 router.post('/:entryId/like', requireAuth, (req, res) => {

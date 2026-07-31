@@ -53,13 +53,14 @@ function participantsOf(match) {
     ? new Map()
     : scoresForMany(userIds, match.scope_start, Math.min(Date.now(), match.scope_end));
   const liveRatings = settled ? new Map() : ratingsForMany(userIds);
+  const variants = images.variantsForMany(rows.map((r) => r.profile_image_id));
 
   const enriched = rows.map((r) => ({
     user_id: r.user_id,
     username: r.username,
     avatar: r.avatar,
     profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
-    profile_image: images.variantsFor(r.profile_image_id),
+    profile_image: variants.get(r.profile_image_id) ?? null,
     joined_at: r.joined_at,
     // The stored `score` column IS the points a settled window was worth. A
     // match settled under v1 holds a 0..1000 number from the old curve instead —
@@ -158,12 +159,13 @@ function globalStandings() {
     ORDER BY (COALESCE(r.matches, 0) = 0) ASC, COALESCE(r.rating, ?) DESC, u.username ASC
   `).all(BASE_RATING, BASE_RATING);
 
+  const variants = images.variantsForMany(rows.map((r) => r.profile_image_id));
   return rows.map((r, i) => ({
     id: r.id,
     username: r.username,
     avatar: r.avatar,
     profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
-    profile_image: images.variantsFor(r.profile_image_id),
+    profile_image: variants.get(r.profile_image_id) ?? null,
     rating: r.rating,
     matches: r.matches,
     rank: i + 1,

@@ -62,7 +62,7 @@ function publicGroup(group, { includeCode = false } = {}) {
 }
 
 function membersOf(groupId) {
-  return db.prepare(`
+  const rows = db.prepare(`
     SELECT u.id, u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id, m.joined_at,
            COALESCE(r.rating, ?) AS rating,
            COALESCE(r.matches, 0) AS matches
@@ -71,12 +71,14 @@ function membersOf(groupId) {
     LEFT JOIN user_ratings r ON r.user_id = u.id
     WHERE m.group_id = ?
     ORDER BY rating DESC, u.username ASC
-  `).all(BASE_RATING, groupId).map((m) => ({
+  `).all(BASE_RATING, groupId);
+  const variants = images.variantsForMany(rows.map((m) => m.profile_image_id));
+  return rows.map((m) => ({
     id: m.id,
     username: m.username,
     avatar: m.avatar,
     profile_photo_url: m.profile_photo ? `/uploads/${m.profile_photo}` : null,
-    profile_image: images.variantsFor(m.profile_image_id),
+    profile_image: variants.get(m.profile_image_id) ?? null,
     joined_at: m.joined_at,
     rating: m.rating,
     matches: m.matches,

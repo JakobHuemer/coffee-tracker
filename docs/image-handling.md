@@ -20,15 +20,25 @@ Three decisions differ from the original draft below and supersede it:
   libvips). The client stays codec-free — `canvas.toBlob('image/webp')` is
   reliable everywhere and avoids shipping WASM to the browser. AVIF is
   server-only.
-- **AVIF encode is synchronous and CPU-bound (phase 3).** `@jsquash/avif`
-  encodes on the single JS thread, so a large image briefly blocks the event
-  loop (`AVIF_SPEED = 8` keeps this to well under a second on real photos, a few
-  seconds worst case on a 1600px noise image). Acceptable at this app's
-  concurrency; if that changes, move encoding to a worker thread. Two related
-  fixes: the `/uploads` route sets `Content-Type: image/avif` explicitly
-  (Express's mime table doesn't know `.avif`, and the `nosniff` header would
-  otherwise stop the browser decoding it), and the backfill script holds the
-  event loop open across its awaits (Bun would otherwise exit mid-run).
+- **AVIF encode is CPU-bound and runs on a worker thread (phase 3).**
+  `@jsquash/avif` encodes synchronously, blocking whichever thread it runs on for
+  up to a few seconds on a large image (`AVIF_SPEED = 8` keeps typical photos well
+  under a second). So the upload pipeline runs decode/resize/encode on a small
+  fixed pool of worker threads (`server/src/image-worker.js`, driven by the pool
+  in `server/src/images.js`) and the main event loop never stalls mid-request.
+  The pure codec functions live in `server/src/image-codec.js` — no DB, no disk —
+  so a worker loads them without opening the SQLite handle; `images.js` keeps all
+  DB/disk work on the main thread. The backfill script runs the same codec inline
+  (offline one-shot, blocking is fine there). Two related fixes: the `/uploads`
+  route sets `Content-Type: image/avif` explicitly (Express's mime table doesn't
+  know `.avif`, and the `nosniff` header would otherwise stop the browser decoding
+  it), and the backfill script holds the event loop open across its awaits (Bun
+  would otherwise exit mid-run).
+- **Decompression-bomb guard.** Every upload's pixel dimensions are read from the
+  file header (`probeDimensions`, no decode) and rejected past a 50MP cap
+  (`MAX_MEGAPIXELS`) before any codec allocates a `width*height*4` RGBA buffer —
+  otherwise a few-KB file declaring 30000×30000 would OOM the process. The upload
+  routes turn the rejection into a 400; the backfill skips such a file.
 
 ## The goal, restated
 

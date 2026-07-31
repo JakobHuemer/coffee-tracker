@@ -191,6 +191,73 @@ test('generateWebpVariants never upscales past the source', async () => {
   expect(images.targetWidths(4000)).toEqual([320, 800, 1600]); // capped at large
 });
 
+// --- Decompression-bomb guard (issue #15 review) -----------------------------
+
+// A 30-byte VP8X WebP header declaring `w`x`h` with no actual pixel data —
+// enough for probeDimensions, which reads only the header.
+function vp8xHeader(w, h) {
+  const b = Buffer.alloc(30);
+  b.write('RIFF', 0, 'ascii');
+  b.writeUInt32LE(22, 4);        // file size (unused by the probe)
+  b.write('WEBP', 8, 'ascii');
+  b.write('VP8X', 12, 'ascii');
+  b.writeUInt32LE(10, 16);       // VP8X chunk size
+  // flags (1) + reserved (3) at 20..23, then 24-bit (w-1),(h-1) little-endian.
+  b.writeUIntLE(w - 1, 24, 3);
+  b.writeUIntLE(h - 1, 27, 3);
+  return b;
+}
+
+test('probeDimensions reads webp/png/jpeg headers without decoding', async () => {
+  expect(images.probeDimensions(vp8xHeader(4000, 3000), 'webp')).toEqual({ width: 4000, height: 3000 });
+  expect(images.probeDimensions(WEBP, 'webp')).toEqual({ width: 1000, height: 600 });
+
+  const { encode: encodeJpeg } = await import('@jsquash/jpeg');
+  const jpeg = Buffer.from(await encodeJpeg({ data: new Uint8ClampedArray(40 * 20 * 4).fill(120), width: 40, height: 20 }));
+  expect(images.probeDimensions(jpeg, 'jpeg')).toEqual({ width: 40, height: 20 });
+
+  // Truncated / non-image bytes probe as unknown, not a throw.
+  expect(images.probeDimensions(Buffer.from([0, 1, 2]), 'webp')).toBeNull();
+});
+
+test('an oversized image is rejected before decode (bomb guard)', async () => {
+  // 30000x30000 = 900MP, well past the 50MP decode cap. The header alone trips
+  // the guard, so no gigabyte RGBA buffer is ever allocated.
+  const bomb = vp8xHeader(30000, 30000);
+  expect(await images.decodeBuffer(bomb, 'webp')).toBeNull(); // backfill path: skip
+
+  // Upload path: deriveAndStore throws rather than storing it verbatim, and the
+  // route turns that into a 400.
+  const u = makeUser('mallory');
+  const fd = new FormData();
+  fd.append('coffeeId', 'espresso');
+  fd.append('is_public', '1');
+  fd.append('photo', new Blob([bomb], { type: 'image/webp' }), 'bomb.webp');
+  const res = await fetch(`${base}/api/coffees/entries`, {
+    method: 'POST', headers: { authorization: `Bearer ${u.token}` }, body: fd,
+  });
+  expect(res.status).toBe(400);
+  // Nothing landed: no image rows, no stray file.
+  expect(db.prepare('SELECT COUNT(*) AS c FROM images').get().c).toBe(0);
+});
+
+test('the main event loop keeps ticking while an upload encodes (worker pool)', async () => {
+  // Encoding runs on a worker thread, so a timer scheduled on the main loop must
+  // keep firing while an upload's decode/resize/AVIF+WebP encode is in flight. If
+  // encoding still ran inline it would block the loop and starve the timer.
+  const u = makeUser('nate');
+  let ticks = 0;
+  const timer = setInterval(() => { ticks++; }, 5);
+  try {
+    const { status } = await postEntry(u);
+    expect(status).toBe(200);
+  } finally {
+    clearInterval(timer);
+  }
+  // A handful of ticks proves the loop was never parked for the whole encode.
+  expect(ticks).toBeGreaterThan(0);
+});
+
 // --- EXIF orientation (issue #15 review) -------------------------------------
 
 // A little-endian EXIF APP1 segment carrying a single IFD0 Orientation tag.

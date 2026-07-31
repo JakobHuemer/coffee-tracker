@@ -1,28 +1,20 @@
-// Shared image pipeline (issue #15, phase 2). Centralises everything that used
-// to be scattered across the upload/serve/delete routes: where files live, how
-// a master is turned into responsive size variants, how the API describes an
-// image, and how every file of an image is removed.
+// Stateful image pipeline (issue #15, phase 2). Owns everything that touches the
+// DB or disk: where files live, the API description of an image, deletion, access
+// checks, and the upload path. The pure pixel work (probe/decode/resize/encode)
+// lives in ./image-codec and runs on a worker thread (see the pool below) so the
+// CPU-bound WASM codecs never block the main event loop mid-request.
 //
-// Encoding runs on the @jsquash WASM codecs — the same WASM the browser could
-// use, with no native libvips/node-gyp toolchain to build in the container
-// (VALUES 1/5). The codecs are ESM-only, so this CommonJS module imports them
-// lazily with dynamic import() inside async functions (the module cache makes
-// repeat imports free).
-//
-// Phase 3 adds AVIF alongside WebP: every size is encoded to both formats and
-// the client negotiates via <picture type>. AVIF is server-only (browsers can't
-// reliably encode it) and gives the best ratio for slow connections; WebP stays
-// as the universally decodable fallback.
-//
-// Encode cost note (VALUES 1): AVIF is CPU-heavy and @jsquash runs synchronously
-// on the single JS thread, so a large encode briefly blocks the event loop.
-// AVIF_SPEED is tuned to the fast end (near-instant on photographic content, a
-// few seconds worst case on a 1600px noise image) to keep uploads from stalling
-// the server. If concurrency ever grows, move encoding to a worker thread.
+// The codec exports are re-exported from here unchanged so existing callers
+// (the backfill script, tests) keep using `images.decodeBuffer` etc. Those run
+// the codec inline on the calling thread — fine for an offline one-shot script —
+// while the live upload route goes through the worker pool via deriveAndStore.
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { randomUUID } = require('crypto');
+const { Worker } = require('worker_threads');
 const db = require('./db');
+const codec = require('./image-codec');
 
 // Uploads share the DB volume so photos survive restarts (this file sits in
 // server/src/, same depth as index.js — one `..` to server/).
@@ -31,215 +23,115 @@ const UPLOAD_DIR = process.env.DB_DIR
   : path.join(__dirname, '..', 'data', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-// Longest-edge widths. Ascending so target derivation stays ordered. thumb is
-// enough for feed grids/avatars, large is the lightbox ceiling — the original
-// is never stored above `large`.
-const SIZES = [
-  { name: 'thumb', width: 320 },
-  { name: 'medium', width: 800 },
-  { name: 'large', width: 1600 },
-];
-const WEBP_QUALITY = 80;
-// AVIF quality knobs. cqLevel is 0 (lossless) .. 63 (worst); ~32 tracks WebP
-// quality 80. speed is 0 (slowest/best) .. 10; 8 keeps encode time bounded (see
-// the event-loop note above) at a negligible size cost over the default 6.
-const AVIF_CQ = 32;
-const AVIF_SPEED = 8;
+// --- Encode worker pool ------------------------------------------------------
+//
+// A small fixed pool of worker threads runs decode/resize/encode. Fixed (not
+// per-request) so a burst of uploads can't fork unbounded threads and defeat the
+// point. Size is bounded to leave a core for the main loop and the DB; this app
+// is low-concurrency (VALUES 1), so 1-2 is plenty and keeps memory (each worker
+// loads its own copy of the WASM codecs) modest.
+const WORKER_PATH = path.join(__dirname, 'image-worker.js');
+const POOL_SIZE = Math.max(1, Math.min(2, (os.cpus()?.length || 2) - 1));
 
-// Formats produced per size, best-ratio first. The client emits one <picture>
-// <source> per format in this order, so the browser picks AVIF when it can.
-const VARIANT_FORMATS = ['avif', 'webp'];
-
-const MIME_FORMAT = {
-  'image/jpeg': 'jpeg', 'image/png': 'png', 'image/webp': 'webp',
-  'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heic',
-};
-function mimeToFormat(mime) {
-  return MIME_FORMAT[mime] || 'jpeg';
-}
-
-// The widths to actually produce for a source of width `ow`: each configured
-// size clamped so we NEVER upscale, de-duplicated. A 200px source yields one
-// 200px variant; a 4000px source is capped at 1600 (large).
-function targetWidths(ow) {
-  const seen = new Set();
-  const out = [];
-  for (const s of SIZES) {
-    const w = Math.min(s.width, ow);
-    if (w >= 1 && !seen.has(w)) { seen.add(w); out.push(w); }
+class ImageWorkerPool {
+  constructor(workerPath, size) {
+    this.workerPath = workerPath;
+    this.size = size;
+    this.workers = [];        // { worker, busy }
+    this.queue = [];          // { msg, transfer, resolve, reject }
+    this.pending = new Map(); // id -> { resolve, reject, entry }
+    this.seq = 0;
   }
-  return out;
-}
 
-// A Node Buffer's underlying ArrayBuffer may be a shared pool slice; hand the
-// codecs exactly this buffer's bytes.
-function toArrayBuffer(buf) {
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-}
+  run(msg, transfer = []) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ msg, transfer, resolve, reject });
+      this._drain();
+    });
+  }
 
-// EXIF Orientation handling (issue #15 review). @jsquash/jpeg.decode returns raw
-// RGBA and ignores the EXIF Orientation tag, but phone cameras store portrait
-// shots as landscape pixels + Orientation = 6 ("rotate 90° CW to display"). If we
-// resize/re-encode those raw pixels the tag is lost and every WebP/AVIF variant
-// renders rotated. So we read the tag from the original JPEG and bake the
-// rotation into the pixels here — the variants come out upright, tag-free.
-
-// Read the EXIF Orientation (1..8) from a JPEG buffer; 1 (no transform) when the
-// tag is absent or the bytes don't parse. Only the APP1/"Exif" segment is walked;
-// scanning stops at SOS (start of compressed data). All reads are bounds-guarded.
-function readJpegOrientation(buffer) {
-  try {
-    if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return 1;
-    let offset = 2;
-    while (offset + 4 <= buffer.length) {
-      if (buffer[offset] !== 0xff) { offset++; continue; }
-      const marker = buffer[offset + 1];
-      // Standalone markers (SOI/EOI/TEM/RSTn) carry no length payload.
-      if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
-        offset += 2; continue;
+  _spawn() {
+    const worker = new Worker(this.workerPath);
+    const entry = { worker, busy: false };
+    // An idle worker must not pin the process open. The caller awaiting a job
+    // keeps the loop alive through whatever already holds it (the HTTP server,
+    // or the test runner mid-await), so message delivery is unaffected — unref
+    // only stops the worker itself from being a reason not to exit. This also
+    // lets a one-shot script that never uploads exit cleanly.
+    worker.unref();
+    worker.on('message', (res) => {
+      const p = this.pending.get(res.id);
+      if (p) {
+        this.pending.delete(res.id);
+        entry.busy = false;
+        if (res.error) p.reject(new Error(res.error));
+        else p.resolve(res);
       }
-      if (marker === 0xda) break; // SOS — image data starts, no more metadata
-      const size = buffer.readUInt16BE(offset + 2);
-      if (size < 2) return 1;
-      if (marker === 0xe1) { // APP1
-        const start = offset + 4;
-        if (start + 6 <= buffer.length && buffer.toString('ascii', start, start + 4) === 'Exif') {
-          return parseExifOrientation(buffer, start + 6); // skip "Exif\0\0"
-        }
+      this._drain();
+    });
+    worker.on('error', (err) => {
+      // Fail whatever job this worker was running and drop it from the pool; a
+      // replacement spawns lazily on the next _drain.
+      for (const [id, p] of this.pending) {
+        if (p.entry === entry) { this.pending.delete(id); p.reject(err); }
       }
-      offset += 2 + size;
-    }
-  } catch { /* unparseable — treat as upright */ }
-  return 1;
-}
-
-// Parse the TIFF block of an EXIF APP1 segment (starting at the byte-order mark)
-// and return IFD0's Orientation value, or 1 when it isn't present.
-function parseExifOrientation(buffer, tiffStart) {
-  const le = buffer.toString('ascii', tiffStart, tiffStart + 2) === 'II';
-  const u16 = (o) => (le ? buffer.readUInt16LE(o) : buffer.readUInt16BE(o));
-  const u32 = (o) => (le ? buffer.readUInt32LE(o) : buffer.readUInt32BE(o));
-  const ifd0 = tiffStart + u32(tiffStart + 4); // offset field skips the 0x002A magic
-  if (ifd0 + 2 > buffer.length) return 1;
-  const count = u16(ifd0);
-  for (let i = 0; i < count; i++) {
-    const entry = ifd0 + 2 + i * 12;
-    if (entry + 12 > buffer.length) break;
-    if (u16(entry) === 0x0112) { // Orientation, a SHORT stored inline in the value field
-      const val = u16(entry + 8);
-      return val >= 1 && val <= 8 ? val : 1;
-    }
+      this.workers = this.workers.filter((e) => e !== entry);
+      this._drain();
+    });
+    this.workers.push(entry);
+    return entry;
   }
-  return 1;
-}
 
-// Rotate/flip a decoded { data, width, height } bitmap to its upright form for the
-// given EXIF orientation. Orientations 5-8 swap the axes (portrait<->landscape).
-function applyOrientation(image, orientation) {
-  if (!orientation || orientation === 1) return image;
-  const { data, width: w, height: h } = image;
-  const swap = orientation >= 5;
-  const ow = swap ? h : w;
-  const oh = swap ? w : h;
-  const out = new Uint8ClampedArray(ow * oh * 4);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let dx, dy;
-      switch (orientation) {
-        case 2: dx = w - 1 - x; dy = y; break;          // flip horizontal
-        case 3: dx = w - 1 - x; dy = h - 1 - y; break;  // rotate 180
-        case 4: dx = x; dy = h - 1 - y; break;          // flip vertical
-        case 5: dx = y; dy = x; break;                  // transpose
-        case 6: dx = h - 1 - y; dy = x; break;          // rotate 90 CW
-        case 7: dx = h - 1 - y; dy = w - 1 - x; break;  // transverse
-        case 8: dx = y; dy = w - 1 - x; break;          // rotate 90 CCW
-        default: dx = x; dy = y;
-      }
-      const si = (y * w + x) * 4;
-      const di = (dy * ow + dx) * 4;
-      out[di] = data[si]; out[di + 1] = data[si + 1];
-      out[di + 2] = data[si + 2]; out[di + 3] = data[si + 3];
-    }
-  }
-  return { data: out, width: ow, height: oh };
-}
-
-// Decode to ImageData ({ data, width, height }) or null when we have no codec
-// for the format (gif/heic) or the bytes are corrupt. Callers treat null as
-// "store the file as a single un-resized variant" — never a hard failure.
-// JPEGs are rotated to their upright EXIF orientation before returning.
-async function decodeBuffer(buffer, format) {
-  try {
-    const ab = toArrayBuffer(buffer);
-    if (format === 'webp') return await (await import('@jsquash/webp')).decode(ab);
-    if (format === 'jpeg') {
-      const decoded = await (await import('@jsquash/jpeg')).decode(ab);
-      return applyOrientation(decoded, readJpegOrientation(buffer));
-    }
-    if (format === 'png') return await (await import('@jsquash/png')).decode(ab);
-    return null; // gif / heic — no decoder wired (see docs/image-handling.md)
-  } catch {
-    return null;
+  _drain() {
+    if (this.queue.length === 0) return;
+    let entry = this.workers.find((e) => !e.busy);
+    if (!entry && this.workers.length < this.size) entry = this._spawn();
+    if (!entry) return; // pool saturated — the task waits in the queue
+    const task = this.queue.shift();
+    const id = ++this.seq;
+    entry.busy = true;
+    this.pending.set(id, { resolve: task.resolve, reject: task.reject, entry });
+    entry.worker.postMessage({ ...task.msg, id }, task.transfer);
   }
 }
 
-async function encodeTo(format, img) {
-  if (format === 'webp') {
-    return new Uint8Array(await (await import('@jsquash/webp')).encode(img, { quality: WEBP_QUALITY }));
-  }
-  if (format === 'avif') {
-    return new Uint8Array(await (await import('@jsquash/avif')).encode(img, { cqLevel: AVIF_CQ, speed: AVIF_SPEED }));
-  }
-  throw new Error(`unknown variant format: ${format}`);
-}
-
-// From one decoded master, produce a file for every (format x target width).
-// Returns [{ format, width, data: Uint8Array, bytes }]. Each width is resized
-// once and then encoded to every requested format, so the expensive resize is
-// shared. Ascending by width, formats in VARIANT_FORMATS order per width.
-// Shared by uploads and the legacy backfill so both derive variants identically.
-async function generateVariants(decoded, formats = VARIANT_FORMATS) {
-  const { width: ow, height: oh } = decoded;
-  const resize = (await import('@jsquash/resize')).default;
-  const out = [];
-  for (const w of targetWidths(ow)) {
-    const img = w === ow
-      ? decoded
-      : await resize(decoded, { width: w, height: Math.max(1, Math.round((oh * w) / ow)) });
-    for (const format of formats) {
-      const data = await encodeTo(format, img);
-      out.push({ format, width: w, data, bytes: data.length });
-    }
-  }
-  return out;
-}
-
-// WebP-only helper, kept for callers that want the single-format subset.
-async function generateWebpVariants(decoded) {
-  return generateVariants(decoded, ['webp']);
+let pool = null;
+function getPool() {
+  if (!pool) pool = new ImageWorkerPool(WORKER_PATH, POOL_SIZE);
+  return pool;
 }
 
 // Full upload path: master bytes -> derived files on disk -> images +
 // image_variants rows -> the new image id. `prefix` ('' or 'pfp_') keeps the
 // serving route's public-vs-owned distinction filename-based (see index.js).
 //
-// Async work (decode/resize/encode) is done first and buffered; the DB writes
-// then happen in one synchronous transaction (bun:sqlite transactions can't
-// span an await). If the transaction fails, any files already written are
-// unlinked so a failed upload never strands orphans.
+// The decode/resize/encode runs on a worker thread (getPool) so it never blocks
+// the main event loop. The DB writes then happen back here in one synchronous
+// transaction (bun:sqlite transactions can't span an await). If the transaction
+// fails, any files already written are unlinked so a failed upload never strands
+// orphans.
 async function deriveAndStore({ buffer, mimetype, ownerId, createdAt, prefix = '' }) {
   const imageId = randomUUID();
-  const format = mimeToFormat(mimetype);
-  const decoded = await decodeBuffer(buffer, format);
+  const format = codec.mimeToFormat(mimetype);
+
+  // Reject a decompression bomb up front, on the main thread, before dispatching
+  // any work: a decodable format whose header declares more pixels than the
+  // decode cap. Cheap header read; the worker guards again as defence in depth.
+  // The upload routes turn this throw into a 400.
+  if (codec.exceedsPixelCap(buffer, format)) {
+    throw new Error(`image exceeds ${codec.MAX_MEGAPIXELS}MP decode limit`);
+  }
+
+  const result = await getPool().run({ buffer, format });
 
   let origWidth = null;
   let origHeight = null;
   const files = []; // { format, width, filename, bytes, data }
 
-  if (decoded) {
-    origWidth = decoded.width;
-    origHeight = decoded.height;
-    for (const v of await generateVariants(decoded)) {
+  if (result.decoded) {
+    origWidth = result.width;
+    origHeight = result.height;
+    for (const v of result.files) {
       files.push({ format: v.format, width: v.width, filename: `${prefix}${imageId}_${v.width}.${v.format}`, bytes: v.bytes, data: v.data });
     }
   } else {
@@ -290,6 +182,51 @@ function variantsFor(imageId) {
   };
 }
 
+// Batched variantsFor: resolve many image ids in two queries total instead of
+// two per id. List endpoints (feed, leaderboards, group members, match rosters)
+// shape one row per user/post, so the per-row variantsFor was an N+1 that grew
+// with the list — a full leaderboard fired ~2N round trips. Returns a
+// Map<imageId, field>; ids with no image simply aren't in the map, so callers do
+// `map.get(id) ?? null` and fall back to a legacy *_url exactly as before.
+function variantsForMany(imageIds) {
+  const ids = [...new Set(imageIds.filter(Boolean))];
+  const out = new Map();
+  if (ids.length === 0) return out;
+
+  // Chunk the IN list so a large roster can't blow past SQLite's bound-variable
+  // limit (~999). Two queries per chunk; chunks are large so this stays O(1) for
+  // any realistic list.
+  const CHUNK = 500;
+  const dims = new Map();      // imageId -> { orig_width, orig_height }
+  const byImage = new Map();   // imageId -> [variant rows] (already sorted)
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const ph = slice.map(() => '?').join(',');
+    for (const r of db.prepare(`SELECT id, orig_width, orig_height FROM images WHERE id IN (${ph})`).all(...slice)) {
+      dims.set(r.id, r);
+    }
+    const rows = db.prepare(
+      `SELECT image_id, format, width, path FROM image_variants WHERE image_id IN (${ph}) ORDER BY image_id, (width IS NULL), width ASC`
+    ).all(...slice);
+    for (const r of rows) {
+      if (!byImage.has(r.image_id)) byImage.set(r.image_id, []);
+      byImage.get(r.image_id).push(r);
+    }
+  }
+
+  for (const id of ids) {
+    const img = dims.get(id);
+    const rows = byImage.get(id);
+    if (!img || !rows || rows.length === 0) continue; // no image -> caller falls back
+    out.set(id, {
+      width: img.orig_width ?? null,
+      height: img.orig_height ?? null,
+      variants: rows.map(r => ({ url: `/uploads/${r.path}`, width: r.width ?? null, format: r.format })),
+    });
+  }
+  return out;
+}
+
 // Delete an image everywhere: remove the images row (ON DELETE CASCADE clears
 // image_variants) and unlink every variant file. A cascade never touches disk,
 // so the unlinks are explicit. Safe to call with a null/absent id.
@@ -331,16 +268,21 @@ function coffeeAccessForFile(filename) {
 
 module.exports = {
   UPLOAD_DIR,
-  SIZES,
-  mimeToFormat,
-  targetWidths,
-  readJpegOrientation,
-  applyOrientation,
-  decodeBuffer,
-  generateVariants,
-  generateWebpVariants,
+  // Re-exported pure codec helpers (run inline on the caller's thread): used by
+  // the backfill script and the test suite.
+  SIZES: codec.SIZES,
+  mimeToFormat: codec.mimeToFormat,
+  targetWidths: codec.targetWidths,
+  readJpegOrientation: codec.readJpegOrientation,
+  applyOrientation: codec.applyOrientation,
+  probeDimensions: codec.probeDimensions,
+  decodeBuffer: codec.decodeBuffer,
+  generateVariants: codec.generateVariants,
+  generateWebpVariants: codec.generateWebpVariants,
+  // Stateful pipeline.
   deriveAndStore,
   variantsFor,
+  variantsForMany,
   deleteImage,
   imagePathsForOwner,
   unlinkPaths,
