@@ -144,6 +144,25 @@ directly into `VALUES.md` in its own separate commit. Note it in one inline
 sentence so the user sees it happened; don't block work or ask for an approval
 loop. Never write values into AGENTS.md.
 
+## Notification & event payloads must embed everything
+
+A notification — and any immutable, append-only event row — is self-contained:
+the renderer never reads back into live tables, so **every field the UI shows
+must live in the payload**, not just ids. When building or extending such a
+schema, do not be sloppy:
+
+- **Verify against the LIVE schema, not memory.** Introspect the real tables
+  (`PRAGMA table_info(<t>)`) and account for every display-relevant column. A
+  match, for example, carries `title` **and** `period_key` **and** group
+  linkage — and the group's name lives in `competition_groups`, not `matches`.
+- **Embed names next to ids.** An id-only payload contradicts immutability (it
+  forces a later fetch that may find the source renamed or deleted). Store both.
+- **Omit a field only on purpose, and say why in the spec** (e.g. v2 dropped
+  team mode, so `side` / `contribution_share` are intentionally left out).
+
+A silent omission here is a data-loss bug: the fact is gone from a row that can
+never be recomputed. See [docs/notifications.md](./docs/notifications.md).
+
 ## Issues & labels
 
 Every issue carries **one `priority:`**, **one `type:`**, and optionally
