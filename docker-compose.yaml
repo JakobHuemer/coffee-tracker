@@ -17,6 +17,9 @@ services:
     environment:
       # Fail loudly if JWT_SECRET is missing rather than starting insecure.
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env (>= 16 chars)}
+      # Optional bootstrap admin. Empty by default — absence must not block boot,
+      # so no :? gate here (unlike JWT_SECRET).
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
     volumes:
       # Persist the SQLite database (DB_DIR defaults to /app/data) across
       # container restarts, rebuilds, and `compose down` (without -v).

@@ -10,6 +10,7 @@ const db       = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { isValidTz, DEFAULT_TZ } = require('../time');
 const { clampHalfLife } = require('../energy');
+const { isValidPassword } = require('../password');
 
 const UPLOAD_DIR = process.env.DB_DIR
   ? path.join(process.env.DB_DIR, 'uploads')
@@ -47,7 +48,7 @@ function handleUpload(mw) {
 
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, is_admin, is_super_admin, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous
@@ -165,7 +166,7 @@ router.patch('/me', requireAuth, (req, res) => {
     db.prepare('UPDATE users SET timezone = ? WHERE id = ?').run(timezone, req.user.id);
   }
   if (password !== undefined) {
-    if (typeof password !== 'string' || password.length === 0 || password.length > 72) {
+    if (!isValidPassword(password)) {
       return res.status(400).json({ error: 'Password must be 1–72 characters' });
     }
     // Require the current password to rotate the hash. A valid JWT alone is not
