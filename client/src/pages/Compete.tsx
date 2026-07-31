@@ -296,13 +296,16 @@ function MatchStandings({ match }: { match: Match }) {
 
 /* ── one match card ────────────────────────────────────────────────────────── */
 
-function MatchCard({ match, onJoin, onLeave, busy }: {
+function MatchCard({ match, now, onJoin, onLeave, busy }: {
   match: Match;
+  // The parent's single ticking clock (issue #65). One clock for the whole list
+  // so a card's predicted state and the section it is bucketed into can never
+  // disagree by a boundary second.
+  now: number;
   onJoin?: () => void;
   onLeave?: () => void;
   busy?: boolean;
 }) {
-  const now = useNow();
   const userId = useAuthStore(s => s.user?.id);
   const inMatch = match.participants.some(p => p.user_id === userId);
   const started = match.scope_start <= now;
@@ -545,7 +548,7 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
   const upcoming = [...open].filter(m => m.scope_start > now).sort((a, b) => a.scope_start - b.scope_start);
   const joinCard = (m: Match) => (
     <MatchCard
-      key={m.id} match={m} busy={busy}
+      key={m.id} match={m} now={now} busy={busy}
       onJoin={() => { setError(null); join.mutate(m.id); }}
       onLeave={() => { setError(null); leave.mutate(m.id); }}
     />
@@ -574,7 +577,7 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
           /* Running matches: locked ones (pending) first, then any still-joinable
              lobby whose window has already started. */
           : <AnimatePresence initial={false}>
-              {live.map(m => <MatchCard key={m.id} match={m} />)}
+              {live.map(m => <MatchCard key={m.id} match={m} now={now} />)}
               {openStarted.map(joinCard)}
             </AnimatePresence>}
 
@@ -589,7 +592,7 @@ function MatchList({ open, live, settled, global = false, finished = true }: {
             <div className="section-label">Finished</div>
             {settled.length === 0
               ? <div className="cmp-empty">Nothing settled yet.</div>
-              : <AnimatePresence initial={false}>{settled.map(m => <MatchCard key={m.id} match={m} />)}</AnimatePresence>}
+              : <AnimatePresence initial={false}>{settled.map(m => <MatchCard key={m.id} match={m} now={now} />)}</AnimatePresence>}
           </>
         )}
       </LayoutGroup>
@@ -840,7 +843,9 @@ function HistorySection({ scope, globalSettled }: { scope: CompeteScope; globalS
       <div className="section-label">{global ? 'Your global matches' : 'Group history'}</div>
       {finished.length === 0
         ? <div className="cmp-empty">No finished matches yet.</div>
-        : finished.map(m => <MatchCard key={m.id} match={m} />)}
+        /* Done matches only — `now` never drives a settled/cancelled card, so a
+           static clock is fine here (no tick needed). */
+        : finished.map(m => <MatchCard key={m.id} match={m} now={Date.now()} />)}
     </>
   );
 }
