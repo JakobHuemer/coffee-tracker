@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { useNotifications, useMarkNotificationsRead } from '../hooks/useNotifications';
@@ -62,55 +62,141 @@ function CardBody({ r, time }: { r: RenderedNotification; time: string }) {
   );
 }
 
-// One notification. Swipe is native CSS scroll-snap: unread items render an
-// action pane on each side of the card; the card starts centred, and snapping
-// it onto either pane marks it read. Read items render just the card.
+// Snap-back = a real spring, not a fixed-duration curve. We integrate a damped
+// harmonic oscillator (Hooke's law + viscous damping — the model react-spring /
+// Framer use) frame by frame toward x=0, seeded with the card's release
+// velocity. Settle time is emergent from the displacement + that velocity, so a
+// few-mm throw settles in well under 200ms while a few-cm throw takes 200ms or
+// more, and the motion is spring-shaped, never linear.
+const SPRING = { stiffness: 900, damping: 50, mass: 1 }; // slightly underdamped
+const REST_X = 0.2;   // px — settle when this close to centre
+const REST_V = 4;     // px/s — …and this slow
+
+function springHome(from: number, velocity: number, onFrame: (x: number) => void): () => void {
+  const { stiffness: k, damping: c, mass: m } = SPRING;
+  let x = from, v = velocity, last = performance.now(), raf = 0;
+  const step = (now: number) => {
+    const dt = Math.min((now - last) / 1000, 0.032); // clamp a tab-switch stall
+    last = now;
+    const a = (-k * x - c * v) / m;
+    v += a * dt;
+    x += v * dt;
+    if (Math.abs(x) < REST_X && Math.abs(v) < REST_V) { onFrame(0); return; }
+    onFrame(x);
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+  return () => cancelAnimationFrame(raf);
+}
+
+const THRESHOLD = 0.34; // fraction of card width the drag must pass to commit
+
+// One notification. Unread cards are draggable to mark read:
+//
+// - The card follows the finger 1:1 (transform written straight to the node —
+//   no React re-render per frame, and the read state is NEVER touched mid-drag,
+//   so the card is never modified under the finger). Behind it a "✓ Read" pane
+//   is revealed on the side the card leaves; crossing the threshold pops it green
+//   so you can see "release here = read" before letting go.
+// - Only the release decides. Past threshold → the card springs home and the
+//   card fades from its unread tint to the read style; under threshold → it just
+//   springs home, unchanged. The spring is JS (see springHome); it can't be
+//   interrupted under the finger because a fresh pointerdown cancels it.
+// - The "✓ Read" pane is a real button too, so mouse/keyboard users mark read
+//   without dragging.
 function NotificationRow({ n, onRead }: { n: AppNotification; onRead: (id: string) => void }) {
   const r = renderNotification(n);
   const unread = n.read_at === null;
-  const trackRef = useRef<HTMLLIElement>(null);
+  const [reading, setReading] = useState(false); // playing the unread→read fade
+  const rowRef = useRef<HTMLLIElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-  const armed = useRef(false);
+  const paneRef = useRef<HTMLButtonElement>(null);
+  const d = useRef({ id: -1, x0: 0, y0: 0, axis: 'u' as 'u' | 'x' | 'y',
+    dx: 0, lx: 0, lt: 0, v: 0, over: false, w: 1, stop: () => {} });
 
-  // Centre on the card before paint. Disarm the scroll handler until the
-  // programmatic scroll settles so centring never counts as a swipe.
-  useLayoutEffect(() => {
-    const track = trackRef.current;
+  const setX = (x: number) => {
     const card = cardRef.current;
-    if (!track || !card || !unread) return;
-    armed.current = false;
-    track.scrollLeft = card.offsetLeft;
-    const id = requestAnimationFrame(() => { armed.current = true; });
-    return () => cancelAnimationFrame(id);
-  }, [unread]);
+    if (card) card.style.transform = x ? `translateX(${x}px)` : '';
+  };
+  const setOver = (over: boolean) => {
+    if (d.current.over === over) return;
+    d.current.over = over;
+    rowRef.current?.setAttribute('data-over', String(over));
+  };
 
-  useEffect(() => {
-    const track = trackRef.current;
-    if (!track || !unread) return;
-    const onScrollEnd = () => {
-      const card = cardRef.current;
-      if (!card || !armed.current) return;
-      // Card no longer centred → it was swiped onto an action pane.
-      if (Math.abs(track.scrollLeft - card.offsetLeft) > card.clientWidth / 2) onRead(n.id);
-    };
-    track.addEventListener('scrollend', onScrollEnd);
-    return () => track.removeEventListener('scrollend', onScrollEnd);
-  }, [n.id, unread, onRead]);
+  const commit = () => {
+    if (reading || !unread) return;
+    setReading(true);
+    onRead(n.id);
+  };
+
+  useEffect(() => () => d.current.stop(), []); // cancel a spring on unmount
+
+  const onDown = (e: React.PointerEvent) => {
+    if (!unread || reading || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const s = d.current;
+    s.stop();                                     // interrupt an in-flight spring
+    s.id = e.pointerId; s.axis = 'u'; s.dx = 0; s.v = 0;
+    s.x0 = e.clientX; s.y0 = e.clientY; s.lx = e.clientX; s.lt = e.timeStamp;
+    s.w = cardRef.current?.clientWidth ?? 1;
+  };
+
+  const onMove = (e: React.PointerEvent) => {
+    const s = d.current;
+    if (s.id !== e.pointerId) return;
+    const dx = e.clientX - s.x0, dy = e.clientY - s.y0;
+    if (s.axis === 'u') {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;   // wait for a clear axis
+      s.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (s.axis === 'x') cardRef.current?.setPointerCapture(e.pointerId);
+      else { s.id = -1; return; }                          // vertical → page scrolls
+    }
+    if (s.axis !== 'x') return;
+    const dt = e.timeStamp - s.lt;
+    if (dt > 0) s.v = Math.max(-2500, Math.min(2500, (e.clientX - s.lx) / dt * 1000));
+    s.lx = e.clientX; s.lt = e.timeStamp;
+    s.dx = dx;
+    rowRef.current?.setAttribute('data-side', dx >= 0 ? 'left' : 'right');
+    setX(dx);
+    setOver(Math.abs(dx) > s.w * THRESHOLD);
+  };
+
+  const onUp = (e: React.PointerEvent) => {
+    const s = d.current;
+    if (s.id !== e.pointerId) { s.id = -1; return; }
+    const wasDrag = s.axis === 'x';
+    const past = wasDrag && Math.abs(s.dx) > s.w * THRESHOLD;
+    s.id = -1; s.axis = 'u';
+    setOver(false);
+    if (wasDrag) s.stop = springHome(s.dx, s.v, setX);     // release decides — spring home
+    if (past) commit();
+  };
 
   const time = when(n.created_at);
+
+  // Read (and mid-fade) rows are not draggable. During the fade we keep
+  // data-unread so the tint is present, then animate it away to the read style.
+  if (!unread || reading) {
+    return (
+      <li ref={rowRef} className="ntf" data-unread={unread} data-fading={reading || undefined}>
+        <div ref={cardRef} className="ntf-card"
+             onAnimationEnd={reading ? () => setReading(false) : undefined}>
+          <CardBody r={r} time={time} />
+        </div>
+      </li>
+    );
+  }
+
   return (
-    <li className="ntf" data-unread={unread} ref={trackRef}>
-      {unread && (
-        <button className="ntf-action" onClick={() => onRead(n.id)} aria-label="Mark read">
-          <Icon name="check" size={16} /> Read
-        </button>
-      )}
-      <div className="ntf-card" ref={cardRef}><CardBody r={r} time={time} /></div>
-      {unread && (
-        <button className="ntf-action" onClick={() => onRead(n.id)} aria-label="Mark read">
-          <Icon name="check" size={16} /> Read
-        </button>
-      )}
+    <li ref={rowRef} className="ntf" data-unread={true} data-side="left">
+      <button ref={paneRef} className="ntf-pane" onClick={commit} aria-label="Mark read">
+        <span className="ntf-pane-check"><Icon name="check" size={16} /></span> Read
+      </button>
+      <div ref={cardRef} className="ntf-card ntf-card-drag"
+           onPointerDown={onDown} onPointerMove={onMove}
+           onPointerUp={onUp} onPointerCancel={onUp}>
+        <CardBody r={r} time={time} />
+      </div>
     </li>
   );
 }

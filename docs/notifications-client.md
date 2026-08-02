@@ -26,15 +26,37 @@ drops when notifications are actually marked read.
 
 Two ways to mark read:
 
-- **Swipe a card either way.** Unread cards only. The card can be swiped aside
-  in either direction onto a "Read" action; releasing it there marks that one
-  read. The revealed "Read" action is also a plain button, so a pointer that
-  can't swipe (mouse) can click it. Read cards don't swipe.
+- **Drag a card either way.** Unread cards only. A custom horizontal
+  pointer-drag: the card follows the finger 1:1, revealing a "✓ Read" pane on the
+  side it leaves. **The read state is never touched mid-drag** — the card is only
+  moved, never modified under the finger — and **only the release decides.**
 
-  Built on native horizontal scroll-snap — the card and its action panes are
-  real siblings in a scroll container. No transforms, no absolute overlays, and
-  nothing rounded is clipped against a bordered parent, which is what keeps the
-  card corners clean (the earlier hand-rolled version seamed at the corners).
+  - While dragging, once the card passes the **threshold (34% of card width)**
+    the pane pops from neutral/grey to **green with the check scaled up**, the
+    "release here = read" cue. Drag back under the threshold and it reverts.
+  - **On release past the threshold:** the card **springs back to centre** and
+    **fades from its unread tint to the read style** (both animated), and the row
+    is marked read. **Under the threshold:** it springs back unchanged.
+  - The mark is applied optimistically, so the bell badge and read styling update
+    at once, before the network round-trip.
+
+  **The snap-back is a real spring, not a fixed-duration curve.** It integrates a
+  damped harmonic oscillator (Hooke's law + viscous damping) frame by frame in
+  JS, seeded with the card's release velocity, so the settle time is emergent:
+  a few-mm throw settles in well under 200 ms, a few-cm throw in 200 ms or more,
+  and the motion is spring-shaped, never linear. It is never a single-frame snap.
+
+  Why a custom drag and not native scroll-snap: scroll-snap moves and commits the
+  card *as you scroll* and only reports on `scrollend`, which both modifies the
+  card under the finger and — because a snap-settle animation stays a live scroll
+  track — captured the *next* card's touch, breaking fast bottom-to-top marking.
+  A pointer-drag with a JS spring gives release-only commit and leaves no live
+  scroll track between cards.
+
+  The card clips its own rounded rectangle with the pane behind it, so nothing
+  rounded seams against a bordered parent (the corner-seam problem an earlier
+  hand-rolled version had). The "✓ Read" pane is a real, focusable button too, so
+  mouse/keyboard users mark read without dragging (focus reveals it; click marks).
 - **"Mark all read" pill** at the top-right of the page header (mail-app style).
   Disabled when nothing is unread.
 
