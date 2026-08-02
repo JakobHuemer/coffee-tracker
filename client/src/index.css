@@ -906,6 +906,30 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .ntf-pill[data-tone="down"]    { border-color: var(--danger-bd);  background: var(--danger-bg);  color: var(--danger-fg); }
 .ntf-pill[data-variant="tag"]  { border-color: var(--accent);     background: var(--accent-bg);  color: var(--accent); }
 
+/* Toasts — transient popups for newly-arrived, non-match notifications. One
+   entrance animation for all; no per-type variety. */
+.ntf-toast-wrap {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 200; display: flex; flex-direction: column; gap: 8px;
+  width: min(360px, calc(100vw - 24px)); pointer-events: none;
+}
+.ntf-toast {
+  pointer-events: auto; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  border-radius: 12px; background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--accent), var(--shadow);
+  animation: ntf-toast-in 0.22s ease-out;
+}
+@keyframes ntf-toast-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+.ntf-toast-icon {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent);
+}
+.ntf-toast-body { min-width: 0; }
+.ntf-toast-title { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); }
+.ntf-toast-text { font-size: 0.76rem; color: var(--text-sec); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ── Top-right action cluster (dark toggle + profile icon) ───────────────── */
 /* Shared header action buttons (theme + profile) — one size everywhere. */
 .header-actions { display: flex; align-items: center; gap: 10px; }

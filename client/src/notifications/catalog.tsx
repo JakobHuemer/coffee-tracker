@@ -78,6 +78,17 @@ export function renderNotification(n: AppNotification): RenderedNotification {
   return entry ? entry(n.payload as never) : renderDefault(n);
 }
 
+// Toast opt-in. Returns the compact toast content for a notification, or null
+// for types that must NOT pop a toast. Match results are intentionally excluded
+// (they have their own plans), and unknown/raw types stay out too — a toast is
+// only for a type we can present cleanly. This is the single place that decides
+// what toasts.
+export function toastFor(n: AppNotification): { icon: string; title: string; body: string } | null {
+  const r = renderNotification(n);
+  if (r.kind === 'simple') return { icon: r.icon, title: r.name, body: r.description };
+  return null; // match, raw → no toast
+}
+
 // 1st / 2nd / 3rd / 4th … for the rank pill.
 export function ordinal(n: number): string {
   const s = ['th', 'st', 'nd', 'rd'];

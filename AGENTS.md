@@ -163,6 +163,23 @@ schema, do not be sloppy:
 A silent omission here is a data-loss bug: the fact is gone from a row that can
 never be recomputed. See [docs/notifications.md](./docs/notifications.md).
 
+### Consult the user before adding any new notification
+
+When a new feature would fire a **new** notification, do **not** decide its shape
+yourself. Stop and ask the user first about:
+
+- **What the notification is** — its nature: achievement-like, an action with a
+  positive or negative effect, an informational event, etc.
+- **How it surfaces — a toast or a fullscreen animation.** These are two
+  distinct delivery surfaces:
+  - **Toast** — the small transient popup. Examples: achievements, badges.
+  - **Fullscreen animation** — a bigger, foreground moment. Examples: rank-up,
+    Elo change, match win. (This surface is being built in this session.)
+
+Only after the user answers both do you implement it. See
+[docs/notifications-client.md](./docs/notifications-client.md) for how the client
+surfaces (bell, page, toast) behave.
+
 ## Issues & labels
 
 Every issue carries **one `priority:`**, **one `type:`**, and optionally

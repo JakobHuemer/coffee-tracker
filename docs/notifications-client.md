@@ -41,6 +41,20 @@ Two ways to mark read:
 Unread cards are visually distinct from read ones (tinted background + accent
 edge + a dot), so new vs. old is obvious without reading a word.
 
+## Toasts
+
+A newly-arrived notification pops a transient toast, so an unlock is felt
+without opening the bell. Rules:
+
+- **Only some types toast.** The catalog decides per type (one place). Match
+  results are excluded on purpose (they have their own plans), and unknown/raw
+  types stay out too — a toast is only for a type that presents cleanly.
+- **One animation** for every toast — a single entrance. No per-type variety.
+- Toasts auto-dismiss after a few seconds and can be dismissed by tapping.
+- Only genuinely new notifications toast: existing history on first load never
+  pops. A toast never marks anything read — the bell and page still own the
+  read state.
+
 ## No navigation
 
 Notification cards are **display-only**. Tapping a card does nothing — it never

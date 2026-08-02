@@ -18,6 +18,7 @@ import { Compete } from './pages/Compete';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
 import { Notifications } from './pages/Notifications';
+import { NotificationToaster } from './components/NotificationToaster';
 import type { User } from './types';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -99,6 +100,7 @@ export function App() {
         </Routes>
         {token && !isAuth && <BottomNav />}
       </div>
+      {token && !isAuth && <NotificationToaster />}
     </>
   );
 }
