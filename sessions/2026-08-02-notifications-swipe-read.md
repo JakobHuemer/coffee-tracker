@@ -1,5 +1,5 @@
 ---
-topics: [issue-32-notifications, notif-swipe-read-bug, notif-debug-harness, concept-md-nudge]
+topics: [issue-32-notifications, notif-swipe-read-bug, notif-debug-harness, concept-md-nudge, notif-fullscreen-reveals]
 ---
 
 # 2026-08-02 — notifications phase 1 + swipe-read bug
@@ -40,6 +40,34 @@ Mark optimistic (`onMutate`). Pane is also a focusable button (mouse/keyboard).
 Two dead ends first: (1) fire-on-threshold + instant collapse killed the whole
 animation; (2) inert CSS-confirm-slide container — user found each iteration
 worse. Rebuild-from-scratch was the ask, not another patch.
+
+## Fullscreen reveals (new spec: docs/notifications-reveals.md)
+Big match_end events get a fullscreen "scoreboard assemble" reveal, NOT a box
+(a match isn't a box). Locked decisions (all from user Q&A):
+- Scope: match_end only. Rank-up/level-up = future new events (none exist yet).
+- match_end is TWO-STAGE: generic card/toast until revealed, full details after.
+  Revealed == READ — reuse existing read_at, NO new column/migration. Showing the
+  reveal marks read; swiping to read also discloses (skips ceremony).
+- Trigger: in-app = generic tappable toast/card → tap plays reveal (no auto
+  interrupt). On return/fresh-open = auto-play queued reveals, drain BEFORE any
+  toast. "Fresh open" on a website = SPA boot (new JS runtime) OR Page Visibility
+  hidden→visible return; active-visible the whole time = no auto-play.
+- Choreography staggered: result → placing → rating count-up (the payoff).
+- Tone split: win = tasteful energy (light sweep + small spark, no confetti
+  storm); loss = somber, no particles, heavier easing (NOT win-in-red); tie
+  neutral. Reveal scale is choreography, not the banned basic-interaction pop.
+- Playback: 1st tap skips build-up, 2nd tap advances; no auto-advance.
+- No new deps (CSS/JS only), reduced-motion = static fully-formed, no sound.
+Not yet implemented — spec only. notifications-client.md + notifications.md
+updated to reference it (match_end toast/card/no-nav sections reconciled).
+Design approved via interactive prototype (artifact URL in the reveals doc).
+Final design in doc: delta is the HERO (big, counted from 0, own beat), final
+Elo is a quiet decoupled resting value (NOT one coupled equation); label-light
+(no "rating change"/"new rating" captions — layout carries it); loss = EQUAL
+weight to win, opposite direction (win rises light, loss falls heavy — shockwave
+/shards-down/bigger-shake), never tamer; count-up ~1.2s. "View match →" CTA is
+DESIGNED but OUT OF SCOPE for #32 — needs a future match page (/matches/:id);
+ships only once that route exists.
 
 ## CONCEPT.md
 Still missing. AGENTS.md asks for a one-line nudge each new session about

@@ -8,7 +8,10 @@ This doc owns the **implementation**: table, migration, emit sites, API, types,
 query-hook config, file paths. How notifications *behave and read* on the
 client — read model, swipe, per-type presentation — lives in the side spec
 [notifications-client.md](./notifications-client.md), which is authoritative for
-interaction and supersedes any behavioural note here.
+interaction and supersedes any behavioural note here. Big `match_end` events get
+a **fullscreen reveal** instead of a plain toast/card; that surface (trigger,
+choreography, the generic-until-revealed model that reuses `read_at`) is specced
+in [notifications-reveals.md](./notifications-reveals.md).
 
 Sources in phase 1: `match_end`, `achievement`, `badge`.
 

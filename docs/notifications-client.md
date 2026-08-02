@@ -9,6 +9,12 @@ query-hook config, file paths — stay in [notifications.md](./notifications.md)
 Where this spec and notifications.md §6 disagree on behaviour, **this spec
 wins** (it supersedes the original "marks all read on open" line).
 
+Big `match_end` events don't land as a card or toast — they get a **fullscreen
+reveal**, specced in [notifications-reveals.md](./notifications-reveals.md),
+which owns when the reveal fires and how it animates. This doc still owns the
+`match_end` *card* (its generic-vs-detailed states) and the generic tap-to-open
+toast that launches the reveal.
+
 ## Surfaces
 
 Two, both global:
@@ -68,11 +74,19 @@ edge + a dot), so new vs. old is obvious without reading a word.
 A newly-arrived notification pops a transient toast, so an unlock is felt
 without opening the bell. Rules:
 
-- **Only some types toast.** The catalog decides per type (one place). Match
-  results are excluded on purpose (they have their own plans), and unknown/raw
-  types stay out too — a toast is only for a type that presents cleanly.
-- **One animation** for every toast — a single entrance. No per-type variety.
-- Toasts auto-dismiss after a few seconds and can be dismissed by tapping.
+- **Only some types toast.** The catalog decides per type (one place).
+  Achievements and badges toast; unknown/raw types stay out — a toast is only for
+  a type that presents cleanly.
+- **`match_end` is special:** in-session it shows a **generic, tappable** toast
+  ("Match result") that **launches the fullscreen reveal** on tap — it does not
+  spoil the result and it is not the usual auto-dismiss info toast. See
+  [notifications-reveals.md](./notifications-reveals.md). On return/fresh open the
+  reveal auto-plays instead, and **no toast is shown while a reveal is on screen**
+  (reveals drain before toasts).
+- **One animation** for every ordinary toast — a single entrance. No per-type
+  variety.
+- Toasts auto-dismiss after a few seconds and can be dismissed by tapping (the
+  generic `match_end` toast is the exception: tapping it opens the reveal).
 - Only genuinely new notifications toast: existing history on first load never
   pops. A toast never marks anything read — the bell and page still own the
   read state.
@@ -82,6 +96,12 @@ without opening the bell. Rules:
 Notification cards are **display-only**. Tapping a card does nothing — it never
 navigates anywhere. (An earlier click-to-jump behaviour was removed; it was
 never a planned feature and it fought the swipe gesture.)
+
+**One exception:** an *unrevealed* (generic) `match_end` card is tappable — it
+launches the fullscreen reveal (see
+[notifications-reveals.md](./notifications-reveals.md)). Once revealed (read) it
+reverts to display-only like every other card. Tapping never navigates; it only
+plays the reveal.
 
 ## Presentation — data-forward, per type
 
@@ -98,13 +118,17 @@ before the words are read.
 
 Per-type intent:
 
-- **match_end** — the result is the headline: **Won / Lost / Tied**, coloured
-  (green win, red loss). The two figures that matter get their own prominent
-  elements, not prose:
-  - **placing** as a rank element, e.g. `1st of 6`,
-  - **rating change** as a coloured delta chip, e.g. `+18` (green) / `−12`
-    (red).
-  Group / scope is quiet context.
+- **match_end** — two-stage, gated on read state (see
+  [notifications-reveals.md](./notifications-reveals.md)):
+  - **Generic (unread / unrevealed):** "Match result", neutral icon, **no
+    outcome shown** — the reveal has not disclosed it yet. Tappable to reveal.
+  - **Detailed (read / revealed):** the result is the headline — **Won / Lost /
+    Tied**, coloured (green win, red loss) — with the two figures that matter as
+    their own prominent elements, not prose:
+    - **placing** as a rank element, e.g. `1st of 6`,
+    - **rating change** as a coloured delta chip, e.g. `+18` (green) / `−12`
+      (red).
+    Group / scope is quiet context.
 - **achievement / badge** — icon + name are the emphasis, with a small
   "Achievement" / "Badge" tag and the description as secondary text.
 - **unknown type** (default renderer, required) — a server type shipped ahead
