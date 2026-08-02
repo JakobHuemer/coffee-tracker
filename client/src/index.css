@@ -860,7 +860,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .ntf[data-side="left"]  .ntf-pane { justify-content: flex-start; padding-left: 22px; }
 .ntf[data-side="right"] .ntf-pane { justify-content: flex-end;   padding-right: 22px; }
-.ntf-pane-check { display: inline-flex; transition: transform 0.05s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.ntf-pane-check { display: inline-flex; transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1); }
 .ntf[data-over="true"] .ntf-pane { background: var(--success-bg); color: var(--success-fg); }
 .ntf[data-over="true"] .ntf-pane-check { transform: scale(1.3); }
 

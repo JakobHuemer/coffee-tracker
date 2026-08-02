@@ -302,6 +302,16 @@ that makes it safe. Do not delete it.
 - **Never change the logo geometry in only one of the two files.** See the
   section above. Out-of-sync shapes are a red/high hard fail, reported to the
   developer in chat before anything else.
+- **No scale animations as basic-interaction feedback.** Do not reach for a
+  `transform: scale()` pop/bounce as the reflex "satisfying" response to a
+  button press, tap, hover, toggle, or an item being actioned (marked read,
+  completed, added). These viby scale-pops on everything make the product look
+  unpolished and over-animated — and a *slow* scale is the worst of all. Feedback
+  for basic interactions should come from colour, opacity, or position
+  (translate), or from nothing at all. A scale is allowed only when the size
+  change *is* the content/meaning of the interaction (e.g. zoom, a drag handle
+  actually resizing something) and is explicitly intended — never as a decorative
+  add-on. When in doubt, ship it without the scale.
 - Don't split the frontend back into its own image/service/proxy.
 - Don't add schema changes outside `server/src/migrations/`.
 - Don't introduce npm/yarn/pnpm or a second lockfile.
