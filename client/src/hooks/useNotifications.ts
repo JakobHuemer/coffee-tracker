@@ -8,12 +8,13 @@ import type { AppNotification, NotificationsResponse } from '../types';
 // single revisit point for that swap.
 const POLL_MS = 60_000;
 
-export function useNotifications() {
+export function useNotifications(enabled = true) {
   return useQuery<NotificationsResponse>({
     queryKey: ['notifications'],
     queryFn: () => api.get('/notifications'),
     refetchInterval: POLL_MS,
     refetchOnWindowFocus: true,
+    enabled,
   });
 }
 

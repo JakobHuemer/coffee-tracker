@@ -16,6 +16,8 @@ interface SimpleRender {
 }
 
 // match_end: the result leads; placing and rating change are discrete chips.
+// ratingBefore/ratingAfter drive the fullscreen reveal's count-up (the card
+// itself only needs the delta chip). See docs/notifications-reveals.md.
 interface MatchRender {
   kind: 'match';
   icon: string;
@@ -25,6 +27,8 @@ interface MatchRender {
   rank: number;
   count: number;
   delta: number;
+  ratingBefore: number;
+  ratingAfter: number;
   context: string; // group name or "Global"
 }
 
@@ -43,6 +47,7 @@ interface MatchEndPayload {
   match_id: string; title: string | null; group_name: string | null;
   mode: string; rank: number; participant_count: number;
   score: number; delta: number;
+  rating_before: number; rating_after: number;
 }
 
 const catalog: Record<string, (p: never) => RenderedNotification> = {
@@ -61,6 +66,8 @@ const catalog: Record<string, (p: never) => RenderedNotification> = {
     rank: p.rank,
     count: p.participant_count,
     delta: p.delta,
+    ratingBefore: p.rating_before,
+    ratingAfter: p.rating_after,
     context: p.group_name ?? 'Global',
   }),
 } as Record<string, (p: never) => RenderedNotification>;

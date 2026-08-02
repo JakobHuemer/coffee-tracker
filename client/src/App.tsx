@@ -19,6 +19,7 @@ import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
 import { Notifications } from './pages/Notifications';
 import { NotificationToaster } from './components/NotificationToaster';
+import { RevealProvider } from './notifications/RevealProvider';
 import type { User } from './types';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -65,7 +66,7 @@ export function App() {
   const isAuth = location.pathname === '/auth';
 
   return (
-    <>
+    <RevealProvider active={!!token && !isAuth}>
       {/* Animated caffeine background disabled for now — see BgCanvas. */}
       <div id="app-wrap">
         <Routes>
@@ -101,7 +102,7 @@ export function App() {
         {token && !isAuth && <BottomNav />}
       </div>
       {token && !isAuth && <NotificationToaster />}
-    </>
+    </RevealProvider>
   );
 }
 

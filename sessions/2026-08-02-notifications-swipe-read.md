@@ -69,6 +69,21 @@ weight to win, opposite direction (win rises light, loss falls heavy — shockwa
 DESIGNED but OUT OF SCOPE for #32 — needs a future match page (/matches/:id);
 ships only once that route exists.
 
+IMPLEMENTED (client-only, no server change — reveal state = read_at):
+- notifications/MatchReveal.tsx (visual) + .nr-* CSS in index.css (dark cinematic
+  scrim in BOTH themes by design; tone colours from success/danger tokens).
+- notifications/RevealProvider.tsx: queue + overlay + mark-read on advance +
+  presence auto-play (boot via booted ref; return via Page Visibility
+  hidden→visible); playOne for taps; `revealing` flag. Mounted in App.tsx
+  (active={token && !isAuth}); useNotifications gained an `enabled` arg.
+- catalog: match render carries ratingBefore/After; generic (unread) vs detailed
+  (read) card in Notifications.tsx; generic card tap → playOne (tap vs swipe
+  split in onUp). Toaster: generic tappable match toast + holds all toasts while
+  `revealing` (drain-first). Debug panel samples got rating_before/after + a tie.
+Build/lint/typecheck green. NOT yet driven live by me (needs a logged-in session)
+— test via debug panel: fire Match win/loss/tie → generic toast/card → tap to
+reveal; reload with an unread match auto-plays (boot).
+
 ## CONCEPT.md
 Still missing. AGENTS.md asks for a one-line nudge each new session about
 starting it via back-and-forth while coding.

@@ -3,6 +3,7 @@ import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { useNotifications, useMarkNotificationsRead } from '../hooks/useNotifications';
 import { renderNotification, ordinal, type RenderedNotification } from '../notifications/catalog';
+import { useReveals } from '../notifications/RevealProvider';
 import type { AppNotification } from '../types';
 
 function when(ms: number): string {
@@ -13,7 +14,23 @@ function when(ms: number): string {
 
 // Type-aware card body. Every kind uses the same building blocks (badge, title,
 // time, pills, description) so the types read as one system.
-function CardBody({ r, time }: { r: RenderedNotification; time: string }) {
+function CardBody({ r, time, generic }: { r: RenderedNotification; time: string; generic?: boolean }) {
+  // A match_end stays generic until its fullscreen reveal has disclosed it —
+  // no result, no numbers, just an invitation to open it (docs/notifications-reveals.md).
+  if (generic && r.kind === 'match') {
+    return (
+      <>
+        <span className="ntf-badge" data-tone="neutral"><Icon name="trophy" size={20} /></span>
+        <div className="ntf-main">
+          <div className="ntf-head">
+            <span className="ntf-title">Match result</span>
+            <span className="ntf-time">{time}</span>
+          </div>
+          <div className="ntf-desc">{r.context} · tap to reveal</div>
+        </div>
+      </>
+    );
+  }
   if (r.kind === 'match') {
     const sign = r.delta > 0 ? '+' : r.delta < 0 ? '−' : '';
     return (
@@ -104,15 +121,20 @@ const THRESHOLD = 0.34; // fraction of card width the drag must pass to commit
 //   interrupted under the finger because a fresh pointerdown cancels it.
 // - The "✓ Read" pane is a real button too, so mouse/keyboard users mark read
 //   without dragging.
-function NotificationRow({ n, onRead }: { n: AppNotification; onRead: (id: string) => void }) {
+function NotificationRow(
+  { n, onRead, onReveal }:
+  { n: AppNotification; onRead: (id: string) => void; onReveal?: (n: AppNotification) => void },
+) {
   const r = renderNotification(n);
   const unread = n.read_at === null;
+  // An unread match_end is generic and tappable — a tap opens its reveal.
+  const genericMatch = unread && n.type === 'match_end';
   const [reading, setReading] = useState(false); // playing the unread→read fade
   const rowRef = useRef<HTMLLIElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLButtonElement>(null);
   const d = useRef({ id: -1, x0: 0, y0: 0, axis: 'u' as 'u' | 'x' | 'y',
-    dx: 0, lx: 0, lt: 0, v: 0, over: false, w: 1, stop: () => {} });
+    dx: 0, lx: 0, lt: 0, v: 0, over: false, w: 1, dragged: false, stop: () => {} });
 
   const setX = (x: number) => {
     const card = cardRef.current;
@@ -136,7 +158,7 @@ function NotificationRow({ n, onRead }: { n: AppNotification; onRead: (id: strin
     if (!unread || reading || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const s = d.current;
     s.stop();                                     // interrupt an in-flight spring
-    s.id = e.pointerId; s.axis = 'u'; s.dx = 0; s.v = 0;
+    s.id = e.pointerId; s.axis = 'u'; s.dx = 0; s.v = 0; s.dragged = false;
     s.x0 = e.clientX; s.y0 = e.clientY; s.lx = e.clientX; s.lt = e.timeStamp;
     s.w = cardRef.current?.clientWidth ?? 1;
   };
@@ -148,7 +170,7 @@ function NotificationRow({ n, onRead }: { n: AppNotification; onRead: (id: strin
     if (s.axis === 'u') {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;   // wait for a clear axis
       s.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      if (s.axis === 'x') cardRef.current?.setPointerCapture(e.pointerId);
+      if (s.axis === 'x') { s.dragged = true; cardRef.current?.setPointerCapture(e.pointerId); }
       else { s.id = -1; return; }                          // vertical → page scrolls
     }
     if (s.axis !== 'x') return;
@@ -168,8 +190,14 @@ function NotificationRow({ n, onRead }: { n: AppNotification; onRead: (id: strin
     const past = wasDrag && Math.abs(s.dx) > s.w * THRESHOLD;
     s.id = -1; s.axis = 'u';
     setOver(false);
-    if (wasDrag) s.stop = springHome(s.dx, s.v, setX);     // release decides — spring home
-    if (past) commit();
+    if (wasDrag) { s.stop = springHome(s.dx, s.v, setX); if (past) commit(); } // release decides
+  };
+
+  // Open the reveal on a real click (not a drag). A click event targets the
+  // card, so it never leaks through to the just-mounted reveal overlay — which
+  // is what made the reveal skip straight to its end when opened from here.
+  const onCardClick = () => {
+    if (genericMatch && onReveal && !d.current.dragged) onReveal(n);
   };
 
   const time = when(n.created_at);
@@ -192,10 +220,10 @@ function NotificationRow({ n, onRead }: { n: AppNotification; onRead: (id: strin
       <button ref={paneRef} className="ntf-pane" onClick={commit} aria-label="Mark read">
         <span className="ntf-pane-check"><Icon name="check" size={16} /></span> Read
       </button>
-      <div ref={cardRef} className="ntf-card ntf-card-drag"
+      <div ref={cardRef} className="ntf-card ntf-card-drag" data-reveal={genericMatch || undefined}
            onPointerDown={onDown} onPointerMove={onMove}
-           onPointerUp={onUp} onPointerCancel={onUp}>
-        <CardBody r={r} time={time} />
+           onPointerUp={onUp} onPointerCancel={onUp} onClick={onCardClick}>
+        <CardBody r={r} time={time} generic={genericMatch} />
       </div>
     </li>
   );
@@ -204,6 +232,7 @@ function NotificationRow({ n, onRead }: { n: AppNotification; onRead: (id: strin
 export function Notifications() {
   const { data, isLoading } = useNotifications();
   const markRead = useMarkNotificationsRead();
+  const { playOne } = useReveals();
   const list = data?.notifications ?? [];
   const unread = data?.unread_count ?? 0;
 
@@ -223,7 +252,7 @@ export function Notifications() {
         {isLoading && <div className="notif-empty">Loading…</div>}
         {!isLoading && list.length === 0 && <div className="notif-empty">No notifications yet.</div>}
         {list.map((n) => (
-          <NotificationRow key={n.id} n={n} onRead={(id) => markRead.mutate({ ids: [id] })} />
+          <NotificationRow key={n.id} n={n} onRead={(id) => markRead.mutate({ ids: [id] })} onReveal={playOne} />
         ))}
       </ul>
     </div>
