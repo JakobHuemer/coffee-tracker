@@ -33,9 +33,14 @@ beforeEach(() => {
     DELETE FROM competition_groups;
     DELETE FROM user_ratings;
     DELETE FROM coffee_entries;
+    DELETE FROM notifications;
     DELETE FROM users;
   `);
 });
+
+const notificationsFor = (userId) =>
+  db.prepare("SELECT * FROM notifications WHERE user_id = ? AND type = 'match_end'").all(userId)
+    .map((r) => ({ ...r, payload: JSON.parse(r.payload) }));
 
 function makeUser(username, timezone = 'UTC') {
   const id = randomUUID();
@@ -821,4 +826,74 @@ test('migration 015 is idempotent — a second pass reproduces the same ledger',
   resettle.up(db);
   const second = participants(m).map((r) => r.delta).sort((x, y) => x - y);
   expect(second).toEqual(first);
+});
+
+// ── match_end notifications (issue #32) ────────────────────────────────────────
+
+test('settlement writes one match_end notification per participant, ranked by score', () => {
+  const [lead, near, far] = ['lead', 'near', 'far'].map((n) => makeUser(n));
+  const group = makeGroup('UTC', [lead, near, far]);
+  const start = Date.now() - DAY;
+  const end = Date.now() - 1000;
+  const match = openMatch({
+    group, mode: 'ondemand', start, end, state: 'pending',
+    roster: [{ userId: lead }, { userId: near }, { userId: far }],
+  });
+  logCoffee(lead, start + 1000, { mg: 240 });
+  logCoffee(near, start + 1000, { mg: 120 });
+  logCoffee(far, start + 1000, { mg: 30 });
+
+  settleMatch(match, end + 1);
+
+  // Exactly one row per participant — winners, losers and everyone between.
+  expect(notificationsFor(lead)).toHaveLength(1);
+  expect(notificationsFor(near)).toHaveLength(1);
+  expect(notificationsFor(far)).toHaveLength(1);
+
+  // Rank tracks score desc; participant_count is the whole roster on every row.
+  expect(notificationsFor(lead)[0].payload.rank).toBe(1);
+  expect(notificationsFor(near)[0].payload.rank).toBe(2);
+  expect(notificationsFor(far)[0].payload.rank).toBe(3);
+  for (const u of [lead, near, far]) {
+    expect(notificationsFor(u)[0].payload.participant_count).toBe(3);
+  }
+});
+
+test('a match_end payload freezes the group name, match id and the player\'s own delta', () => {
+  const [a, b] = ['a', 'b'].map((n) => makeUser(n));
+  const group = makeGroup('UTC', [a, b]);
+  const start = Date.now() - DAY;
+  const end = Date.now() - 1000;
+  const match = openMatch({
+    group, mode: '1v1', start, end, state: 'pending',
+    roster: [{ userId: a }, { userId: b }],
+  });
+  logCoffee(a, start + 1000, { mg: 150 });
+  logCoffee(b, start + 1000, { mg: 30 });
+
+  settleMatch(match, end + 1);
+
+  const p = notificationsFor(a)[0].payload;
+  expect(p.match_id).toBe(match.id);
+  expect(p.group_id).toBe(group.id);
+  expect(p.group_name).toBe(group.name);
+  // The frozen delta matches the row written to match_participants.
+  const row = participants(match.id).find((r) => r.user_id === a);
+  expect(p.delta).toBe(row.delta);
+  expect(p.rating_after).toBe(row.rating_after);
+});
+
+test('a cancelled settlement (only one player) writes no match_end notification', () => {
+  const solo = makeUser('solo');
+  const group = makeGroup('UTC', [solo]);
+  const start = Date.now() - DAY;
+  const end = Date.now() - 1000;
+  const match = openMatch({
+    group, mode: 'ondemand', start, end, state: 'pending',
+    roster: [{ userId: solo }],
+  });
+
+  settleMatch(match, end + 1);
+  expect(matchById(match.id).state).toBe('cancelled');
+  expect(notificationsFor(solo)).toHaveLength(0);
 });

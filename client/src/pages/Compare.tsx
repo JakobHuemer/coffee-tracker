@@ -2,17 +2,15 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
-import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
 import { ResponsiveImage } from '../components/ResponsiveImage';
 import { Icon } from '../components/Icon';
-import type { CompareUserProfile, CompareUserStats, FeaturedBadge, UnlockNotification } from '../types';
+import type { CompareUserProfile, CompareUserStats, FeaturedBadge } from '../types';
 import { rarityColor } from '../rarity';
 
 interface CompareResponse {
   me: CompareUserProfile;
   them: CompareUserProfile;
-  unlocked: UnlockNotification[];
 }
 
 const STAT_DEFS: { key: keyof CompareUserStats; label: string; suffix?: string }[] = [
@@ -65,16 +63,12 @@ function StatBar({ label, mine, theirs, suffix }: { label: string; mine: number;
 
 export function CompareContent({ initialUsername = '', standalone = false }: { initialUsername?: string; standalone?: boolean }) {
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
   const [searchInput, setSearchInput] = useState(initialUsername);
   const [activeUsername, setActiveUsername] = useState(initialUsername);
 
   const { data, isLoading, error } = useQuery<CompareResponse>({
     queryKey: ['compare', activeUsername],
-    queryFn: () => api.get<CompareResponse>(`/compare/${activeUsername}`).then(d => {
-      if (d.unlocked?.length) setNotifications(d.unlocked);
-      return d;
-    }),
+    queryFn: () => api.get<CompareResponse>(`/compare/${activeUsername}`),
     enabled: !!activeUsername,
   });
 
@@ -111,8 +105,6 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
 
   return (
     <>
-      <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
-
       <div className="card">
         <div className="section-label">Find a user</div>
         <form onSubmit={handleSearch} className="search-row">

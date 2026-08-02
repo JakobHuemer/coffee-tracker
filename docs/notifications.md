@@ -4,6 +4,12 @@ In-app notification system. Server records events to a `notifications` table;
 the app polls them, shows an unread count on a bell in `AppHeader`, and lists
 history on a `/notifications` page.
 
+This doc owns the **implementation**: table, migration, emit sites, API, types,
+query-hook config, file paths. How notifications *behave and read* on the
+client — read model, swipe, per-type presentation — lives in the side spec
+[notifications-client.md](./notifications-client.md), which is authoritative for
+interaction and supersedes any behavioural note here.
+
 Sources in phase 1: `match_end`, `achievement`, `badge`.
 
 Out of phase 1: OS/web push (no service worker, no PWA), `streak_break` (a
@@ -109,26 +115,15 @@ payload fields are in scope. Rows commit atomically with the settlement.
 
 ## 4. Text lives in the frontend, keyed by type
 
-The backend **never** writes a sentence. All copy lives in a frontend render
-catalog:
+The backend **never** writes a sentence. All copy and layout live in a frontend
+render catalog keyed by `type`, so wording/layout is a one-place edit that
+applies to every row, past and present, because text is never stored. A default
+renderer for unknown types is **required** so a server type shipped ahead of
+the frontend still renders.
 
-```ts
-render[type] = (payload) => ({ icon, title, body, link })
-```
-
-Change wording = edit one catalog entry; it applies to every row, past and
-present, because text is never stored.
-
-### Default renderer (required)
-
-An unknown / not-yet-implemented `type` MUST still render. Fallback row:
-
-- **title** = the raw `type` string,
-- a generic notification icon,
-- **body** = the `payload` rendered as key/value lines.
-
-This guarantees a server type deployed ahead of the frontend still shows
-something usable.
+The catalog's output shape and the per-type presentation (data-forward layout,
+copy rules, colour tokens, the default renderer's contents) are specified in
+[notifications-client.md](./notifications-client.md#presentation--data-forward-per-type).
 
 ## 5. API — `server/src/routes/notifications.js`
 
@@ -171,12 +166,15 @@ Every query is filtered by `req.user.id`; no cross-user reads.
 - **Query hook** — `useQuery(['notifications'], …, { refetchInterval: 60_000,
   refetchOnWindowFocus: true })`.
 - **Bell** — control in `AppHeader`'s `header-actions`, unread badge when
-  `unread_count > 0`, click → `/notifications`. `AppHeader` renders on all main
+  `unread_count > 0`, opens `/notifications`. `AppHeader` renders on all main
   pages, so the bell is global with no per-page wiring.
 - **Page** — `client/src/pages/Notifications.tsx`, route `/notifications` under
   `RequireAuth`. Renders each row through the catalog, falling back to the
-  default renderer for unknown types. Marks all read on open, then invalidates
-  `['notifications']`.
+  default renderer for unknown types.
+
+The read model (no auto-read on open), the swipe-to-read and "mark all read"
+interactions, and the per-type presentation are specified in
+[notifications-client.md](./notifications-client.md).
 
 ## 7. Polling is temporary — refactor when #54 lands
 

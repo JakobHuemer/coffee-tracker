@@ -113,18 +113,19 @@ router.post('/complete', requireAuth, (req, res) => {
   }));
 
   const allDone = tasks.every(t => t.completed);
-  let unlocked = [];
 
   if (allDone) {
-    // Only credit if not already credited today
+    // Only credit if not already credited today. Any unlock is persisted as a
+    // notification inside checkAfterGoalsComplete and reaches the client through
+    // the bell, so the response no longer returns an `unlocked` array (#32).
     const streak = db.prepare('SELECT * FROM user_streaks WHERE user_id = ?').get(req.user.id);
     if (streak?.last_goal_date !== today) {
-      unlocked = checkAfterGoalsComplete(req.user.id);
+      checkAfterGoalsComplete(req.user.id);
     }
   }
 
   const updatedStreak = db.prepare('SELECT * FROM user_streaks WHERE user_id = ?').get(req.user.id);
-  res.json({ tasks, allDone, unlocked, streak: updatedStreak });
+  res.json({ tasks, allDone, streak: updatedStreak });
 });
 
 module.exports = router;

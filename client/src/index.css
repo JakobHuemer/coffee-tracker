@@ -815,23 +815,96 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .ps-val { font-size: 1.3rem; font-weight: 700; color: var(--accent); letter-spacing: -0.03em; }
 .ps-lbl { font-size: 0.68rem; color: var(--text-muted); margin-top: 3px; }
 
-/* ── Unlock Toast ────────────────────────────────────────────────────────── */
-.unlock-toast {
-  position: fixed; top: 20px; right: 20px;
-  background: var(--surface); border: 1.5px solid var(--accent);
-  border-radius: 12px; padding: 14px 16px;
-  display: flex; align-items: flex-start; gap: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,.18);
-  z-index: 100; max-width: 300px;
-  animation: toast-in 0.15s ease-out;
-  cursor: pointer;
+/* ── Notifications (issue #32) ───────────────────────────────────────────── */
+/* Bell + unread badge in the header. */
+.notif-bell { position: relative; }
+.notif-badge {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
+  border-radius: 9px; background: var(--accent);
+  color: #fff; font-size: 0.62rem; font-weight: 700; line-height: 18px;
+  display: flex; align-items: center; justify-content: center;
 }
-@keyframes toast-in { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
-.ut-icon { font-size: 1.8rem; flex-shrink: 0; }
-.ut-body { flex: 1; }
-.ut-type { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
-.ut-name { font-size: 0.9rem; font-weight: 700; margin-top: 2px; }
-.ut-desc { font-size: 0.72rem; color: var(--text-sec); margin-top: 2px; }
+
+/* Page header row: title on the left, "mark all read" pill on the right. */
+.notif-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.notif-markall {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 13px; border-radius: 999px;
+  background: var(--surface2); border: 1.5px solid var(--border);
+  color: var(--text-sec); font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+.notif-markall:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.notif-markall:disabled { opacity: 0.45; cursor: default; }
+
+.notif-list { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; margin: 0; list-style: none; }
+.notif-empty { font-size: 0.85rem; color: var(--text-muted); padding: 24px 4px; text-align: center; }
+
+/* Swipe = native CSS scroll-snap. Each item is a horizontal scroll track of
+   three full-width panes: [ action ][ card ][ action ]. A scroll container
+   clips its own overflow with a plain rectangular edge (no border, no radius on
+   it), so the card and each action carry their OWN border-radius and are never
+   clipped against a rounded parent — that is what kills the corner seams. The
+   card starts centred; scroll-snapping it onto either action marks it read. */
+.ntf {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 100%; gap: 8px;
+  overflow-x: auto; overflow-y: hidden;
+  scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.ntf::-webkit-scrollbar { display: none; }
+.ntf > * { scroll-snap-align: center; }
+
+.ntf-action {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: 0; border-radius: 12px; cursor: pointer;
+  background: var(--accent); color: #fff; font-size: 0.78rem; font-weight: 700;
+}
+
+/* Card — one skeleton for every type: [ badge ][ body ], vertically centred.
+   The card fills the scroll track edge to edge, so its outline is an INSET
+   box-shadow (painted 1px inside the card) rather than a border at the very
+   clip edge — a border there gets shaved by the scrollport on the right. */
+.ntf-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-radius: 12px;
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--border);
+}
+.ntf[data-unread="true"] .ntf-card { background: var(--surface2); box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* Badge — fixed size everywhere; data-tone only recolours. */
+.ntf-badge {
+  flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; border: 1px solid transparent;
+}
+.ntf-badge[data-tone="up"]      { background: var(--success-bg); border-color: var(--success-bd); color: var(--success-fg); }
+.ntf-badge[data-tone="down"]    { background: var(--danger-bg);  border-color: var(--danger-bd);  color: var(--danger-fg); }
+.ntf-badge[data-tone="neutral"] { background: var(--accent-bg);  border-color: var(--accent);     color: var(--accent); }
+
+/* Body */
+.ntf-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ntf-head { display: flex; align-items: center; gap: 8px; }
+.ntf-title { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ntf-title [data-tone="up"]   { color: var(--success-fg); }
+.ntf-title [data-tone="down"] { color: var(--danger-fg); }
+.ntf-time { margin-left: auto; flex: 0 0 auto; font-size: 0.68rem; color: var(--text-muted); }
+.ntf-desc { font-size: 0.76rem; color: var(--text-sec); white-space: pre-line; }
+.ntf-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ntf-context { font-size: 0.72rem; color: var(--text-muted); }
+
+/* Pills — ONE geometry (size, weight, padding, radius); data-tone/variant only
+   recolour, never resize. */
+.ntf-pill {
+  display: inline-flex; align-items: center; line-height: 1;
+  font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
+}
+.ntf[data-unread="true"] .ntf-pill { background: var(--bg); }
+.ntf-pill[data-tone="up"]      { border-color: var(--success-bd); background: var(--success-bg); color: var(--success-fg); }
+.ntf-pill[data-tone="down"]    { border-color: var(--danger-bd);  background: var(--danger-bg);  color: var(--danger-fg); }
+.ntf-pill[data-variant="tag"]  { border-color: var(--accent);     background: var(--accent-bg);  color: var(--accent); }
 
 /* ── Top-right action cluster (dark toggle + profile icon) ───────────────── */
 /* Shared header action buttons (theme + profile) — one size everywhere. */

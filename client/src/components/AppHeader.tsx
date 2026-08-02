@@ -1,12 +1,18 @@
+import { useNavigate } from 'react-router-dom';
 import { useThemeStore } from '../store/theme';
+import { useNotifications } from '../hooks/useNotifications';
 import { AppLogo } from './AppLogo';
 import { Icon } from './Icon';
 
 // Single app header shared by every main page so the top bar looks identical
-// everywhere: brand on the left, theme toggle on the right. Profile lives in the
-// bottom nav.
+// everywhere: brand on the left, actions on the right. Profile lives in the
+// bottom nav. The bell lives here so it is global with no per-page wiring —
+// AppHeader renders on every main page (issue #32).
 export function AppHeader() {
   const { isDark, toggleDark } = useThemeStore();
+  const navigate = useNavigate();
+  const { data } = useNotifications();
+  const unread = data?.unread_count ?? 0;
 
   return (
     <header className="app-header">
@@ -18,6 +24,17 @@ export function AppHeader() {
         </div>
       </div>
       <div className="header-actions">
+        <button
+          className="header-btn notif-bell"
+          onClick={() => navigate('/notifications')}
+          title="Notifications"
+          aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+        >
+          <Icon name="bell" />
+          {unread > 0 && (
+            <span className="notif-badge" aria-hidden="true">{unread > 99 ? '99+' : unread}</span>
+          )}
+        </button>
         <a
           className="header-btn"
           href="https://github.com/JakobHuemer/coffee-tracker"

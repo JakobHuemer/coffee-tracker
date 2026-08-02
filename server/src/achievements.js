@@ -3,6 +3,7 @@ const db = require('./db');
 const { ACHIEVEMENTS } = require('./data/achievements');
 const { BADGES } = require('./data/badges');
 const { getUserTz, localDateStr, localTodayStr, localParts } = require('./time');
+const { createNotification, TYPES } = require('./notifications');
 
 // Civil day/hour for streaks and time-of-day achievements are evaluated in the
 // user's own timezone. See docs/time-and-timezones.md.
@@ -22,6 +23,13 @@ function unlockAchievement(userId, achievementId) {
   db.prepare(
     'INSERT INTO user_achievements (id, user_id, achievement_id, unlocked_at) VALUES (?, ?, ?, ?)'
   ).run(randomUUID(), userId, achievementId, Date.now());
+
+  // Persist the unlock as a self-contained notification (issue #32). The early
+  // `return null` on a duplicate above means a re-check emits nothing. Payload
+  // embeds every display field so the renderer never reads back into the defs.
+  createNotification(userId, TYPES.ACHIEVEMENT, {
+    id: def.id, name: def.name, icon: def.icon, description: def.description,
+  });
 
   const badges = checkBadgesForAchievement(userId, achievementId);
   return { def, badges };
@@ -54,6 +62,12 @@ function unlockBadge(userId, badgeId) {
   db.prepare(
     'INSERT INTO user_badges (id, user_id, badge_id, unlocked_at) VALUES (?, ?, ?, ?)'
   ).run(randomUUID(), userId, badgeId, Date.now());
+
+  // Every unlock write point routes through here (achievement-, ranking- and
+  // count-driven badges alike), so one emit covers them all (issue #32).
+  createNotification(userId, TYPES.BADGE, {
+    id: def.id, name: def.name, icon: def.icon, description: def.description,
+  });
   return def;
 }
 

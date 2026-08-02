@@ -198,14 +198,17 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), async
     return res.status(500).json({ error: 'Internal server error' });
   }
 
-  const unlocked = checkAfterCoffeeLog(req.user.id);
+  // Runs the unlock checks for their side effect only: any unlock is persisted
+  // as a notification inside these functions now and reaches the client through
+  // the bell, so the response no longer carries an `unlocked` array (issue #32).
+  checkAfterCoffeeLog(req.user.id);
 
   const entry = {
     id, user_id: req.user.id, coffee_id: coffeeId, caffeine_mg: coffee.caffeine,
     logged_at, photo_path: null, photo_url: null, image: images.variantsFor(image_id),
     description: desc, is_public,
   };
-  res.json({ entry, unlocked });
+  res.json({ entry });
 });
 
 router.patch('/entries/:id', requireAuth, (req, res) => {

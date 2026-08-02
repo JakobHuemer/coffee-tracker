@@ -17,6 +17,7 @@ import { Milestones } from './pages/Milestones';
 import { Compete } from './pages/Compete';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
+import { Notifications } from './pages/Notifications';
 import type { User } from './types';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -88,6 +89,7 @@ export function App() {
           <Route path="/compare" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/compare/:username" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+          <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
           <Route path="/achievements" element={<Navigate to="/badges" replace />} />
           <Route path="/rankings" element={<Navigate to="/stats" replace />} />

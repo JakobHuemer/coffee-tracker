@@ -8,11 +8,10 @@ import { ResponsiveImage } from '../components/ResponsiveImage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Icon } from '../components/Icon';
 import { TimezonePicker } from '../components/TimezonePicker';
-import { UnlockToast } from '../components/UnlockToast';
 import { useAuthStore } from '../store/auth';
 import type {
   Challenge, CompeteScope, CompetitionsResponse, CompetitionHistoryResponse, GroupsResponse, GroupDetailResponse,
-  LeaderboardEntry, LeaderboardResponse, Match, MatchMode, MatchParticipant, PersonalHistoryEntry, UnlockNotification, User, ImageField,
+  LeaderboardEntry, LeaderboardResponse, Match, MatchMode, MatchParticipant, PersonalHistoryEntry, User, ImageField,
 } from '../types';
 
 // Global vs Group is the top-level split (issue #53): it scopes WHICH matches,
@@ -1017,20 +1016,16 @@ function challengePct(current: number, target: number) { return Math.min(100, Ma
 // "Challenges" tab (issue #51); personal challenges were removed entirely.
 function ChallengesSection() {
   const qc = useQueryClient();
-  const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
 
   const { data: challenges = [], isLoading } = useQuery<Challenge[]>({
     queryKey: ['challenges'], queryFn: () => api.get('/challenges'), refetchInterval: 60000,
   });
 
   const join = useMutation({
-    mutationFn: (id: string) => api.post<{ ok: boolean; unlocked: UnlockNotification[] }>(`/challenges/${id}/join`),
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['challenges'] });
-      if (data.unlocked?.length) {
-        setNotifications(data.unlocked);
-        qc.invalidateQueries({ queryKey: ['badges'] });
-        qc.invalidateQueries({ queryKey: ['achievements'] });
+    mutationFn: (id: string) => api.post<{ ok: boolean }>(`/challenges/${id}/join`),
+    onSuccess: () => {
+      for (const key of ['challenges', 'badges', 'achievements']) {
+        qc.invalidateQueries({ queryKey: [key] });
       }
     },
   });
@@ -1041,7 +1036,6 @@ function ChallengesSection() {
 
   return (
     <>
-      <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
       <div className="field-hint">Everyone contributes to one shared target.</div>
       {community.length === 0
         ? <div className="cmp-empty">No community challenges right now.</div>

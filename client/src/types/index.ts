@@ -190,12 +190,24 @@ export interface CasualtiesData {
   disclaimer: string;
 }
 
-export interface UnlockNotification {
-  type: 'achievement' | 'badge';
+// ── Notifications (issue #32) ────────────────────────────────────────────────
+// An immutable, self-contained event. `payload` is opaque here on purpose: the
+// frontend render catalog (src/notifications/catalog.tsx) is the only thing that
+// interprets it, keyed by `type`, with a default renderer for unknown types.
+// `Notification` is a DOM global, hence `AppNotification`.
+export type NotificationType = 'match_end' | 'achievement' | 'badge';
+
+export interface AppNotification {
   id: string;
-  name: string;
-  description: string;
-  icon: string;
+  type: NotificationType | string;
+  payload: unknown;
+  read_at: number | null;
+  created_at: number;
+}
+
+export interface NotificationsResponse {
+  notifications: AppNotification[];
+  unread_count: number;
 }
 
 export interface Stats {
@@ -249,21 +261,21 @@ export interface AuthResponse {
   user: User;
 }
 
+// Unlocks are no longer surfaced inline (issue #32): a successful unlock is
+// persisted as a notification and reaches the client through the bell, so these
+// envelopes carry only their primary result now.
 export interface LogCoffeeResponse {
   entry: CoffeeEntry;
-  unlocked: UnlockNotification[];
 }
 
 export interface GoalsCompleteResponse {
   tasks: Task[];
   allDone: boolean;
-  unlocked: UnlockNotification[];
   streak: Streak;
 }
 
 export interface JoinChallengeResponse {
   ok: boolean;
-  unlocked: UnlockNotification[];
 }
 
 export interface RankingsResponse {
@@ -274,7 +286,6 @@ export interface RankingsResponse {
 export interface CompareResponse {
   me: CompareUserProfile;
   them: CompareUserProfile;
-  unlocked: UnlockNotification[];
 }
 
 /* ── Buzz (energy score) ─────────────────────────────────────────────────────

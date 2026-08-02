@@ -3,13 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuthStore } from '../store/auth';
-import { UnlockToast } from '../components/UnlockToast';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { CompareContent } from './Compare';
 import type {
   GoalsResponse, StreaksResponse,
-  RankingEntry, Stats as StatsData, Streak, Task, UnlockNotification,
+  RankingEntry, Stats as StatsData, Task,
 } from '../types';
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -20,20 +19,16 @@ type Tab = 'goals' | 'rankings' | 'compare';
 
 // ── Tab: Goals ────────────────────────────────────────────────────────────────
 
-function GoalsTab({ setNotifications }: { setNotifications: (n: UnlockNotification[]) => void }) {
+function GoalsTab() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery<GoalsResponse>({
     queryKey: ['goals'], queryFn: () => api.get('/goals/today'), refetchInterval: 30000,
   });
   const completeMutation = useMutation({
-    mutationFn: () => api.post<{ tasks: Task[]; allDone: boolean; unlocked: UnlockNotification[]; streak: Streak }>('/goals/complete'),
-    onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: ['goals'] });
-      qc.invalidateQueries({ queryKey: ['streaks'] });
-      if (result.unlocked?.length) {
-        setNotifications(result.unlocked);
-        qc.invalidateQueries({ queryKey: ['badges'] });
-        qc.invalidateQueries({ queryKey: ['achievements'] });
+    mutationFn: () => api.post<{ tasks: Task[]; allDone: boolean }>('/goals/complete'),
+    onSuccess: () => {
+      for (const key of ['goals', 'streaks', 'badges', 'achievements']) {
+        qc.invalidateQueries({ queryKey: [key] });
       }
     },
   });
@@ -179,7 +174,6 @@ function RankingsTab() {
 
 export function Stats() {
   const [activeTab, setActiveTab] = useState<Tab>('goals');
-  const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
 
   const { data: stats } = useQuery<StatsData>({
     queryKey: ['stats'], queryFn: () => api.get('/coffees/stats'), refetchInterval: 30000,
@@ -206,7 +200,6 @@ export function Stats() {
   return (
     <div className="page">
       <AppHeader />
-      <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
 
       <div className="page-header">
         <h2>Stats</h2>
@@ -254,7 +247,7 @@ export function Stats() {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'goals'    && <GoalsTab setNotifications={setNotifications} />}
+      {activeTab === 'goals'    && <GoalsTab />}
       {activeTab === 'rankings' && <RankingsTab />}
       {activeTab === 'compare'  && <div className="stats-tab-body"><CompareContent /></div>}
     </div>
