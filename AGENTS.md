@@ -144,6 +144,42 @@ directly into `VALUES.md` in its own separate commit. Note it in one inline
 sentence so the user sees it happened; don't block work or ask for an approval
 loop. Never write values into AGENTS.md.
 
+## Notification & event payloads must embed everything
+
+A notification — and any immutable, append-only event row — is self-contained:
+the renderer never reads back into live tables, so **every field the UI shows
+must live in the payload**, not just ids. When building or extending such a
+schema, do not be sloppy:
+
+- **Verify against the LIVE schema, not memory.** Introspect the real tables
+  (`PRAGMA table_info(<t>)`) and account for every display-relevant column. A
+  match, for example, carries `title` **and** `period_key` **and** group
+  linkage — and the group's name lives in `competition_groups`, not `matches`.
+- **Embed names next to ids.** An id-only payload contradicts immutability (it
+  forces a later fetch that may find the source renamed or deleted). Store both.
+- **Omit a field only on purpose, and say why in the spec** (e.g. v2 dropped
+  team mode, so `side` / `contribution_share` are intentionally left out).
+
+A silent omission here is a data-loss bug: the fact is gone from a row that can
+never be recomputed. See [docs/notifications.md](./docs/notifications.md).
+
+### Consult the user before adding any new notification
+
+When a new feature would fire a **new** notification, do **not** decide its shape
+yourself. Stop and ask the user first about:
+
+- **What the notification is** — its nature: achievement-like, an action with a
+  positive or negative effect, an informational event, etc.
+- **How it surfaces — a toast or a fullscreen animation.** These are two
+  distinct delivery surfaces:
+  - **Toast** — the small transient popup. Examples: achievements, badges.
+  - **Fullscreen animation** — a bigger, foreground moment. Examples: rank-up,
+    Elo change, match win. (This surface is being built in this session.)
+
+Only after the user answers both do you implement it. See
+[docs/notifications-client.md](./docs/notifications-client.md) for how the client
+surfaces (bell, page, toast) behave.
+
 ## Issues & labels
 
 Every issue carries **one `priority:`**, **one `type:`**, and optionally
@@ -266,6 +302,16 @@ that makes it safe. Do not delete it.
 - **Never change the logo geometry in only one of the two files.** See the
   section above. Out-of-sync shapes are a red/high hard fail, reported to the
   developer in chat before anything else.
+- **No scale animations as basic-interaction feedback.** Do not reach for a
+  `transform: scale()` pop/bounce as the reflex "satisfying" response to a
+  button press, tap, hover, toggle, or an item being actioned (marked read,
+  completed, added). These viby scale-pops on everything make the product look
+  unpolished and over-animated — and a *slow* scale is the worst of all. Feedback
+  for basic interactions should come from colour, opacity, or position
+  (translate), or from nothing at all. A scale is allowed only when the size
+  change *is* the content/meaning of the interaction (e.g. zoom, a drag handle
+  actually resizing something) and is explicitly intended — never as a decorative
+  add-on. When in doubt, ship it without the scale.
 - Don't split the frontend back into its own image/service/proxy.
 - Don't add schema changes outside `server/src/migrations/`.
 - Don't introduce npm/yarn/pnpm or a second lockfile.

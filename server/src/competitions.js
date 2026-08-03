@@ -18,6 +18,7 @@ const {
 } = require('./competition-core');
 const { localDateStr, localWallInstant, localDayBounds, isValidTz, DEFAULT_TZ } = require('./time');
 const { scoreMgSql } = require('./data/coffee-scores');
+const { createNotification, TYPES } = require('./notifications');
 
 // How often the ticker looks for work. A match settles on the first tick after
 // its window closes, so this is also the worst-case settlement lag.
@@ -319,6 +320,19 @@ function settleMatch(match, now = Date.now()) {
   const results = settleFfa(players, match.k_factor, marginScale);
 
   const scoreByUser = new Map(players.map((p) => [p.userId, p.score]));
+
+  // Rank each participant by score desc for the match_end notification (issue
+  // #32). The roster order is already total (joined_at, user_id), so a score
+  // tie resolves deterministically. 1-based; every player gets a rank.
+  const ranked = [...players].sort((a, b) => b.score - a.score);
+  const rankByUser = new Map(ranked.map((p, i) => [p.userId, i + 1]));
+
+  // Group name is frozen into every payload so the renderer never reads back
+  // into competition_groups. null for a group-less (global) match.
+  const groupName = match.group_id
+    ? (db.prepare('SELECT name FROM competition_groups WHERE id = ?').get(match.group_id)?.name ?? null)
+    : null;
+
   // `side` and `contribution_share` only ever meant something in team mode,
   // which v2 dropped; the columns stay because settled team matches still hold
   // real data in them. A v2 settlement leaves them as it found them: null.
@@ -336,6 +350,30 @@ function settleMatch(match, now = Date.now()) {
         match.id, r.userId,
       );
       writeRating(r.userId, r.ratingAfter, now);
+
+      // One immutable match_end notification per participant — winners, losers
+      // and away users alike (issue #32). All display data is frozen into the
+      // payload (ids AND names) so the renderer never reads back into live
+      // tables. Emitted inside the settlement transaction: rows commit
+      // atomically with the settlement, or not at all. `side` /
+      // `contribution_share` are deliberately omitted (v2 dropped team mode);
+      // the opponent roster is omitted by design — this is a per-user result.
+      createNotification(r.userId, TYPES.MATCH_END, {
+        match_id: match.id,
+        title: match.title,
+        group_id: match.group_id,
+        group_name: groupName,
+        mode: match.mode,
+        period_key: match.period_key,
+        scope_start: match.scope_start,
+        scope_end: match.scope_end,
+        rank: rankByUser.get(r.userId),
+        participant_count: players.length,
+        score: scoreByUser.get(r.userId),
+        rating_before: r.ratingBefore,
+        rating_after: r.ratingAfter,
+        delta: r.delta,
+      });
     }
     db.prepare("UPDATE matches SET state = 'settled', settled_at = ? WHERE id = ?").run(now, match.id);
   })();
@@ -357,6 +395,16 @@ function tick(now = Date.now()) {
   ensureRecurringMatches(now);
   lockDueLobbies(now);
   settleDueMatches(now);
+  purgeOldNotifications(now);
+}
+
+// Bounded growth for the notifications table (issue #32): drop rows the user
+// has already read and left untouched for 90 days. An unread notification is
+// never deleted, however old.
+const NOTIFICATION_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+function purgeOldNotifications(now = Date.now()) {
+  db.prepare('DELETE FROM notifications WHERE read_at IS NOT NULL AND read_at < ?')
+    .run(now - NOTIFICATION_TTL_MS);
 }
 
 let timer = null;

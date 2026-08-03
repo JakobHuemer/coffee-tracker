@@ -1,3 +1,12 @@
+/* Self-hosted webfonts for the match reveal, bundled so it renders identically
+   on every device (no system-font drift, no CDN — same-origin, per VALUES.md).
+   Sora = display; JetBrains Mono = the scoreboard numbers (fixed-width digits).
+   See docs/notifications-reveals.md. */
+@font-face { font-family: 'Sora'; font-style: normal; font-weight: 600; font-display: swap; src: url('./assets/fonts/sora-600.woff2') format('woff2'); }
+@font-face { font-family: 'Sora'; font-style: normal; font-weight: 800; font-display: swap; src: url('./assets/fonts/sora-800.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('./assets/fonts/jbmono-400.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 800; font-display: swap; src: url('./assets/fonts/jbmono-800.woff2') format('woff2'); }
+
 /* ── CSS Variables (default theme = Serene) ──────────────────────────────── */
 :root {
   --bg:           #EDF4F9;
@@ -815,23 +824,239 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .ps-val { font-size: 1.3rem; font-weight: 700; color: var(--accent); letter-spacing: -0.03em; }
 .ps-lbl { font-size: 0.68rem; color: var(--text-muted); margin-top: 3px; }
 
-/* ── Unlock Toast ────────────────────────────────────────────────────────── */
-.unlock-toast {
-  position: fixed; top: 20px; right: 20px;
-  background: var(--surface); border: 1.5px solid var(--accent);
-  border-radius: 12px; padding: 14px 16px;
-  display: flex; align-items: flex-start; gap: 12px;
-  box-shadow: 0 4px 24px rgba(0,0,0,.18);
-  z-index: 100; max-width: 300px;
-  animation: toast-in 0.15s ease-out;
-  cursor: pointer;
+/* ── Notifications (issue #32) ───────────────────────────────────────────── */
+/* Bell + unread badge in the header. */
+.notif-bell { position: relative; }
+.notif-badge {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 18px; height: 18px; padding: 0 4px; box-sizing: border-box;
+  border-radius: 9px; background: var(--accent);
+  color: #fff; font-size: 0.62rem; font-weight: 700; line-height: 18px;
+  display: flex; align-items: center; justify-content: center;
 }
-@keyframes toast-in { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
-.ut-icon { font-size: 1.8rem; flex-shrink: 0; }
-.ut-body { flex: 1; }
-.ut-type { font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); }
-.ut-name { font-size: 0.9rem; font-weight: 700; margin-top: 2px; }
-.ut-desc { font-size: 0.72rem; color: var(--text-sec); margin-top: 2px; }
+
+/* Page header row: title on the left, "mark all read" pill on the right. */
+.notif-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.notif-markall {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 13px; border-radius: 999px;
+  background: var(--surface2); border: 1.5px solid var(--border);
+  color: var(--text-sec); font-size: 0.72rem; font-weight: 600;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+.notif-markall:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.notif-markall:disabled { opacity: 0.45; cursor: default; }
+
+.notif-list { display: flex; flex-direction: column; gap: 8px; padding: 0 16px; margin: 0; list-style: none; }
+.notif-empty { font-size: 0.85rem; color: var(--text-muted); padding: 24px 4px; text-align: center; }
+
+/* Swipe = a custom pointer-drag (see NotificationRow). The row clips its own
+   rounded rectangle, so the "Read" pane behind can be a plain full-bleed layer
+   with no radius of its own and never seams against the card's corners. */
+.ntf { position: relative; overflow: hidden; border-radius: 12px; }
+
+/* "Read" pane — behind the card, revealed on the side the card is dragged away
+   from. Neutral/grey at rest; the row's data-over flag (set once the drag passes
+   the threshold) pops it green with the check scaled up, the "release = read"
+   cue. Also a real button, so mouse/keyboard mark read via focus + click. */
+.ntf-pane {
+  position: absolute; inset: 0; z-index: 0;
+  display: flex; align-items: center; gap: 6px;
+  border: 0; cursor: pointer; font-size: 0.8rem; font-weight: 700;
+  background: var(--surface2); color: var(--text-muted);
+  transition: background 0.03s ease, color 0.03s ease;
+}
+.ntf[data-side="left"]  .ntf-pane { justify-content: flex-start; padding-left: 22px; }
+.ntf[data-side="right"] .ntf-pane { justify-content: flex-end;   padding-right: 22px; }
+.ntf-pane-check { display: inline-flex; transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.ntf[data-over="true"] .ntf-pane { background: var(--success-bg); color: var(--success-fg); }
+.ntf[data-over="true"] .ntf-pane-check { transform: scale(1.3); }
+
+/* Draggable card sits above the pane and is opaque, so at rest it fully hides
+   the pane. touch-action pan-y lets a vertical gesture scroll the page while we
+   own the horizontal drag. Transform is written imperatively during drag/spring,
+   so no `transition` on it here — that would fight the JS spring. */
+.ntf-card-drag { position: relative; z-index: 1; touch-action: pan-y; user-select: none; }
+.ntf-card[data-reveal] { cursor: pointer; }
+/* Keyboard reveal: focusing the pane nudges the card aside (no transition, so it
+   never interferes with the spring's inline transform). */
+.ntf[data-unread="true"]:focus-within .ntf-card-drag { transform: translateX(30%); }
+
+/* Marking read: fade the unread tint + accent edge to the plain read style. Only
+   colours animate (never transform), so it runs alongside the spring cleanly. */
+.ntf[data-fading="true"] .ntf-card { animation: ntf-read-fade 0.28s ease both; }
+@keyframes ntf-read-fade {
+  from { background: var(--surface2); box-shadow: inset 0 0 0 1px var(--accent); }
+  to   { background: var(--surface);  box-shadow: inset 0 0 0 1px var(--border); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ntf-card-drag { transition: none; }
+  .ntf[data-fading="true"] .ntf-card { animation-duration: 0.001s; }
+}
+
+/* Card — one skeleton for every type: [ badge ][ body ], vertically centred.
+   The card fills the scroll track edge to edge, so its outline is an INSET
+   box-shadow (painted 1px inside the card) rather than a border at the very
+   clip edge — a border there gets shaved by the scrollport on the right. */
+.ntf-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-radius: 12px;
+  background: var(--surface); box-shadow: inset 0 0 0 1px var(--border);
+}
+.ntf[data-unread="true"] .ntf-card { background: var(--surface2); box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* Badge — fixed size everywhere; data-tone only recolours. */
+.ntf-badge {
+  flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; border: 1px solid transparent;
+}
+.ntf-badge[data-tone="up"]      { background: var(--success-bg); border-color: var(--success-bd); color: var(--success-fg); }
+.ntf-badge[data-tone="down"]    { background: var(--danger-bg);  border-color: var(--danger-bd);  color: var(--danger-fg); }
+.ntf-badge[data-tone="neutral"] { background: var(--accent-bg);  border-color: var(--accent);     color: var(--accent); }
+
+/* Body */
+.ntf-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ntf-head { display: flex; align-items: center; gap: 8px; }
+.ntf-title { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ntf-title [data-tone="up"]   { color: var(--success-fg); }
+.ntf-title [data-tone="down"] { color: var(--danger-fg); }
+.ntf-time { margin-left: auto; flex: 0 0 auto; font-size: 0.68rem; color: var(--text-muted); }
+.ntf-desc { font-size: 0.76rem; color: var(--text-sec); white-space: pre-line; }
+.ntf-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ntf-context { font-size: 0.72rem; color: var(--text-muted); }
+
+/* Pills — ONE geometry (size, weight, padding, radius); data-tone/variant only
+   recolour, never resize. */
+.ntf-pill {
+  display: inline-flex; align-items: center; line-height: 1;
+  font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-primary);
+}
+.ntf[data-unread="true"] .ntf-pill { background: var(--bg); }
+.ntf-pill[data-tone="up"]      { border-color: var(--success-bd); background: var(--success-bg); color: var(--success-fg); }
+.ntf-pill[data-tone="down"]    { border-color: var(--danger-bd);  background: var(--danger-bg);  color: var(--danger-fg); }
+.ntf-pill[data-variant="tag"]  { border-color: var(--accent);     background: var(--accent-bg);  color: var(--accent); }
+
+/* Toasts — transient popups for newly-arrived, non-match notifications. One
+   entrance animation for all; no per-type variety. */
+.ntf-toast-wrap {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 200; display: flex; flex-direction: column; gap: 8px;
+  width: min(360px, calc(100vw - 24px)); pointer-events: none;
+}
+.ntf-toast {
+  pointer-events: auto; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  border-radius: 12px; background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--accent), var(--shadow);
+  animation: ntf-toast-in 0.22s ease-out;
+}
+@keyframes ntf-toast-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+.ntf-toast-icon {
+  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-bg); color: var(--accent); border: 1px solid var(--accent);
+}
+.ntf-toast-body { min-width: 0; }
+.ntf-toast-title { font-size: 0.85rem; font-weight: 700; color: var(--text-primary); }
+.ntf-toast-text { font-size: 0.76rem; color: var(--text-sec); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A generic match toast is tappable to open the reveal — flag it. */
+.ntf-toast[data-reveal="true"]::after { content: "reveal"; margin-left: auto; flex: 0 0 auto; font-size: 0.66rem; font-weight: 800; color: var(--accent); letter-spacing: .02em; }
+
+/* ── Fullscreen match reveal (issue #32; docs/notifications-reveals.md) ──────
+   A dark, cinematic moment in BOTH themes (deliberate single visual world):
+   white text on a dark scrim, with the result/particle colours pulled from the
+   theme's success/danger tokens so they read on the dark ground either way. */
+.nr {
+  position: fixed; inset: 0; z-index: 500; overflow: hidden; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+  font-family: 'Sora', system-ui, -apple-system, sans-serif;
+  --nr-mono: 'JetBrains Mono', ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* The reveal is always a dark surface, so tone colours are the bright-on-dark
+     values (the app's dark-theme green/red) regardless of the active theme — the
+     light-theme green/red are dull and muddy here. */
+  --success-fg: #8FD69C; --danger-fg: #FF9A90;
+  /* Frosted dark glass: the page behind stays visible but heavily blurred and
+     darkened, so it reads the same over a light or dark theme. Ambient colour
+     comes from soft blobs (.nr-tone), never a hard-edged gradient. */
+  background: rgba(6, 9, 14, .5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1) brightness(.55);
+  backdrop-filter: blur(20px) saturate(1.1) brightness(.55);
+  animation: nr-fade .2s ease-out;
+}
+@keyframes nr-fade { from { opacity: 0; } to { opacity: 1; } }
+/* Ambient tone — two big, soft, heavily-blurred colour blobs bleeding from the
+   corners. No visible gradient edge; just a vague wash that tints the surface. */
+.nr-tone { position: absolute; inset: -25%; opacity: 0; transition: opacity .6s ease; filter: blur(90px); pointer-events: none; }
+.nr.win  .nr-tone { opacity: .9; background:
+  radial-gradient(38% 34% at 26% 30%, color-mix(in srgb, var(--success-fg) 62%, transparent), transparent 68%),
+  radial-gradient(42% 38% at 78% 74%, color-mix(in srgb, var(--success-fg) 44%, transparent), transparent 70%); }
+.nr.loss .nr-tone { opacity: .85; background:
+  radial-gradient(40% 36% at 24% 32%, color-mix(in srgb, var(--danger-fg) 54%, transparent), transparent 68%),
+  radial-gradient(44% 40% at 80% 72%, color-mix(in srgb, var(--danger-fg) 40%, transparent), transparent 70%); }
+.nr.tie  .nr-tone { opacity: .75; background:
+  radial-gradient(42% 38% at 30% 28%, rgba(120, 160, 200, .30), transparent 70%),
+  radial-gradient(46% 40% at 76% 76%, rgba(90, 120, 160, .24), transparent 72%); }
+
+.nr-stage { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 28px; text-align: center; }
+.nr-progress { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+.nr-progress i { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,.28); }
+.nr-progress i.active { background: #fff; }
+
+.nr-row { opacity: 0; transform: translateY(16px); }
+.nr-row.in { opacity: 1; transform: none; }
+.nr.win  .nr-row.in { transition: opacity .32s ease, transform .42s cubic-bezier(.2,1.3,.4,1); }
+.nr.loss .nr-row.in { transition: opacity .5s ease, transform .7s cubic-bezier(.25,.9,.3,1); }
+.nr.tie  .nr-row.in { transition: opacity .4s ease, transform .5s cubic-bezier(.2,.9,.3,1); }
+
+.nr-eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .66rem; font-weight: 600; color: #fff; opacity: .6; }
+.nr-result { position: relative; font-size: 3.6rem; font-weight: 800; letter-spacing: -.03em; line-height: .95; }
+.nr.win  .nr-result { color: var(--success-fg); text-shadow: 0 0 40px color-mix(in srgb, var(--success-fg) 50%, transparent); }
+.nr.loss .nr-result { color: var(--danger-fg); text-shadow: 0 0 34px color-mix(in srgb, var(--danger-fg) 34%, transparent); }
+.nr.tie  .nr-result { color: #fff; text-shadow: 0 0 30px rgba(255,255,255,.22); }
+
+.nr-sweep { position: absolute; inset: -8% -14%; pointer-events: none; overflow: hidden; opacity: 0; }
+.nr.win .nr-sweep.run { opacity: 1; }
+.nr-sweep::before { content: ""; position: absolute; top: 0; bottom: 0; width: 45%; left: -60%; background: linear-gradient(105deg, transparent, rgba(255,255,255,.7), transparent); transform: skewX(-18deg); }
+.nr.win .nr-sweep.run::before { animation: nr-sweep .6s ease-out .05s forwards; }
+@keyframes nr-sweep { from { left: -60%; } to { left: 130%; } }
+
+.nr-shock { position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%; pointer-events: none; opacity: 0; }
+.nr.win  .nr-shock.run { animation: nr-shock .55s cubic-bezier(.15,.7,.3,1) forwards; border: 3px solid var(--success-fg); }
+.nr.loss .nr-shock.run { animation: nr-shock-heavy .8s cubic-bezier(.3,.6,.2,1) forwards; border: 4px solid var(--danger-fg); }
+@keyframes nr-shock { 0% { opacity: .9; transform: scale(.4); } 100% { opacity: 0; transform: scale(6); } }
+@keyframes nr-shock-heavy { 0% { opacity: .85; transform: scale(.5); } 100% { opacity: 0; transform: scale(7.5); } }
+
+.nr-place { color: #fff; font-weight: 800; font-size: 1.5rem; }
+.nr-place small { font-size: .8rem; font-weight: 600; opacity: .7; }
+
+/* delta is the hero; final rating is a quiet, decoupled resting value */
+.nr-delta-row { display: flex; flex-direction: column; align-items: center; }
+.nr-delta { font-family: var(--nr-mono); font-variant-numeric: tabular-nums; font-size: 3.9rem; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.nr.win  .nr-delta { color: var(--success-fg); text-shadow: 0 0 34px color-mix(in srgb, var(--success-fg) 55%, transparent); }
+.nr.loss .nr-delta { color: var(--danger-fg); text-shadow: 0 0 30px color-mix(in srgb, var(--danger-fg) 45%, transparent); }
+.nr.tie  .nr-delta { color: #fff; text-shadow: 0 0 26px rgba(255,255,255,.28); }
+.nr-final { color: #fff; opacity: .62; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.16); min-width: 78px; }
+.nr-final b { font-family: var(--nr-mono); font-variant-numeric: tabular-nums; font-size: 1.15rem; font-weight: 400; letter-spacing: .08em; }
+
+.nr-hint { position: absolute; left: 0; right: 0; bottom: 24px; text-align: center; color: #fff; opacity: .5; font-size: .72rem; letter-spacing: .02em; }
+
+.nr-spark { position: absolute; width: 7px; height: 7px; border-radius: 50%; left: 50%; top: 50%; pointer-events: none; animation: nr-spark .66s ease-out forwards; }
+@keyframes nr-spark { 0% { transform: translate(-50%,-50%) scale(1); opacity: 1; } 100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(.2); opacity: 0; } }
+.nr-shard { position: absolute; width: 8px; height: 8px; border-radius: 2px; left: 50%; top: 50%; pointer-events: none; animation: nr-shard .95s cubic-bezier(.35,.2,.5,1) forwards; }
+@keyframes nr-shard { 0% { transform: translate(-50%,-50%) rotate(0) scale(1); opacity: 1; } 100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(140deg) scale(.4); opacity: 0; } }
+
+.nr-stage.shake-win  { animation: nr-shakeW .34s ease-out; }
+.nr-stage.shake-loss { animation: nr-shakeL .5s cubic-bezier(.3,.7,.4,1); }
+@keyframes nr-shakeW { 0%,100%{transform:translate(0,0)} 25%{transform:translate(0,-3px)} 60%{transform:translate(0,2px)} }
+@keyframes nr-shakeL { 0%,100%{transform:translate(0,0)} 15%{transform:translate(-4px,3px)} 35%{transform:translate(5px,4px)} 55%{transform:translate(-3px,2px)} 80%{transform:translate(2px,1px)} }
+
+@media (prefers-reduced-motion: reduce) {
+  .nr { animation: none; }
+  .nr-row { transition: none !important; }
+  .nr-spark, .nr-shard, .nr-shock, .nr-stage.shake-win, .nr-stage.shake-loss, .nr.win .nr-sweep.run::before { animation: none !important; }
+}
 
 /* ── Top-right action cluster (dark toggle + profile icon) ───────────────── */
 /* Shared header action buttons (theme + profile) — one size everywhere. */

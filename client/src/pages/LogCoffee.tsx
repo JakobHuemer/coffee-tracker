@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../store/auth';
-import { UnlockToast } from '../components/UnlockToast';
 import { Icon } from '../components/Icon';
 import {
   PastTimePicker, currentPastTime, resolvePastTime, useNow, type PastTime,
@@ -10,7 +9,7 @@ import {
 import { getSkipSpacing } from '../devFlags';
 import { api } from '../api/client';
 import { prepareImageUpload } from '../lib/image';
-import type { Coffee, UnlockNotification } from '../types';
+import type { Coffee } from '../types';
 
 // Display label per drink class (issue #11). The server sends the class id on
 // each catalog item; the client owns the label, mirroring how icon keys resolve.
@@ -46,7 +45,6 @@ export function LogCoffee() {
   const [pastTime, setPastTime] = useState<PastTime>(currentPastTime);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [notifications, setNotifications] = useState<UnlockNotification[]>([]);
 
   // Two inputs, not one. A single `accept="image/*"` input hands the choice to
   // the platform, and on Android 13+ that means the system photo picker, which
@@ -160,13 +158,7 @@ export function LogCoffee() {
         'energy']) {
         qc.invalidateQueries({ queryKey: [key] });
       }
-      if (data.unlocked?.length) {
-        setNotifications(data.unlocked);
-        // Brief pause so the toast is visible before navigating.
-        setTimeout(() => navigate('/'), 2500);
-      } else {
-        navigate('/');
-      }
+      navigate('/');
     } catch {
       setError('Network error. Please try again.');
       setSubmitting(false);
@@ -175,8 +167,6 @@ export function LogCoffee() {
 
   return (
     <div className="page log-page">
-      <UnlockToast notifications={notifications} onClear={() => setNotifications([])} />
-
       {/* `capture` is the whole reason these are separate elements: it is an
           attribute, not an argument, so one input cannot offer both sources. */}
       <input

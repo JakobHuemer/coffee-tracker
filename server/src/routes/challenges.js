@@ -116,8 +116,10 @@ router.post('/:id/join', requireAuth, (req, res) => {
     'INSERT INTO challenge_participants (id, challenge_id, user_id, joined_at) VALUES (?, ?, ?, ?)'
   ).run(randomUUID(), req.params.id, req.user.id, Date.now());
 
-  const unlocked = checkAfterFirstChallenge(req.user.id);
-  res.json({ ok: true, unlocked });
+  // Unlock side effect only — any unlock is persisted as a notification and
+  // reaches the client through the bell, not this response (issue #32).
+  checkAfterFirstChallenge(req.user.id);
+  res.json({ ok: true });
 });
 
 router.get('/:id', requireAuth, (req, res) => {

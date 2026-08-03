@@ -70,7 +70,9 @@ router.get('/:username', requireAuth, (req, res) => {
 
   const myStats = buildUserStats(req.user.id);
   const theirStats = buildUserStats(target.id);
-  const unlocked = checkAfterCompare(req.user.id, target.id);
+  // Unlock side effect only — persisted as a notification and delivered through
+  // the bell, so no `unlocked` array on this response (issue #32).
+  checkAfterCompare(req.user.id, target.id);
   const me = db.prepare('SELECT id, username, avatar, profile_photo, image_id FROM users WHERE id = ?').get(req.user.id);
 
   function withPhotoUrl(u) {
@@ -85,7 +87,6 @@ router.get('/:username', requireAuth, (req, res) => {
   res.json({
     me: { ...withPhotoUrl(me), featured_badges: resolvedFeaturedBadges(req.user.id), stats: myStats },
     them: { ...withPhotoUrl(target), featured_badges: resolvedFeaturedBadges(target.id), stats: theirStats },
-    unlocked,
   });
 });
 

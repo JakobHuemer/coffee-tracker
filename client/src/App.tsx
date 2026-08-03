@@ -17,6 +17,9 @@ import { Milestones } from './pages/Milestones';
 import { Compete } from './pages/Compete';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
+import { Notifications } from './pages/Notifications';
+import { NotificationToaster } from './components/NotificationToaster';
+import { RevealProvider } from './notifications/RevealProvider';
 import type { User } from './types';
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -63,7 +66,7 @@ export function App() {
   const isAuth = location.pathname === '/auth';
 
   return (
-    <>
+    <RevealProvider active={!!token && !isAuth}>
       {/* Animated caffeine background disabled for now — see BgCanvas. */}
       <div id="app-wrap">
         <Routes>
@@ -88,6 +91,7 @@ export function App() {
           <Route path="/compare" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/compare/:username" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+          <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
           <Route path="/achievements" element={<Navigate to="/badges" replace />} />
           <Route path="/rankings" element={<Navigate to="/stats" replace />} />
@@ -97,7 +101,8 @@ export function App() {
         </Routes>
         {token && !isAuth && <BottomNav />}
       </div>
-    </>
+      {token && !isAuth && <NotificationToaster />}
+    </RevealProvider>
   );
 }
 
