@@ -8,6 +8,22 @@ export interface Coffee {
   class: string;
 }
 
+// A drink category: the display name and group order for a `class` key. Served
+// by GET /api/coffees/classes (public) and managed via /api/admin/coffee-classes.
+export interface CoffeeClass {
+  id: string;
+  name: string;
+  sort_order: number;
+}
+
+// The admin catalog view (issue #77): a Coffee plus the competition-only score
+// override (null = "score what you show") and the display order. The public
+// GET /api/coffees hides these two fields.
+export interface AdminCoffee extends Coffee {
+  score_caffeine: number | null;
+  sort_order: number;
+}
+
 // One stored rendition of an image. `width` is the pixel width for srcset; a
 // legacy single-file image (pre-backfill) has one variant with width null.
 export interface ImageVariant {

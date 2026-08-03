@@ -1,4 +1,9 @@
-const { COFFEES } = require('./coffees');
+// The live catalog size backs the "try every type" target (issue #77), read
+// through a getter (see variety_all below) so it tracks admin edits — adding or
+// deleting a coffee changes the goal immediately, no restart, and there is no
+// DB query at import time (which would run before migrations in some require
+// orders).
+const { coffeeCount } = require('../coffees');
 
 // `progress` is the single source of truth for a milestone's threshold: the
 // unlock engine (server/src/achievements.js) tests against it and the client
@@ -117,7 +122,7 @@ const ACHIEVEMENTS = [
     icon: 'list',
     secret: false,
     category: 'variety',
-    progress: { metric: 'unique_types', target: COFFEES.length },
+    progress: { metric: 'unique_types', get target() { return coffeeCount(); } },
   },
 
   // ── Time of day ────────────────────────────────────────────────────────────

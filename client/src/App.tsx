@@ -17,6 +17,7 @@ import { Milestones } from './pages/Milestones';
 import { Compete } from './pages/Compete';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
+import { AdminCoffees } from './pages/AdminCoffees';
 import { Notifications } from './pages/Notifications';
 import { NotificationToaster } from './components/NotificationToaster';
 import { RevealProvider } from './notifications/RevealProvider';
@@ -91,6 +92,9 @@ export function App() {
           <Route path="/compare" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/compare/:username" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+          {/* Admin coffee catalog (issue #77). AdminCoffees redirects non-admins;
+              the API enforces admin on every catalog write regardless. */}
+          <Route path="/admin/coffees" element={<RequireAuth><AdminCoffees /></RequireAuth>} />
           <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
           <Route path="/achievements" element={<Navigate to="/badges" replace />} />

@@ -97,6 +97,11 @@ const ICONS: Record<string, IconType> = {
 
 const FALLBACK: IconType = FaMugHot;
 
+// Every registered icon key, for admin catalog autosuggest (issue #77). An
+// unknown key still renders (FALLBACK), so this is a suggestion list, not a
+// hard constraint.
+export const ICON_KEYS = Object.keys(ICONS);
+
 export function Icon({
   name, size, className, title,
 }: {

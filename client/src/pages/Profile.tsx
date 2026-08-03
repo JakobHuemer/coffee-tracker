@@ -287,6 +287,7 @@ function AdminActions({ u }: { u: AdminUser }) {
 // and act on them — never a full user list. Rendered only when the current user
 // is an admin (guard at the call site); the endpoints also enforce it.
 function AdminCard() {
+  const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState('');
   const [activeUsername, setActiveUsername] = useState('');
 
@@ -316,6 +317,9 @@ function AdminCard() {
           />
           <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }}>Find</button>
         </form>
+        <button className="btn-secondary" style={{ marginTop: 12 }} onClick={() => navigate('/admin/coffees')}>
+          Manage coffee catalog
+        </button>
       </div>
 
       {isLoading && <div className="page-loading">Searching…</div>}

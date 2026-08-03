@@ -119,8 +119,12 @@ body {
 
 .page-header { padding: 20px 16px 8px; }
 /* Keep every page's body content within one width, centered — Stats builds its
-   layout directly in .page (no <main>), so its sections are centered here too. */
-.page-header, .stats-hero, .stats-tabs, .stats-tab-body {
+   layout directly in .page (no <main>), so its sections are centered here too.
+   `.tab-row` is included because Stats and the admin catalog render it directly
+   under .page (not inside <main>/.stats-tab-body), so without this it stretches
+   edge-to-edge on wide screens; a .tab-row nested in an already-capped parent
+   (Compete) is unaffected. */
+.page-header, .stats-hero, .stats-tabs, .stats-tab-body, .page > .tab-row {
   max-width: var(--content-max); margin-left: auto; margin-right: auto;
 }
 .page-header h2 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.03em; color: var(--text-primary); }
@@ -726,6 +730,74 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .admin-user-avatar { font-size: 1.4rem; line-height: 1; }
 .admin-user-name { font-weight: 700; word-break: break-word; }
 .admin-tag { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 1px 6px; }
+
+/* Coffee catalog admin (issue #77) — the add/edit form and the menu list. */
+.admin-coffee-form { display: flex; flex-direction: column; gap: 10px; }
+.admin-field { display: flex; flex-direction: column; gap: 4px; }
+.admin-field > span { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+.admin-field-with-preview { display: flex; align-items: center; gap: 10px; }
+.admin-field-with-preview .tzp { flex: 1; }
+.admin-field-with-preview > svg { color: var(--text-sec); flex-shrink: 0; }
+.admin-coffee-list { display: flex; flex-direction: column; }
+.admin-coffee-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.admin-coffee-row:last-child { border-bottom: none; }
+.admin-coffee-row.editing { background: var(--accent-bg); border-radius: 8px; padding: 10px 8px; }
+.admin-coffee-icon { color: var(--text-sec); flex-shrink: 0; }
+.admin-coffee-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.admin-coffee-name { font-weight: 600; color: var(--text-primary); }
+.admin-coffee-sub { font-size: 0.72rem; color: var(--text-muted); word-break: break-word; }
+.admin-coffee-btn { width: auto; flex-shrink: 0; padding: 4px 12px; }
+.admin-coffee-del {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  display: flex; align-items: center; padding: 6px; flex-shrink: 0;
+}
+.admin-coffee-del:hover:not(:disabled) { color: var(--danger-fg); }
+.admin-coffee-del:disabled { opacity: 0.3; cursor: default; }
+
+/* Toolbar above the coffee accordion: search grows, Add button is fixed. The
+   16px side margin matches the card gutter (.card margin) and the tab-row
+   padding, so tabs, search and the list card all share one left/right edge. */
+.admin-toolbar { display: flex; gap: 8px; margin: 0 16px 12px; }
+.admin-add-btn { width: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; }
+
+/* Coffee list: one card of collapsible per-category rows (progressive
+   disclosure so a long menu stays compact until a section is opened). A single
+   card with dividers reads as one list, not a stack of floating cards. */
+.admin-acc-card { padding: 0; overflow: hidden; }
+.admin-acc { border-bottom: 1px solid var(--border); }
+.admin-acc:last-child { border-bottom: none; }
+.admin-acc-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 14px 16px; background: none; border: none; cursor: pointer;
+  color: var(--text-primary); font-size: 0.9rem; font-weight: 600; text-align: left;
+}
+.admin-acc.open .admin-acc-head { padding-bottom: 8px; }
+.admin-acc-head:hover { color: var(--accent); }
+.admin-acc-chev { color: var(--text-muted); flex-shrink: 0; }
+.admin-acc-count {
+  font-size: 0.72rem; font-weight: 600; color: var(--text-muted);
+  background: var(--surface2); border-radius: 20px; padding: 1px 8px;
+}
+/* The expanded drinks sit indented under the header, aligned past the chevron. */
+.admin-acc .admin-coffee-list { padding: 0 16px 8px 40px; }
+
+/* Content modal (admin add/edit forms). Reuses .confirm-backdrop; wider than a
+   confirm box and scrolls when the form is taller than the viewport. */
+.admin-modal-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px;
+  max-width: 420px; width: 100%; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+}
+.admin-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.admin-modal-close {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  display: flex; align-items: center; padding: 4px;
+}
+.admin-modal-close:hover { color: var(--text-primary); }
 
 /* Versus header — two players flanking a VS badge */
 .compare-card { padding-top: 24px; }

@@ -16,6 +16,7 @@ const bcrypt  = require('bcryptjs');
 const db      = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { isValidPassword } = require('../password');
+const { ID_RE, listCoffeesAdmin, listClasses, getClass } = require('../coffees');
 
 const router = express.Router();
 
@@ -86,6 +87,192 @@ router.post('/users/:id/admin', (req, res) => {
   db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(is_admin ? 1 : 0, target.id);
   const user = db.prepare(`SELECT ${ADMIN_USER_COLS} FROM users WHERE id = ?`).get(target.id);
   res.json(user);
+});
+
+// ── Coffee catalog (issue #77) ──────────────────────────────────────────────
+//
+// The menu lives in the `coffees` table (seeded by migration 020) and is edited
+// here, so adding/retiring a drink or changing its caffeine no longer needs a
+// redeploy. Any admin may edit the catalog — these are not user-management
+// routes, so the super-admin manageBlock rules above don't apply.
+//
+// Note on history: coffee_entries copy `caffeine` at log time and store the
+// coffee_id as a bare string (no FK), so editing or deleting a coffee never
+// rewrites or breaks past entries — it only changes what future logs get and
+// what the picker/labels show. This mirrors the long-standing catalog contract.
+
+// A generous ceiling on the two mg fields. Not a realism claim — it just stops a
+// fat-fingered / pasted value (e.g. 1e9) from being copied onto every future
+// entry and poisoning the Buzz, stats and competition sums. Real drinks are two
+// orders of magnitude under this.
+const MAX_MG = 100000;
+
+// Validate a coffee body. `partial` skips required-field checks for PATCH,
+// where an absent field means "leave unchanged". Returns { error } or { values }
+// holding only the fields present (so PATCH can build a targeted UPDATE).
+function validateCoffee(body, { partial } = {}) {
+  const values = {};
+
+  if (body.name !== undefined || !partial) {
+    if (typeof body.name !== 'string' || !body.name.trim()) return { error: 'name is required' };
+    values.name = body.name.trim();
+  }
+  if (body.caffeine !== undefined || !partial) {
+    const n = Number(body.caffeine);
+    if (!Number.isInteger(n) || n < 0 || n > MAX_MG) return { error: `caffeine must be a whole number between 0 and ${MAX_MG}` };
+    values.caffeine = n;
+  }
+  if (body.icon !== undefined || !partial) {
+    if (typeof body.icon !== 'string' || !body.icon.trim()) return { error: 'icon is required' };
+    values.icon = body.icon.trim();
+  }
+  if (body.class !== undefined || !partial) {
+    if (typeof body.class !== 'string' || !body.class.trim()) return { error: 'class is required' };
+    values.class = body.class.trim();
+  }
+  // score_caffeine is the competition-only override. Explicit null (or empty
+  // string from a form) clears it → "score what you show".
+  if (body.score_caffeine !== undefined) {
+    if (body.score_caffeine === null || body.score_caffeine === '') {
+      values.score_caffeine = null;
+    } else {
+      const s = Number(body.score_caffeine);
+      if (!Number.isInteger(s) || s < 0 || s > MAX_MG) return { error: `score_caffeine must be a whole number between 0 and ${MAX_MG}, or null` };
+      values.score_caffeine = s;
+    }
+  } else if (!partial) {
+    values.score_caffeine = null;
+  }
+
+  return { values };
+}
+
+// Full catalog incl. the score override and order — the admin view needs every
+// column, unlike the public GET /api/coffees which hides score_caffeine.
+router.get('/coffees', (req, res) => {
+  res.json(listCoffeesAdmin());
+});
+
+router.post('/coffees', (req, res) => {
+  const id = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+  // The id is interpolated into a SQL CASE by scoreMgSql() and stored on every
+  // entry, so it must be a strict slug — see coffees.js ID_RE.
+  if (!ID_RE.test(id)) {
+    return res.status(400).json({ error: 'id must be lowercase letters, numbers and underscores' });
+  }
+  if (db.prepare('SELECT id FROM coffees WHERE id = ?').get(id)) {
+    return res.status(409).json({ error: 'A coffee with that id already exists' });
+  }
+
+  const { error, values } = validateCoffee(req.body, { partial: false });
+  if (error) return res.status(400).json({ error });
+  // A coffee must sit in a real category — the log screen reads its label/order
+  // from there (migration 021). Reject an unknown class rather than create an
+  // orphan group with no name.
+  if (!getClass(values.class)) return res.status(400).json({ error: 'Unknown category' });
+
+  // New drinks go to the end of the menu; sort_order is otherwise not editable.
+  const max = db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM coffees').get().m;
+  db.prepare(
+    'INSERT INTO coffees (id, name, caffeine, icon, class, score_caffeine, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, values.name, values.caffeine, values.icon, values.class, values.score_caffeine, max + 1);
+
+  res.status(201).json(db.prepare('SELECT id, name, caffeine, icon, class, score_caffeine, sort_order FROM coffees WHERE id = ?').get(id));
+});
+
+router.patch('/coffees/:id', (req, res) => {
+  const existing = db.prepare('SELECT id FROM coffees WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Coffee not found' });
+
+  const { error, values } = validateCoffee(req.body, { partial: true });
+  if (error) return res.status(400).json({ error });
+  if (values.class !== undefined && !getClass(values.class)) {
+    return res.status(400).json({ error: 'Unknown category' });
+  }
+  const keys = Object.keys(values);
+  if (keys.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+  // The id is the primary key and is embedded in existing entries, so it is not
+  // rewritable here — a rename is a delete + re-create decision, not an edit.
+  const setSql = keys.map((k) => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE coffees SET ${setSql} WHERE id = ?`).run(...keys.map((k) => values[k]), req.params.id);
+
+  res.json(db.prepare('SELECT id, name, caffeine, icon, class, score_caffeine, sort_order FROM coffees WHERE id = ?').get(req.params.id));
+});
+
+router.delete('/coffees/:id', (req, res) => {
+  const existing = db.prepare('SELECT id FROM coffees WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Coffee not found' });
+  // Past entries keep their copied caffeine_mg and coffee_id string; only the
+  // picker loses the option (see the history note above).
+  db.prepare('DELETE FROM coffees WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ── Drink categories (migration 021) ────────────────────────────────────────
+// Each category carries the display name and group order the log screen reads.
+// A coffee's `class` must be one of these ids (enforced on coffee write above),
+// and a category can't be deleted while a coffee still uses it.
+
+router.get('/coffee-classes', (req, res) => {
+  res.json(listClasses());
+});
+
+router.post('/coffee-classes', (req, res) => {
+  const id = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+  if (!ID_RE.test(id)) {
+    return res.status(400).json({ error: 'id must be lowercase letters, numbers and underscores' });
+  }
+  if (getClass(id)) return res.status(409).json({ error: 'A category with that id already exists' });
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'name is required' });
+
+  const max = db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM coffee_classes').get().m;
+  db.prepare('INSERT INTO coffee_classes (id, name, sort_order) VALUES (?, ?, ?)').run(id, name, max + 1);
+  res.status(201).json(getClass(id));
+});
+
+router.patch('/coffee-classes/:id', (req, res) => {
+  if (!getClass(req.params.id)) return res.status(404).json({ error: 'Category not found' });
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  db.prepare('UPDATE coffee_classes SET name = ? WHERE id = ?').run(name, req.params.id);
+  res.json(getClass(req.params.id));
+});
+
+// Swap a category with its neighbour in either direction, so order is fully
+// editable from the UI without exposing raw sort_order numbers. A no-op at the
+// end of the list just returns the unchanged row.
+router.post('/coffee-classes/:id/move', (req, res) => {
+  const dir = req.body.direction;
+  if (dir !== 'up' && dir !== 'down') return res.status(400).json({ error: "direction must be 'up' or 'down'" });
+  const current = getClass(req.params.id);
+  if (!current) return res.status(404).json({ error: 'Category not found' });
+
+  const neighbour = db.prepare(
+    dir === 'up'
+      ? 'SELECT * FROM coffee_classes WHERE sort_order < ? ORDER BY sort_order DESC LIMIT 1'
+      : 'SELECT * FROM coffee_classes WHERE sort_order > ? ORDER BY sort_order ASC LIMIT 1'
+  ).get(current.sort_order);
+  if (!neighbour) return res.json(listClasses()); // already at the edge
+
+  const swap = db.prepare('UPDATE coffee_classes SET sort_order = ? WHERE id = ?');
+  const tx = db.transaction(() => {
+    swap.run(neighbour.sort_order, current.id);
+    swap.run(current.sort_order, neighbour.id);
+  });
+  tx();
+  res.json(listClasses());
+});
+
+router.delete('/coffee-classes/:id', (req, res) => {
+  if (!getClass(req.params.id)) return res.status(404).json({ error: 'Category not found' });
+  const inUse = db.prepare('SELECT COUNT(*) AS n FROM coffees WHERE class = ?').get(req.params.id).n;
+  if (inUse > 0) {
+    return res.status(409).json({ error: `In use by ${inUse} ${inUse === 1 ? 'coffee' : 'coffees'} — reassign them first` });
+  }
+  db.prepare('DELETE FROM coffee_classes WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
 });
 
 module.exports = router;
