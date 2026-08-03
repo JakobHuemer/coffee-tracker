@@ -57,11 +57,17 @@ The bar is not "did the user technically allow it" — it is "did the user ask f
 <details>
 <summary>Route surface (all under <code>/api</code>, JWT auth except register/login)</summary>
 
-Gamification/reference data (achievements, badges, tasks, coffee catalog) lives
-in `server/src/data/*.js` (static). Endpoints:
+Gamification/reference data (achievements, badges, tasks) lives in
+`server/src/data/*.js` (static). The **coffee catalog** is now data-driven
+(issue #77): it lives in the `coffees` table (seeded by migration 020), is read
+through `server/src/coffees.js` (`listCoffees`, `getCoffee`, `coffeeCount`,
+`scoreMgSql` — the last built live from the `score_caffeine` competition
+override column) and edited by admins via the `/api/admin/coffees` routes.
+Endpoints:
 
 - `auth` — `POST /register`, `POST /login`, `GET|PATCH /me`
 - `coffees` — `GET /`, `GET|POST /entries`, `PATCH|DELETE /entries/:id`, `GET /stats`, `GET /dev-flags`
+- `admin` — user management + coffee catalog: `GET|POST /coffees`, `PATCH|DELETE /coffees/:id`
 - `goals` — `GET /today`, `POST /complete`
 - `achievements` `GET /` · `badges` `GET /` · `streaks` `GET /` · `rankings` `GET /` · `casualties` `GET /`
 - `energy` — `GET /?hours=` (the derived Buzz score, see [docs/energy-score.md](./docs/energy-score.md))

@@ -727,6 +727,32 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .admin-user-name { font-weight: 700; word-break: break-word; }
 .admin-tag { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 1px 6px; }
 
+/* Coffee catalog admin (issue #77) — the add/edit form and the menu list. */
+.admin-coffee-form { display: flex; flex-direction: column; gap: 10px; }
+.admin-field { display: flex; flex-direction: column; gap: 4px; }
+.admin-field > span { font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+.admin-field-with-preview { display: flex; align-items: center; gap: 10px; }
+.admin-field-with-preview .tzp { flex: 1; }
+.admin-field-with-preview > svg { color: var(--text-sec); flex-shrink: 0; }
+.admin-field-hint { font-size: 0.72rem; color: var(--text-muted); margin: -4px 0 0; }
+.admin-coffee-list { display: flex; flex-direction: column; }
+.admin-coffee-row {
+  display: flex; align-items: center; gap: 10px; padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.admin-coffee-row:last-child { border-bottom: none; }
+.admin-coffee-row.editing { background: var(--accent-bg); border-radius: 8px; padding: 10px 8px; }
+.admin-coffee-icon { color: var(--text-sec); flex-shrink: 0; }
+.admin-coffee-meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.admin-coffee-name { font-weight: 600; color: var(--text-primary); }
+.admin-coffee-sub { font-size: 0.72rem; color: var(--text-muted); word-break: break-word; }
+.admin-coffee-btn { width: auto; flex-shrink: 0; padding: 4px 12px; }
+.admin-coffee-del {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  display: flex; align-items: center; padding: 6px; flex-shrink: 0;
+}
+.admin-coffee-del:hover { color: var(--danger-fg); }
+
 /* Versus header — two players flanking a VS badge */
 .compare-card { padding-top: 24px; }
 .vs-header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: 22px; }

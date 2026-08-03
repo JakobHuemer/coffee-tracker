@@ -6,7 +6,7 @@ const {
   checkAfterChallengeWin,
   checkAfterFirstChallenge,
 } = require('../achievements');
-const { COFFEES } = require('../data/coffees');
+const { coffeeCount } = require('../coffees');
 
 const router = express.Router();
 
@@ -62,12 +62,16 @@ function seedCommunityChallenges() {
   monthEnd.setDate(today.getDate() + 30);
   const todayStr2 = today.toISOString().slice(0, 10);
 
+  // Target tracks the menu — adding a coffee type must not silently leave the
+  // Variety Show completable without trying the new one. Read from the live
+  // catalog (issue #77); fixed for this challenge's life once seeded, same as
+  // the old COFFEES.length was fixed at boot.
+  const menuSize = coffeeCount();
+
   const challenges = [
     { id: randomUUID(), name: 'Espresso Week', description: 'As a community, drink 500 espressos this week!', metric: 'espresso_cups', target: 500, end: weekEnd },
     { id: randomUUID(), name: 'Caffeine Collective', description: 'Reach 100,000mg of caffeine together this month!', metric: 'caffeine', target: 100000, end: monthEnd },
-    // Target tracks the menu — adding a coffee type must not silently leave
-    // this challenge completable without trying the new one.
-    { id: randomUUID(), name: 'Variety Show', description: `Try all ${COFFEES.length} coffee types as a community this week!`, metric: 'unique_types', target: COFFEES.length, end: weekEnd },
+    { id: randomUUID(), name: 'Variety Show', description: `Try all ${menuSize} coffee types as a community this week!`, metric: 'unique_types', target: menuSize, end: weekEnd },
   ];
 
   const insert = db.prepare(

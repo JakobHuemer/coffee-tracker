@@ -228,12 +228,14 @@ is what the hint exists to make legible.
 
 ### Caffeine milligrams
 
-Caffeine is summed through `scoreMgSql()`, which applies the per-drink
-competition overrides in `server/src/data/coffee-scores.js`. **This is
+Caffeine is summed through `scoreMgSql()` (`server/src/coffees.js`), which
+applies the per-drink competition overrides held in the `coffees` table's
+`score_caffeine` column (issue #77 moved these from the old
+`data/coffee-scores.js` into the DB, editable by an admin). **This is
 deliberate and stays exactly as it is.** The scoring layer asks that function
 for the milligrams a drink is worth in a competition and uses whatever it
 returns; which drinks diverge from their displayed value, and by how much, is
-that file's business and not this spec's.
+the catalog's business and not this spec's.
 
 Do not "simplify" it away by summing `caffeine_mg` directly. The divergence is
 intentional — see the file's own header — and it is confined to the two
@@ -348,7 +350,8 @@ the entries are mutable and have already been mutated. This is not hypothetical:
 
 - `migrations/014_latte_caffeine_63.js` rewrote the stored `caffeine_mg` of
   every historical latte row, including rows inside already-settled windows.
-- `data/coffee-scores.js` was added later still, pinning what a latte is worth
+- the `score_caffeine` override (once `data/coffee-scores.js`, now a column on
+  the `coffees` table) was added later still, pinning what a latte is worth
   inside a competition to a third value.
 
 A settled match therefore has stored scores that no longer correspond to any sum

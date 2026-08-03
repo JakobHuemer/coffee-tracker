@@ -1,4 +1,9 @@
-const { COFFEES } = require('./coffees');
+// Read the live catalog size for the "try every type" target (issue #77). This
+// module is only ever required through a route/engine, i.e. after migrations
+// have run and seeded the coffees table, so the count is available here. The
+// target is fixed for the process lifetime — same as the old COFFEES.length —
+// so a coffee added at runtime is reflected on the next restart.
+const { coffeeCount } = require('../coffees');
 
 // `progress` is the single source of truth for a milestone's threshold: the
 // unlock engine (server/src/achievements.js) tests against it and the client
@@ -117,7 +122,7 @@ const ACHIEVEMENTS = [
     icon: 'list',
     secret: false,
     category: 'variety',
-    progress: { metric: 'unique_types', target: COFFEES.length },
+    progress: { metric: 'unique_types', target: coffeeCount() },
   },
 
   // ── Time of day ────────────────────────────────────────────────────────────

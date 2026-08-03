@@ -17,7 +17,7 @@ const {
   points, settleFfa, marginScaleFor,
 } = require('./competition-core');
 const { localDateStr, localWallInstant, localDayBounds, isValidTz, DEFAULT_TZ } = require('./time');
-const { scoreMgSql } = require('./data/coffee-scores');
+const { scoreMgSql } = require('./coffees');
 const { createNotification, TYPES } = require('./notifications');
 
 // How often the ticker looks for work. A match settles on the first tick after

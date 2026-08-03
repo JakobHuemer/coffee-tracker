@@ -6,7 +6,7 @@ const multer = require('multer');
 const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
-const { COFFEES } = require('../data/coffees');
+const { listCoffees, getCoffee } = require('../coffees');
 const { checkAfterCoffeeLog } = require('../achievements');
 const { DATE_RE } = require('./_helpers');
 const { getUserTz, localTodayStr, localDateStr, localDayBounds } = require('../time');
@@ -65,7 +65,7 @@ if (DEV_OVERRIDES) {
 }
 
 router.get('/', (req, res) => {
-  res.json(COFFEES);
+  res.json(listCoffees());
 });
 
 // Which debug overrides this server actually honours. The client uses this to
@@ -120,7 +120,7 @@ router.get('/photos', requireAuth, (req, res) => {
 // the WASM codecs.
 router.post('/entries', requireAuth, handleUpload(upload.single('photo')), async (req, res) => {
   const { coffeeId, timestamp: rawTs, is_public: rawPublic, description, skip_spacing: rawSkip } = req.body;
-  const coffee = COFFEES.find(c => c.id === coffeeId);
+  const coffee = getCoffee(coffeeId);
   if (!coffee) return res.status(400).json({ error: 'Unknown coffee type' });
 
   let ts;

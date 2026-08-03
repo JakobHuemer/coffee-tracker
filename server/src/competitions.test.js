@@ -164,9 +164,9 @@ test('score counts only entries inside the window, and both bounds are inclusive
   logCoffee(user, end + 1);            // just after
   expect(scoreFor(user, start, end)).toBe(0);
 
-  // Neither drink appears in SCORE_CAFFEINE, so both score at their stored mg
-  // and this stays a test about the window, not about scoring overrides. Both
-  // sit exactly ON a bound, which is what pins the inclusivity.
+  // Neither drink carries a score_caffeine override, so both score at their
+  // stored mg and this stays a test about the window, not about scoring
+  // overrides. Both sit exactly ON a bound, which is what pins the inclusivity.
   logCoffee(user, start, { mg: 200, coffeeId: 'espresso' });
   logCoffee(user, end, { mg: 100, coffeeId: 'lungo' });
   expect(scoreFor(user, start, end)).toBe(points({ caffeine: 300, cups: 2, variety: 2 }));
@@ -218,7 +218,7 @@ test('the public filter is competition-only — every other surface still counts
   expect(metricsFor(user, start, end)).toMatchObject({ caffeine: 100, cups: 1 });
 });
 
-test('an overridden drink scores its SCORE_CAFFEINE value, not its stored mg', () => {
+test('an overridden drink scores its score_caffeine value, not its stored mg', () => {
   const user = makeUser('latte-drinker');
   const start = Date.parse('2026-07-26T00:00:00Z');
   const end = start + DAY - 1;

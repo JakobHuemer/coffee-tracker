@@ -3,7 +3,7 @@ const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { checkAfterCompare } = require('../achievements');
-const { COFFEES } = require('../data/coffees');
+const { getCoffee } = require('../coffees');
 const { BADGES } = require('../data/badges');
 const { getUserTz, localTodayStr, localDateStr } = require('../time');
 
@@ -23,7 +23,9 @@ function buildUserStats(userId) {
   const byType = {};
   for (const e of allEntries) byType[e.coffee_id] = (byType[e.coffee_id] || 0) + 1;
   const favouriteId = Object.entries(byType).sort(([,a],[,b]) => b - a)[0]?.[0];
-  const favourite = COFFEES.find(c => c.id === favouriteId) || null;
+  // A favourite that was later removed from the catalog resolves to null; the
+  // entries themselves are self-contained and unaffected.
+  const favourite = (favouriteId && getCoffee(favouriteId)) || null;
 
   const streak = db.prepare('SELECT * FROM user_streaks WHERE user_id = ?').get(userId);
   const achievements = db.prepare('SELECT COUNT(*) as cnt FROM user_achievements WHERE user_id = ?').get(userId);

@@ -2,7 +2,6 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { getDailyTasks } = require('../data/tasks');
-const { COFFEES } = require('../data/coffees');
 const { checkAfterGoalsComplete } = require('../achievements');
 const { getUserTz, localTodayStr, localDayBounds, localWallInstant } = require('../time');
 

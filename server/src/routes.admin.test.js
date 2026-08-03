@@ -203,3 +203,72 @@ test('a regular admin cannot touch the super admin', async () => {
   expect(pwMatches(boss.id, 'boss-pw')).toBe(true);
   expect(isAdmin(boss.id)).toBe(1);
 });
+
+// ── coffee catalog (issue #77) ─────────────────────────────────────────────────
+// The seed rows (migration 020) survive beforeEach (it only clears users), so
+// these tests use ids that aren't in the seed and clean them up after each run.
+const coffeeRow = (id) => db.prepare('SELECT * FROM coffees WHERE id = ?').get(id);
+beforeEach(() => { db.exec("DELETE FROM coffees WHERE id LIKE 'test\\_%' ESCAPE '\\';"); });
+
+test('the catalog is admin-only', async () => {
+  const plain = makeUser('nobody');
+  expect((await req('GET', '/api/admin/coffees', plain.token)).status).toBe(403);
+  expect((await req('POST', '/api/admin/coffees', plain.token, { id: 'test_x', name: 'X', caffeine: 1, icon: 'coffee', class: 'coffee' })).status).toBe(403);
+});
+
+test('GET returns the seeded catalog incl. the score override', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  const rows = await (await req('GET', '/api/admin/coffees', boss.token)).json();
+  const latte = rows.find((c) => c.id === 'latte');
+  expect(latte).toMatchObject({ caffeine: 63, score_caffeine: 25 });
+  const espresso = rows.find((c) => c.id === 'espresso');
+  expect(espresso.score_caffeine).toBe(null);
+});
+
+test('an admin creates a coffee; it appears in the public menu', async () => {
+  const mod = makeUser('mod', { tier: 'admin' });
+  const res = await req('POST', '/api/admin/coffees', mod.token, {
+    id: 'test_brew', name: 'Test Brew', caffeine: 42, icon: 'coffee', class: 'coffee',
+  });
+  expect(res.status).toBe(201);
+  expect(coffeeRow('test_brew')).toMatchObject({ name: 'Test Brew', caffeine: 42, score_caffeine: null });
+});
+
+test('create rejects a bad id, duplicate id, and bad caffeine', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  const good = { name: 'Y', caffeine: 1, icon: 'coffee', class: 'coffee' };
+  expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'Bad Id', ...good })).status).toBe(400);
+  expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'espresso', ...good })).status).toBe(409);
+  expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'test_neg', name: 'Y', caffeine: -1, icon: 'coffee', class: 'coffee' })).status).toBe(400);
+  expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'test_str', name: 'Y', caffeine: 'lots', icon: 'coffee', class: 'coffee' })).status).toBe(400);
+});
+
+test('PATCH updates only the sent fields and can set/clear the score override', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  await req('POST', '/api/admin/coffees', boss.token, { id: 'test_brew', name: 'Brew', caffeine: 50, icon: 'coffee', class: 'coffee' });
+
+  await req('PATCH', '/api/admin/coffees/test_brew', boss.token, { caffeine: 80, score_caffeine: 30 });
+  expect(coffeeRow('test_brew')).toMatchObject({ name: 'Brew', caffeine: 80, score_caffeine: 30 });
+
+  await req('PATCH', '/api/admin/coffees/test_brew', boss.token, { score_caffeine: null });
+  expect(coffeeRow('test_brew').score_caffeine).toBe(null);
+});
+
+test('PATCH on an unknown coffee is 404', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  expect((await req('PATCH', '/api/admin/coffees/test_ghost', boss.token, { caffeine: 1 })).status).toBe(404);
+});
+
+test('DELETE removes a coffee but leaves existing entries intact', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  await req('POST', '/api/admin/coffees', boss.token, { id: 'test_brew', name: 'Brew', caffeine: 50, icon: 'coffee', class: 'coffee' });
+  // An entry logged against it copies its own caffeine_mg and coffee_id string.
+  db.prepare('INSERT INTO coffee_entries (id, user_id, coffee_id, caffeine_mg, logged_at, is_public) VALUES (?, ?, ?, ?, ?, 0)')
+    .run(randomUUID(), boss.id, 'test_brew', 50, Date.now());
+
+  expect((await req('DELETE', '/api/admin/coffees/test_brew', boss.token)).status).toBe(200);
+  expect(coffeeRow('test_brew')).toBeNull();
+  const entry = db.prepare("SELECT caffeine_mg, coffee_id FROM coffee_entries WHERE coffee_id = 'test_brew'").get();
+  expect(entry).toMatchObject({ caffeine_mg: 50, coffee_id: 'test_brew' });
+  db.exec("DELETE FROM coffee_entries WHERE coffee_id = 'test_brew';");
+});
