@@ -751,7 +751,11 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   background: none; border: none; color: var(--text-muted); cursor: pointer;
   display: flex; align-items: center; padding: 6px; flex-shrink: 0;
 }
-.admin-coffee-del:hover { color: var(--danger-fg); }
+.admin-coffee-del:hover:not(:disabled) { color: var(--danger-fg); }
+.admin-coffee-del:disabled { opacity: 0.3; cursor: default; }
+/* Category add/rename form sits inside the Categories card, so it drops the
+   card chrome the standalone coffee form carries. */
+.admin-cat-form { padding: 0; background: none; border: none; box-shadow: none; }
 
 /* Versus header — two players flanking a VS badge */
 .compare-card { padding-top: 24px; }

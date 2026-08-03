@@ -42,6 +42,17 @@ function coffeeCount() {
   return db.prepare('SELECT COUNT(*) AS n FROM coffees').get().n;
 }
 
+// Drink categories, in display order (migration 021). Each carries the label
+// and group position the log screen used to hardcode. Both the public log
+// screen and the admin catalog read these — one source for the name and order.
+function listClasses() {
+  return db.prepare('SELECT id, name, sort_order FROM coffee_classes ORDER BY sort_order, name').all();
+}
+
+function getClass(id) {
+  return db.prepare('SELECT id, name, sort_order FROM coffee_classes WHERE id = ?').get(id);
+}
+
 // A SQL expression yielding the per-row mg a competition should count. Built
 // live from the score_caffeine overrides so drink ids never get hardcoded into
 // a query and an admin edit takes effect immediately.
@@ -62,4 +73,4 @@ function scoreMgSql(alias = '') {
   return `CASE ${p}coffee_id ${cases} ELSE ${p}caffeine_mg END`;
 }
 
-module.exports = { ID_RE, listCoffees, getCoffee, listCoffeesAdmin, coffeeCount, scoreMgSql };
+module.exports = { ID_RE, listCoffees, getCoffee, listCoffeesAdmin, coffeeCount, scoreMgSql, listClasses, getClass };

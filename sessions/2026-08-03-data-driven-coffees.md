@@ -1,5 +1,5 @@
 ---
-topics: [issue-77, data-driven-coffees, coffee-catalog, migration-020, score-caffeine, admin-coffees, scoreMgSql]
+topics: [issue-77, data-driven-coffees, coffee-catalog, migration-020, migration-021, coffee-classes, categories, score-caffeine, admin-coffees, scoreMgSql]
 ---
 
 # Issue #77 — data-driven coffee catalog (coffee scope only)
@@ -35,6 +35,22 @@ Scoped to coffee only per the user; achievements/badges/challenges deferred.
   `/admin/coffees` bounced admins to `/profile` because the guard fired while
   `user` was still null (App fetches `/auth/me` async). Fixed: only redirect once
   `user` is loaded AND not admin.
+
+## Data-driven categories (follow-up, migration 021)
+
+Classes had no display name in data — the label lived only in the client's
+hardcoded `CLASS_LABEL`, group order was "first appearance in the menu". Made
+categories a real entity: `coffee_classes {id, name, sort_order}`, admin CRUD +
+`/move` (swap neighbour), public `GET /coffees/classes`. A coffee's `class` must
+reference a real category (enforced in the admin routes, no SQL FK — same
+"self-contained, no FK" contract as `coffee_entries`). Category delete is blocked
+while any coffee uses it. `LogCoffee` and the admin page now read labels/order
+from the DB; removed `CLASS_LABEL` and `CLASS_SUGGESTIONS`.
+
+- **Form-clear bug (caught in browser):** both the coffee and category add forms
+  reset only via a `useEffect([editing])`; on an *add*, `editing` stays null so
+  the effect never fired and the form kept its values. Fixed by clearing in the
+  mutation's `onSuccess` when `!editing`.
 
 ## Verify server recipe (single container, isolated)
 

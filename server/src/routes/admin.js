@@ -16,7 +16,7 @@ const bcrypt  = require('bcryptjs');
 const db      = require('../db');
 const { requireAdmin } = require('../middleware/auth');
 const { isValidPassword } = require('../password');
-const { ID_RE, listCoffeesAdmin } = require('../coffees');
+const { ID_RE, listCoffeesAdmin, listClasses, getClass } = require('../coffees');
 
 const router = express.Router();
 
@@ -160,6 +160,10 @@ router.post('/coffees', (req, res) => {
 
   const { error, values } = validateCoffee(req.body, { partial: false });
   if (error) return res.status(400).json({ error });
+  // A coffee must sit in a real category — the log screen reads its label/order
+  // from there (migration 021). Reject an unknown class rather than create an
+  // orphan group with no name.
+  if (!getClass(values.class)) return res.status(400).json({ error: 'Unknown category' });
 
   // New drinks go to the end of the menu; sort_order is otherwise not editable.
   const max = db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM coffees').get().m;
@@ -176,6 +180,9 @@ router.patch('/coffees/:id', (req, res) => {
 
   const { error, values } = validateCoffee(req.body, { partial: true });
   if (error) return res.status(400).json({ error });
+  if (values.class !== undefined && !getClass(values.class)) {
+    return res.status(400).json({ error: 'Unknown category' });
+  }
   const keys = Object.keys(values);
   if (keys.length === 0) return res.status(400).json({ error: 'No fields to update' });
 
@@ -193,6 +200,72 @@ router.delete('/coffees/:id', (req, res) => {
   // Past entries keep their copied caffeine_mg and coffee_id string; only the
   // picker loses the option (see the history note above).
   db.prepare('DELETE FROM coffees WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ── Drink categories (migration 021) ────────────────────────────────────────
+// Each category carries the display name and group order the log screen reads.
+// A coffee's `class` must be one of these ids (enforced on coffee write above),
+// and a category can't be deleted while a coffee still uses it.
+
+router.get('/coffee-classes', (req, res) => {
+  res.json(listClasses());
+});
+
+router.post('/coffee-classes', (req, res) => {
+  const id = typeof req.body.id === 'string' ? req.body.id.trim() : '';
+  if (!ID_RE.test(id)) {
+    return res.status(400).json({ error: 'id must be lowercase letters, numbers and underscores' });
+  }
+  if (getClass(id)) return res.status(409).json({ error: 'A category with that id already exists' });
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'name is required' });
+
+  const max = db.prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM coffee_classes').get().m;
+  db.prepare('INSERT INTO coffee_classes (id, name, sort_order) VALUES (?, ?, ?)').run(id, name, max + 1);
+  res.status(201).json(getClass(id));
+});
+
+router.patch('/coffee-classes/:id', (req, res) => {
+  if (!getClass(req.params.id)) return res.status(404).json({ error: 'Category not found' });
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  db.prepare('UPDATE coffee_classes SET name = ? WHERE id = ?').run(name, req.params.id);
+  res.json(getClass(req.params.id));
+});
+
+// Swap a category with its neighbour in either direction, so order is fully
+// editable from the UI without exposing raw sort_order numbers. A no-op at the
+// end of the list just returns the unchanged row.
+router.post('/coffee-classes/:id/move', (req, res) => {
+  const dir = req.body.direction;
+  if (dir !== 'up' && dir !== 'down') return res.status(400).json({ error: "direction must be 'up' or 'down'" });
+  const current = getClass(req.params.id);
+  if (!current) return res.status(404).json({ error: 'Category not found' });
+
+  const neighbour = db.prepare(
+    dir === 'up'
+      ? 'SELECT * FROM coffee_classes WHERE sort_order < ? ORDER BY sort_order DESC LIMIT 1'
+      : 'SELECT * FROM coffee_classes WHERE sort_order > ? ORDER BY sort_order ASC LIMIT 1'
+  ).get(current.sort_order);
+  if (!neighbour) return res.json(listClasses()); // already at the edge
+
+  const swap = db.prepare('UPDATE coffee_classes SET sort_order = ? WHERE id = ?');
+  const tx = db.transaction(() => {
+    swap.run(neighbour.sort_order, current.id);
+    swap.run(current.sort_order, neighbour.id);
+  });
+  tx();
+  res.json(listClasses());
+});
+
+router.delete('/coffee-classes/:id', (req, res) => {
+  if (!getClass(req.params.id)) return res.status(404).json({ error: 'Category not found' });
+  const inUse = db.prepare('SELECT COUNT(*) AS n FROM coffees WHERE class = ?').get(req.params.id).n;
+  if (inUse > 0) {
+    return res.status(409).json({ error: `In use by ${inUse} ${inUse === 1 ? 'coffee' : 'coffees'} — reassign them first` });
+  }
+  db.prepare('DELETE FROM coffee_classes WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 

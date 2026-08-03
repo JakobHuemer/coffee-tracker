@@ -6,7 +6,7 @@ const multer = require('multer');
 const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
-const { listCoffees, getCoffee } = require('../coffees');
+const { listCoffees, getCoffee, listClasses } = require('../coffees');
 const { checkAfterCoffeeLog } = require('../achievements');
 const { DATE_RE } = require('./_helpers');
 const { getUserTz, localTodayStr, localDateStr, localDayBounds } = require('../time');
@@ -66,6 +66,12 @@ if (DEV_OVERRIDES) {
 
 router.get('/', (req, res) => {
   res.json(listCoffees());
+});
+
+// Drink categories with their display names and order. The log screen groups
+// the menu by these instead of hardcoding labels/order (was CLASS_LABEL).
+router.get('/classes', (req, res) => {
+  res.json(listClasses());
 });
 
 // Which debug overrides this server actually honours. The client uses this to

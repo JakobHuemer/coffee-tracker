@@ -208,7 +208,11 @@ test('a regular admin cannot touch the super admin', async () => {
 // The seed rows (migration 020) survive beforeEach (it only clears users), so
 // these tests use ids that aren't in the seed and clean them up after each run.
 const coffeeRow = (id) => db.prepare('SELECT * FROM coffees WHERE id = ?').get(id);
-beforeEach(() => { db.exec("DELETE FROM coffees WHERE id LIKE 'test\\_%' ESCAPE '\\';"); });
+const classRow = (id) => db.prepare('SELECT * FROM coffee_classes WHERE id = ?').get(id);
+beforeEach(() => {
+  db.exec("DELETE FROM coffees WHERE id LIKE 'test\\_%' ESCAPE '\\';");
+  db.exec("DELETE FROM coffee_classes WHERE id LIKE 'test\\_%' ESCAPE '\\';");
+});
 
 test('the catalog is admin-only', async () => {
   const plain = makeUser('nobody');
@@ -271,4 +275,66 @@ test('DELETE removes a coffee but leaves existing entries intact', async () => {
   const entry = db.prepare("SELECT caffeine_mg, coffee_id FROM coffee_entries WHERE coffee_id = 'test_brew'").get();
   expect(entry).toMatchObject({ caffeine_mg: 50, coffee_id: 'test_brew' });
   db.exec("DELETE FROM coffee_entries WHERE coffee_id = 'test_brew';");
+});
+
+// ── drink categories (migration 021) ───────────────────────────────────────────
+
+test('GET returns seeded categories with names and order', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  const rows = await (await req('GET', '/api/admin/coffee-classes', boss.token)).json();
+  const coffee = rows.find((c) => c.id === 'coffee');
+  expect(coffee).toMatchObject({ name: 'Coffee', sort_order: 0 });
+  expect(rows.map((c) => c.id)).toContain('energy');
+});
+
+test('a coffee must reference a real category', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  const res = await req('POST', '/api/admin/coffees', boss.token, {
+    id: 'test_brew', name: 'Brew', caffeine: 40, icon: 'coffee', class: 'test_ghost',
+  });
+  expect(res.status).toBe(400);
+  expect((await res.json()).error).toBe('Unknown category');
+});
+
+test('create/patch a category, then a coffee can use it', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  const created = await (await req('POST', '/api/admin/coffee-classes', boss.token, { id: 'test_kombucha', name: 'Kombucha' })).json();
+  expect(created).toMatchObject({ id: 'test_kombucha', name: 'Kombucha' });
+
+  await req('PATCH', '/api/admin/coffee-classes/test_kombucha', boss.token, { name: 'Fermented' });
+  expect(classRow('test_kombucha').name).toBe('Fermented');
+
+  const coffee = await req('POST', '/api/admin/coffees', boss.token, { id: 'test_booch', name: 'Booch', caffeine: 10, icon: 'tea', class: 'test_kombucha' });
+  expect(coffee.status).toBe(201);
+});
+
+test('category create rejects bad id and duplicate', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  expect((await req('POST', '/api/admin/coffee-classes', boss.token, { id: 'Bad Id', name: 'X' })).status).toBe(400);
+  expect((await req('POST', '/api/admin/coffee-classes', boss.token, { id: 'coffee', name: 'Dup' })).status).toBe(409);
+});
+
+test('a category in use cannot be deleted; an empty one can', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  await req('POST', '/api/admin/coffee-classes', boss.token, { id: 'test_kombucha', name: 'Kombucha' });
+  await req('POST', '/api/admin/coffees', boss.token, { id: 'test_booch', name: 'Booch', caffeine: 10, icon: 'tea', class: 'test_kombucha' });
+
+  expect((await req('DELETE', '/api/admin/coffee-classes/test_kombucha', boss.token)).status).toBe(409);
+  db.exec("DELETE FROM coffees WHERE id = 'test_booch';");
+  expect((await req('DELETE', '/api/admin/coffee-classes/test_kombucha', boss.token)).status).toBe(200);
+  expect(classRow('test_kombucha')).toBeNull();
+});
+
+test('move swaps a category with its neighbour', async () => {
+  const boss = makeUser('boss', { tier: 'super' });
+  // Append two fresh categories at the end so the swap is deterministic.
+  await req('POST', '/api/admin/coffee-classes', boss.token, { id: 'test_a', name: 'A' });
+  await req('POST', '/api/admin/coffee-classes', boss.token, { id: 'test_b', name: 'B' });
+  const aBefore = classRow('test_a').sort_order;
+  const bBefore = classRow('test_b').sort_order;
+  expect(bBefore).toBe(aBefore + 1);
+
+  await req('POST', '/api/admin/coffee-classes/test_b/move', boss.token, { direction: 'up' });
+  expect(classRow('test_b').sort_order).toBe(aBefore);
+  expect(classRow('test_a').sort_order).toBe(bBefore);
 });

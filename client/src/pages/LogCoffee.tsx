@@ -9,17 +9,7 @@ import {
 import { getSkipSpacing } from '../devFlags';
 import { api } from '../api/client';
 import { prepareImageUpload } from '../lib/image';
-import type { Coffee } from '../types';
-
-// Display label per drink class (issue #11). The server sends the class id on
-// each catalog item; the client owns the label, mirroring how icon keys resolve.
-const CLASS_LABEL: Record<string, string> = {
-  coffee: 'Coffee',
-  milk: 'Milk',
-  chocolate: 'Chocolate',
-  tea: 'Tea',
-  energy: 'Energy',
-};
+import type { Coffee, CoffeeClass } from '../types';
 
 export function LogCoffee() {
   const navigate = useNavigate();
@@ -31,6 +21,15 @@ export function LogCoffee() {
   } = useQuery<Coffee[]>({
     queryKey: ['coffees'],
     queryFn: () => api.get<Coffee[]>('/coffees'),
+    staleTime: Infinity,
+  });
+
+  // Category names and group order come from the server now (was a hardcoded
+  // CLASS_LABEL). A coffee whose class somehow isn't listed still shows, grouped
+  // under its raw key after the known categories.
+  const { data: classes = [] } = useQuery<CoffeeClass[]>({
+    queryKey: ['coffee-classes'],
+    queryFn: () => api.get<CoffeeClass[]>('/coffees/classes'),
     staleTime: Infinity,
   });
 
@@ -236,9 +235,18 @@ export function LogCoffee() {
             </div>
           ) : (
             <div className="coffee-classes">
-              {[...new Set(coffees.map(c => c.class))].map(cls => (
+              {(() => {
+                // Render categories in the server's order first, then any class a
+                // coffee uses that isn't a known category (shouldn't happen, but
+                // never hide a drink because its category was removed).
+                const present = [...new Set(coffees.map(c => c.class))];
+                const known = classes.map(c => c.id).filter(id => present.includes(id));
+                const orphan = present.filter(id => !classes.some(c => c.id === id));
+                const ordered = [...known, ...orphan];
+                const labelOf = (id: string) => classes.find(c => c.id === id)?.name ?? id;
+                return ordered.map(cls => (
                 <div className="coffee-class" key={cls}>
-                  <div className="coffee-class-label">{CLASS_LABEL[cls] ?? cls}</div>
+                  <div className="coffee-class-label">{labelOf(cls)}</div>
                   <div className="coffee-grid">
                     {coffees.filter(c => c.class === cls).map(c => (
                       <button
@@ -253,7 +261,8 @@ export function LogCoffee() {
                     ))}
                   </div>
                 </div>
-              ))}
+                ));
+              })()}
             </div>
           )}
 
