@@ -63,23 +63,15 @@ Categories **tabs**; Coffees = search + **accordion grouped by category**
 **Modal** (`components/Modal.tsx`, reuses `.confirm-backdrop`). Reused existing
 `.tab-row`/`.tab-btn`.
 
-## Review findings — 2 left OPEN (touch achievements, scoped out)
+## Review findings — all resolved
 
 Full branch review passed (SQL interp in `scoreMgSql` confirmed safe — ID_RE
 re-filter + Number(); migration seed diffed exactly against the deleted files).
-Fixed in review: mg cap 0..100000 in the admin validator, dead `.admin-cat-form`,
-SuggestInput highlight reset, a stale `coffee-scores.js` comment.
-
-Still open (deliberately not touched — live in `data/achievements.js`, which the
-user scoped out of #77):
-- `variety_all` target = `coffeeCount()` **at module load**. Safe only because
-  that module is always required after `migrate()` (index.js + every test). A
-  future require-before-migrate would throw `no such table: coffees` at import.
-- Same target is **frozen at boot**, so deleting a coffee via the new admin
-  route makes "try every type" unwinnable until restart (adds are fine).
-- Fix for both: make it a getter — `get target() { return coffeeCount(); }` —
-  evaluated per read (spread/JSON still yields a number). Needs the user's OK to
-  edit an achievements file.
+Fixed: mg cap 0..100000 in the admin validator, dead `.admin-cat-form`,
+SuggestInput highlight reset, stale `coffee-scores.js` comment, and the
+`variety_all` target — now a getter (`get target() { return coffeeCount(); }`)
+so it tracks admin add/delete live AND runs no DB query at import (was fragile:
+a require-before-migrate would have thrown `no such table: coffees`).
 
 ## Verify server recipe (single container, isolated)
 
