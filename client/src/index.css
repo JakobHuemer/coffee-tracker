@@ -756,9 +756,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .admin-coffee-del:hover:not(:disabled) { color: var(--danger-fg); }
 .admin-coffee-del:disabled { opacity: 0.3; cursor: default; }
-/* Category add/rename form sits inside the Categories card, so it drops the
-   card chrome the standalone coffee form carries. */
-.admin-cat-form { padding: 0; background: none; border: none; box-shadow: none; }
 
 /* Toolbar above the coffee accordion: search grows, Add button is fixed. The
    16px side margin matches the card gutter (.card margin) and the tab-row

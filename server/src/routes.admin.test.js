@@ -245,6 +245,9 @@ test('create rejects a bad id, duplicate id, and bad caffeine', async () => {
   expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'espresso', ...good })).status).toBe(409);
   expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'test_neg', name: 'Y', caffeine: -1, icon: 'coffee', class: 'coffee' })).status).toBe(400);
   expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'test_str', name: 'Y', caffeine: 'lots', icon: 'coffee', class: 'coffee' })).status).toBe(400);
+  // Absurdly large mg is rejected so it can't poison stats/Buzz/competition sums.
+  expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'test_big', name: 'Y', caffeine: 1e9, icon: 'coffee', class: 'coffee' })).status).toBe(400);
+  expect((await req('POST', '/api/admin/coffees', boss.token, { id: 'test_bigscore', name: 'Y', caffeine: 50, icon: 'coffee', class: 'coffee', score_caffeine: 1e9 })).status).toBe(400);
 });
 
 test('PATCH updates only the sent fields and can set/clear the score override', async () => {

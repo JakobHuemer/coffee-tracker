@@ -101,6 +101,12 @@ router.post('/users/:id/admin', (req, res) => {
 // rewrites or breaks past entries — it only changes what future logs get and
 // what the picker/labels show. This mirrors the long-standing catalog contract.
 
+// A generous ceiling on the two mg fields. Not a realism claim — it just stops a
+// fat-fingered / pasted value (e.g. 1e9) from being copied onto every future
+// entry and poisoning the Buzz, stats and competition sums. Real drinks are two
+// orders of magnitude under this.
+const MAX_MG = 100000;
+
 // Validate a coffee body. `partial` skips required-field checks for PATCH,
 // where an absent field means "leave unchanged". Returns { error } or { values }
 // holding only the fields present (so PATCH can build a targeted UPDATE).
@@ -113,7 +119,7 @@ function validateCoffee(body, { partial } = {}) {
   }
   if (body.caffeine !== undefined || !partial) {
     const n = Number(body.caffeine);
-    if (!Number.isInteger(n) || n < 0) return { error: 'caffeine must be a non-negative integer' };
+    if (!Number.isInteger(n) || n < 0 || n > MAX_MG) return { error: `caffeine must be a whole number between 0 and ${MAX_MG}` };
     values.caffeine = n;
   }
   if (body.icon !== undefined || !partial) {
@@ -131,7 +137,7 @@ function validateCoffee(body, { partial } = {}) {
       values.score_caffeine = null;
     } else {
       const s = Number(body.score_caffeine);
-      if (!Number.isInteger(s) || s < 0) return { error: 'score_caffeine must be a non-negative integer or null' };
+      if (!Number.isInteger(s) || s < 0 || s > MAX_MG) return { error: `score_caffeine must be a whole number between 0 and ${MAX_MG}, or null` };
       values.score_caffeine = s;
     }
   } else if (!partial) {

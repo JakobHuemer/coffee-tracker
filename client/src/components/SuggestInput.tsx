@@ -55,6 +55,10 @@ export function SuggestInput({
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [active, open]);
 
+  // Reset the highlight when the query (value) changes, so it never points past
+  // a shrunken result list — matches TimezonePicker's behaviour.
+  useEffect(() => { setActive(0); }, [value]);
+
   function choose(option: string) {
     onChange(option);
     setOpen(false);

@@ -294,7 +294,7 @@ function CategoryForm({ editing, onDone }: { editing: CoffeeClass | null; onDone
   }
 
   return (
-    <form className="admin-coffee-form admin-cat-form" onSubmit={submit}>
+    <form className="admin-coffee-form" onSubmit={submit}>
       {!editing && (
         <label className="admin-field">
           <span>ID</span>

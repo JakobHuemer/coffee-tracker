@@ -81,8 +81,8 @@ function weeklyWindow(group, now = Date.now(), offsetDays = 0) {
 // membership, and both bounds are inclusive.
 //
 // Caffeine is summed through scoreMgSql(), not the stored caffeine_mg — a few
-// drinks score differently from what the app displays. See
-// ./data/coffee-scores.js.
+// drinks score differently from what the app displays. See ./coffees.js
+// (the score_caffeine override column, issue #77; formerly data/coffee-scores.js).
 const metricsStmt = () => db.prepare(`
   SELECT COALESCE(SUM(${scoreMgSql()}), 0) AS caffeine,
          COUNT(*)                          AS cups,
