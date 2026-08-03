@@ -119,12 +119,11 @@ function CoffeeForm({ editing, classes, defaultClass, onDone }: {
       </label>
 
       <label className="admin-field">
-        <span>Score override (mg)</span>
+        <span>Competition score (mg)</span>
         <input className="search-input" type="number" min="0" step="1" inputMode="numeric"
           value={form.score_caffeine} onChange={e => set('score_caffeine')(e.target.value)}
-          placeholder="Default: same as caffeine" />
+          placeholder="Same as caffeine" />
       </label>
-      <p className="admin-field-hint">Competition-only. Blank scores at the displayed caffeine.</p>
 
       {error && <div className="auth-error" style={{ marginTop: 8 }}>{error}</div>}
       <div className="confirm-actions" style={{ marginTop: 12 }}>
@@ -149,8 +148,6 @@ function CoffeesTab({ coffees, classes, isLoading }: {
   const [editing, setEditing] = useState<AdminCoffee | null>(null);
   const [deleting, setDeleting] = useState<AdminCoffee | null>(null);
   const [deleteError, setDeleteError] = useState('');
-
-  const classNameOf = (id: string) => classes.find(c => c.id === id)?.name ?? id;
 
   // Group by category in category order; any coffee whose class isn't a known
   // category (shouldn't happen — creation enforces it) falls into a trailing
@@ -202,13 +199,13 @@ function CoffeesTab({ coffees, classes, isLoading }: {
 
       {isLoading && <div className="page-loading">Loading…</div>}
 
-      <div className="admin-acc-list">
+      <div className="card admin-acc-card">
         {groups.map(g => {
           // While searching, show only groups with hits and force them open.
           if (searching && g.items.length === 0) return null;
           const open = searching || expanded.has(g.id);
           return (
-            <div className="card admin-acc" key={g.id}>
+            <div className={`admin-acc${open ? ' open' : ''}`} key={g.id}>
               <button className="admin-acc-head" onClick={() => toggle(g.id)} aria-expanded={open}>
                 <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} className="admin-acc-chev" />
                 <span className="admin-acc-name">{g.name}</span>
@@ -233,7 +230,7 @@ function CoffeesTab({ coffees, classes, isLoading }: {
                       </button>
                     </div>
                   ))}
-                  {open && g.items.length === 0 && <div className="empty-state">No drinks in {g.name}.</div>}
+                  {g.items.length === 0 && <div className="empty-state">No drinks in {g.name}.</div>}
                 </div>
               )}
             </div>
@@ -251,7 +248,7 @@ function CoffeesTab({ coffees, classes, isLoading }: {
       {deleting && (
         <ConfirmDialog
           title={`Delete ${deleting.name}?`}
-          message={`Removed from ${classNameOf(deleting.class)}. Logged entries keep their recorded caffeine.`}
+          message="Past logs keep their caffeine."
           confirmLabel="Delete"
           busy={del.isPending}
           error={deleteError || undefined}
@@ -376,7 +373,7 @@ function CategoriesTab({ classes, counts }: { classes: CoffeeClass[]; counts: Re
       {deleting && (
         <ConfirmDialog
           title={`Delete ${deleting.name}?`}
-          message="Only works if no coffee uses it. Reassign those first."
+          message="Only if no coffee uses it."
           confirmLabel="Delete"
           busy={del.isPending}
           error={deleteError || undefined}
@@ -437,7 +434,6 @@ export function AdminCoffees() {
       <AppHeader />
       <div className="page-header">
         <h2>Coffee Catalog</h2>
-        <p className="page-sub">Add, edit or retire drinks. Changes apply to future logs.</p>
       </div>
 
       <div className="tab-row">
