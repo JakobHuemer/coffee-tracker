@@ -760,8 +760,10 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
    card chrome the standalone coffee form carries. */
 .admin-cat-form { padding: 0; background: none; border: none; box-shadow: none; }
 
-/* Toolbar above the coffee accordion: search grows, Add button is fixed. */
-.admin-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+/* Toolbar above the coffee accordion: search grows, Add button is fixed. The
+   16px side margin matches the card gutter (.card margin) and the tab-row
+   padding, so tabs, search and the list card all share one left/right edge. */
+.admin-toolbar { display: flex; gap: 8px; margin: 0 16px 12px; }
 .admin-add-btn { width: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; }
 
 /* Coffee list: one card of collapsible per-category rows (progressive
