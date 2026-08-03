@@ -119,8 +119,12 @@ body {
 
 .page-header { padding: 20px 16px 8px; }
 /* Keep every page's body content within one width, centered — Stats builds its
-   layout directly in .page (no <main>), so its sections are centered here too. */
-.page-header, .stats-hero, .stats-tabs, .stats-tab-body {
+   layout directly in .page (no <main>), so its sections are centered here too.
+   `.tab-row` is included because Stats and the admin catalog render it directly
+   under .page (not inside <main>/.stats-tab-body), so without this it stretches
+   edge-to-edge on wide screens; a .tab-row nested in an already-capped parent
+   (Compete) is unaffected. */
+.page-header, .stats-hero, .stats-tabs, .stats-tab-body, .page > .tab-row {
   max-width: var(--content-max); margin-left: auto; margin-right: auto;
 }
 .page-header h2 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.03em; color: var(--text-primary); }
