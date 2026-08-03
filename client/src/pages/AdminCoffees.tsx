@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
@@ -7,6 +7,7 @@ import { AppHeader } from '../components/AppHeader';
 import { Icon, ICON_KEYS } from '../components/Icon';
 import { SuggestInput } from '../components/SuggestInput';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Modal } from '../components/Modal';
 import type { AdminCoffee, CoffeeClass } from '../types';
 
 const BLANK = { id: '', name: '', caffeine: '', icon: 'coffee', class: '', score_caffeine: '' };
@@ -23,28 +24,22 @@ function toForm(c: AdminCoffee): FormState {
   };
 }
 
-// Add or edit a single coffee. `editing` holds the row being edited, or null for
-// a new one — the id is only editable when creating (it's the primary key and is
-// embedded in logged entries, so the server rejects a rename). `classes` feeds
-// the category picker; a coffee must sit in one of them (server enforces it too).
-function CoffeeForm({ editing, classes, onDone }: {
+// Add or edit a single coffee, shown inside a Modal. `editing` holds the row
+// being edited, or null for a new one — the id is only editable when creating
+// (it's the primary key and is embedded in logged entries, so the server rejects
+// a rename). `classes` feeds the category picker; a coffee must sit in one of
+// them (server enforces it too). `defaultClass` seeds a new coffee's category.
+function CoffeeForm({ editing, classes, defaultClass, onDone }: {
   editing: AdminCoffee | null;
   classes: CoffeeClass[];
+  defaultClass: string;
   onDone: () => void;
 }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState<FormState>(editing ? toForm(editing) : BLANK);
+  const [form, setForm] = useState<FormState>(
+    editing ? toForm(editing) : { ...BLANK, class: defaultClass },
+  );
   const [error, setError] = useState('');
-
-  useEffect(() => { setForm(editing ? toForm(editing) : BLANK); setError(''); }, [editing]);
-
-  // Default a new coffee to the first category once categories have loaded, so
-  // the picker is never left on the empty placeholder.
-  useEffect(() => {
-    if (!editing && !form.class && classes.length > 0) {
-      setForm(f => (f.class ? f : { ...f, class: classes[0].id }));
-    }
-  }, [editing, classes, form.class]);
 
   const set = (k: keyof FormState) => (v: string) => setForm(f => ({ ...f, [k]: v }));
 
@@ -65,9 +60,6 @@ function CoffeeForm({ editing, classes, onDone }: {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-coffees'] });
       qc.invalidateQueries({ queryKey: ['coffees'] });
-      // After an add the form stays mounted (editing was already null), so clear
-      // it here for the next entry; the default-category effect re-fills class.
-      if (!editing) setForm(BLANK);
       onDone();
     },
     onError: (e: Error) => setError(e.message),
@@ -89,21 +81,19 @@ function CoffeeForm({ editing, classes, onDone }: {
   }
 
   return (
-    <form className="card admin-coffee-form" onSubmit={submit}>
-      <div className="section-label">{editing ? `Edit ${editing.name}` : 'Add a coffee'}</div>
-
+    <form className="admin-coffee-form" onSubmit={submit}>
       {!editing && (
         <label className="admin-field">
           <span>ID</span>
           <input className="search-input" value={form.id} onChange={e => set('id')(e.target.value)}
-            placeholder="flat_white" autoComplete="off" spellCheck={false} />
+            placeholder="flat_white" autoComplete="off" spellCheck={false} autoFocus />
         </label>
       )}
 
       <label className="admin-field">
         <span>Name</span>
         <input className="search-input" value={form.name} onChange={e => set('name')(e.target.value)}
-          placeholder="Flat White" autoComplete="off" />
+          placeholder="Flat White" autoComplete="off" autoFocus={!!editing} />
       </label>
 
       <label className="admin-field">
@@ -138,17 +128,143 @@ function CoffeeForm({ editing, classes, onDone }: {
 
       {error && <div className="auth-error" style={{ marginTop: 8 }}>{error}</div>}
       <div className="confirm-actions" style={{ marginTop: 12 }}>
-        <button type="submit" className="btn-primary" style={{ width: 'auto' }} disabled={save.isPending}>
-          {save.isPending ? 'Saving…' : editing ? 'Save' : 'Add'}
+        <button type="submit" className="btn-primary" disabled={save.isPending}>
+          {save.isPending ? 'Saving…' : editing ? 'Save' : 'Add coffee'}
         </button>
-        {editing && <button type="button" className="btn-secondary" onClick={onDone}>Cancel</button>}
+        <button type="button" className="btn-secondary" onClick={onDone}>Cancel</button>
       </div>
     </form>
   );
 }
 
-// Add or rename a category. Same edit-loads-into-the-form pattern as coffees;
-// the id is fixed after creation (it's the key a coffee's class points at).
+function CoffeesTab({ coffees, classes, isLoading }: {
+  coffees: AdminCoffee[];
+  classes: CoffeeClass[];
+  isLoading: boolean;
+}) {
+  const qc = useQueryClient();
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<AdminCoffee | null>(null);
+  const [deleting, setDeleting] = useState<AdminCoffee | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+
+  const classNameOf = (id: string) => classes.find(c => c.id === id)?.name ?? id;
+
+  // Group by category in category order; any coffee whose class isn't a known
+  // category (shouldn't happen — creation enforces it) falls into a trailing
+  // "Other" bucket so it's never hidden.
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const match = (c: AdminCoffee) => !q || c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q);
+    const known = classes.map(cls => ({ id: cls.id, name: cls.name, items: coffees.filter(c => c.class === cls.id && match(c)) }));
+    const orphans = coffees.filter(c => !classes.some(cls => cls.id === c.class) && match(c));
+    if (orphans.length) known.push({ id: '__other__', name: 'Other', items: orphans });
+    return known;
+  }, [coffees, classes, query]);
+
+  const searching = query.trim().length > 0;
+  const del = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/coffees/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-coffees'] });
+      qc.invalidateQueries({ queryKey: ['coffees'] });
+      setDeleting(null); setDeleteError('');
+    },
+    onError: (e: Error) => setDeleteError(e.message),
+  });
+
+  function toggle(id: string) {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  const firstClass = classes[0]?.id ?? '';
+
+  return (
+    <>
+      <div className="admin-toolbar">
+        <input
+          className="search-input"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder={`Search ${coffees.length} drinks…`}
+          autoComplete="off"
+        />
+        <button className="btn-primary admin-add-btn" onClick={() => { setEditing(null); setFormOpen(true); }}>
+          <Icon name="plus" size={14} /> Add
+        </button>
+      </div>
+
+      {isLoading && <div className="page-loading">Loading…</div>}
+
+      <div className="admin-acc-list">
+        {groups.map(g => {
+          // While searching, show only groups with hits and force them open.
+          if (searching && g.items.length === 0) return null;
+          const open = searching || expanded.has(g.id);
+          return (
+            <div className="card admin-acc" key={g.id}>
+              <button className="admin-acc-head" onClick={() => toggle(g.id)} aria-expanded={open}>
+                <Icon name={open ? 'chevron-up' : 'chevron-down'} size={14} className="admin-acc-chev" />
+                <span className="admin-acc-name">{g.name}</span>
+                <span className="admin-acc-count">{g.items.length}</span>
+              </button>
+              {open && (
+                <div className="admin-coffee-list">
+                  {g.items.map(c => (
+                    <div key={c.id} className="admin-coffee-row">
+                      <Icon name={c.icon} size={20} className="admin-coffee-icon" />
+                      <div className="admin-coffee-meta">
+                        <span className="admin-coffee-name">{c.name}</span>
+                        <span className="admin-coffee-sub">
+                          {c.id} · {c.caffeine}mg
+                          {c.score_caffeine != null && ` · scores ${c.score_caffeine}mg`}
+                        </span>
+                      </div>
+                      <button className="btn-secondary admin-coffee-btn" onClick={() => { setEditing(c); setFormOpen(true); }}>Edit</button>
+                      <button className="admin-coffee-del" aria-label={`Delete ${c.name}`}
+                        onClick={() => { setDeleteError(''); setDeleting(c); }}>
+                        <Icon name="trash" size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {open && g.items.length === 0 && <div className="empty-state">No drinks in {g.name}.</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {!isLoading && coffees.length === 0 && <div className="empty-state">No coffees yet.</div>}
+      </div>
+
+      {formOpen && (
+        <Modal title={editing ? `Edit ${editing.name}` : 'Add a coffee'} onClose={() => setFormOpen(false)}>
+          <CoffeeForm editing={editing} classes={classes} defaultClass={firstClass} onDone={() => setFormOpen(false)} />
+        </Modal>
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete ${deleting.name}?`}
+          message={`Removed from ${classNameOf(deleting.class)}. Logged entries keep their recorded caffeine.`}
+          confirmLabel="Delete"
+          busy={del.isPending}
+          error={deleteError || undefined}
+          onConfirm={() => del.mutate(deleting.id)}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// Add or rename a category. Small enough to stay inline (2 fields); the id is
+// fixed after creation (it's the key a coffee's class points at).
 function CategoryForm({ editing, onDone }: { editing: CoffeeClass | null; onDone: () => void }) {
   const qc = useQueryClient();
   const [id, setId] = useState('');
@@ -205,7 +321,7 @@ function CategoryForm({ editing, onDone }: { editing: CoffeeClass | null; onDone
   );
 }
 
-function CategoryManager({ classes }: { classes: CoffeeClass[] }) {
+function CategoriesTab({ classes, counts }: { classes: CoffeeClass[]; counts: Record<string, number> }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<CoffeeClass | null>(null);
   const [deleting, setDeleting] = useState<CoffeeClass | null>(null);
@@ -237,7 +353,7 @@ function CategoryManager({ classes }: { classes: CoffeeClass[] }) {
           <div key={c.id} className={`admin-coffee-row${editing?.id === c.id ? ' editing' : ''}`}>
             <div className="admin-coffee-meta">
               <span className="admin-coffee-name">{c.name}</span>
-              <span className="admin-coffee-sub">{c.id}</span>
+              <span className="admin-coffee-sub">{c.id} · {counts[c.id] ?? 0} {(counts[c.id] ?? 0) === 1 ? 'drink' : 'drinks'}</span>
             </div>
             <button className="admin-coffee-del" aria-label={`Move ${c.name} up`} disabled={i === 0 || move.isPending}
               onClick={() => move.mutate({ id: c.id, direction: 'up' })}>
@@ -280,10 +396,7 @@ export function AdminCoffees() {
   // enforces admin on every write regardless.
   const user = useAuthStore(s => s.user);
   const isAdmin = user?.is_admin === 1;
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState<AdminCoffee | null>(null);
-  const [deleting, setDeleting] = useState<AdminCoffee | null>(null);
-  const [deleteError, setDeleteError] = useState('');
+  const [tab, setTab] = useState<'coffees' | 'categories'>('coffees');
 
   useEffect(() => {
     if (user && !isAdmin) navigate('/profile', { replace: true });
@@ -300,17 +413,13 @@ export function AdminCoffees() {
     queryFn: () => api.get<CoffeeClass[]>('/admin/coffee-classes'),
     enabled: isAdmin,
   });
-  const classNameOf = (id: string) => classes.find(c => c.id === id)?.name ?? id;
 
-  const del = useMutation({
-    mutationFn: (id: string) => api.delete(`/admin/coffees/${id}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-coffees'] });
-      qc.invalidateQueries({ queryKey: ['coffees'] });
-      setDeleting(null); setDeleteError('');
-    },
-    onError: (e: Error) => setDeleteError(e.message),
-  });
+  // Per-category drink counts, for the Categories tab.
+  const counts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const c of coffees) m[c.class] = (m[c.class] ?? 0) + 1;
+    return m;
+  }, [coffees]);
 
   // While the user is still loading, or a non-admin is mid-bounce, render the
   // shell so there's no flash of the full page.
@@ -331,50 +440,21 @@ export function AdminCoffees() {
         <p className="page-sub">Add, edit or retire drinks. Changes apply to future logs.</p>
       </div>
 
+      <div className="tab-row">
+        <button className={`tab-btn${tab === 'coffees' ? ' active' : ''}`} onClick={() => setTab('coffees')}>
+          Coffees ({coffees.length})
+        </button>
+        <button className={`tab-btn${tab === 'categories' ? ' active' : ''}`} onClick={() => setTab('categories')}>
+          Categories ({classes.length})
+        </button>
+      </div>
+
       <main className="stats-tab-body">
-        <CoffeeForm editing={editing} classes={classes} onDone={() => setEditing(null)} />
-
-        {isLoading && <div className="page-loading">Loading…</div>}
         {error && <div className="card error-card">{(error as Error).message}</div>}
-
-        <div className="card">
-          <div className="section-label">Menu ({coffees.length})</div>
-          <div className="admin-coffee-list">
-            {coffees.map(c => (
-              <div key={c.id} className={`admin-coffee-row${editing?.id === c.id ? ' editing' : ''}`}>
-                <Icon name={c.icon} size={20} className="admin-coffee-icon" />
-                <div className="admin-coffee-meta">
-                  <span className="admin-coffee-name">{c.name}</span>
-                  <span className="admin-coffee-sub">
-                    {c.id} · {classNameOf(c.class)} · {c.caffeine}mg
-                    {c.score_caffeine != null && ` · scores ${c.score_caffeine}mg`}
-                  </span>
-                </div>
-                <button className="btn-secondary admin-coffee-btn" onClick={() => setEditing(c)}>Edit</button>
-                <button className="admin-coffee-del" aria-label={`Delete ${c.name}`}
-                  onClick={() => { setDeleteError(''); setDeleting(c); }}>
-                  <Icon name="trash" size={16} />
-                </button>
-              </div>
-            ))}
-            {!isLoading && coffees.length === 0 && <div className="empty-state">No coffees yet.</div>}
-          </div>
-        </div>
-
-        <CategoryManager classes={classes} />
+        {tab === 'coffees'
+          ? <CoffeesTab coffees={coffees} classes={classes} isLoading={isLoading} />
+          : <CategoriesTab classes={classes} counts={counts} />}
       </main>
-
-      {deleting && (
-        <ConfirmDialog
-          title={`Delete ${deleting.name}?`}
-          message="Removed from the menu. Logged entries keep their recorded caffeine."
-          confirmLabel="Delete"
-          busy={del.isPending}
-          error={deleteError || undefined}
-          onConfirm={() => del.mutate(deleting.id)}
-          onCancel={() => setDeleting(null)}
-        />
-      )}
     </div>
   );
 }

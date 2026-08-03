@@ -757,6 +757,42 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
    card chrome the standalone coffee form carries. */
 .admin-cat-form { padding: 0; background: none; border: none; box-shadow: none; }
 
+/* Toolbar above the coffee accordion: search grows, Add button is fixed. */
+.admin-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+.admin-add-btn { width: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; }
+
+/* Coffee list as collapsible per-category sections (progressive disclosure so
+   a long menu stays compact until a section is opened). */
+.admin-acc-list { display: flex; flex-direction: column; gap: 8px; }
+.admin-acc { padding: 0; overflow: hidden; }
+.admin-acc-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 12px 14px; background: none; border: none; cursor: pointer;
+  color: var(--text-primary); font-size: 0.9rem; font-weight: 600; text-align: left;
+}
+.admin-acc-chev { color: var(--text-muted); flex-shrink: 0; }
+.admin-acc-name { flex: 1; }
+.admin-acc-count {
+  font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
+  background: var(--surface2); border-radius: 20px; padding: 2px 9px; min-width: 24px; text-align: center;
+}
+.admin-acc .admin-coffee-list { padding: 0 14px 6px; }
+
+/* Content modal (admin add/edit forms). Reuses .confirm-backdrop; wider than a
+   confirm box and scrolls when the form is taller than the viewport. */
+.admin-modal-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px;
+  max-width: 420px; width: 100%; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+}
+.admin-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.admin-modal-close {
+  background: none; border: none; color: var(--text-muted); cursor: pointer;
+  display: flex; align-items: center; padding: 4px;
+}
+.admin-modal-close:hover { color: var(--text-primary); }
+
 /* Versus header — two players flanking a VS badge */
 .compare-card { padding-top: 24px; }
 .vs-header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: 22px; }

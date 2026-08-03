@@ -52,6 +52,17 @@ from the DB; removed `CLASS_LABEL` and `CLASS_SUGGESTIONS`.
   the effect never fired and the form kept its values. Fixed by clearing in the
   mutation's `onSuccess` when `!editing`.
 
+## Admin catalog UI structure (redesign)
+
+Researched admin-CRUD patterns (LogRocket/NN-g/UXDWorld): search is near-
+mandatory; multi-field forms w/ dropdowns+side-effects belong in a modal, not a
+permanent inline block; accordion = progressive disclosure for long grouped
+lists; split resources into tabs. Applied: `AdminCoffees` now has Coffees /
+Categories **tabs**; Coffees = search + **accordion grouped by category**
+(collapsed by default → caps height, search auto-expands matches); add/edit in a
+**Modal** (`components/Modal.tsx`, reuses `.confirm-backdrop`). Reused existing
+`.tab-row`/`.tab-btn`.
+
 ## Verify server recipe (single container, isolated)
 
 `cp -r client/dist server/public` then `PORT=3999 DB_DIR=<scratch> JWT_SECRET=…
