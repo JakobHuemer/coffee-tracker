@@ -1,5 +1,5 @@
 ---
-topics: [profile-view-73, badges-80, badge-popover, featured-badges-removal, dev-badge-toggle, badge-ordering, worktree-deps]
+topics: [profile-view-73, badges-80, badge-popover, featured-badges-removal, secret-badge-masking, badge-ordering, worktree-deps]
 ---
 
 # Public profile view (#73) + badge polish (#80)
@@ -39,9 +39,6 @@ topics: [profile-view-73, badges-80, badge-popover, featured-badges-removal, dev
   one puts `@handle` on the name via `<Profile.Name handle>`.
 - `byUnlockedThenRarity` (rarity.ts): unlocked group **rarest-first**, locked
   group **ascending** — intentional, asymmetric. Used by Badges + Achievements.
-- **Dev badge toggler** (Profile page): `POST /api/badges/dev-toggle`, gated by
-  `DEV_OVERRIDES=1` (403 otherwise); the card only renders when
-  `/coffees/dev-flags` reports `spacing_override`. Testing only.
 - **This worktree ships without node_modules** — `server/` and `client/` both
   needed `bun install`. Route tests fail with "Cannot find package 'express'"
   until you do; not a code bug.

@@ -923,17 +923,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 
 .field-hint { font-size: 0.72rem; color: var(--text-muted); font-weight: 400; }
 
-/* Quick-and-dirty badge debug toggler (dev only). */
-.debug-badge-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.debug-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 5px 9px; border-radius: 8px; border: 1.5px solid var(--border);
-  background: var(--surface2); color: var(--text-muted); cursor: pointer;
-  font-size: 0.74rem; transition: all 0.12s;
-}
-.debug-badge.on { border-color: var(--accent); background: var(--accent-bg); color: var(--text-primary); font-weight: 600; }
-.debug-badge:disabled { opacity: 0.5; cursor: default; }
-
 /* ── Badge info popover (public profile only, issue #80) ───────────────────── */
 .badge-info { position: relative; display: inline-flex; }
 .badge-info-trigger {

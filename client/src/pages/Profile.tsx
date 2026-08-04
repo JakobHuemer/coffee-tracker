@@ -109,56 +109,6 @@ function DebugCard() {
   );
 }
 
-// Quick-and-dirty badge toggler for testing how profiles look with different
-// badge sets. Server-gated behind DEV_OVERRIDES (POST /badges/dev-toggle 403s
-// otherwise), and this card only renders when that flag is on — so it never
-// shows a control that quietly does nothing.
-function DebugBadgesCard() {
-  const qc = useQueryClient();
-  const { data: flags } = useQuery<{ spacing_override: boolean }>({
-    queryKey: ['dev-flags'],
-    queryFn: () => api.get('/coffees/dev-flags'),
-    staleTime: Infinity,
-  });
-  const { data: badges = [] } = useQuery<Badge[]>({ queryKey: ['badges'], queryFn: () => api.get('/badges') });
-
-  const toggle = useMutation({
-    mutationFn: ({ id, unlocked }: { id: string; unlocked: boolean }) =>
-      api.post('/badges/dev-toggle', { badge_id: id, unlocked }),
-    // Refresh everything that renders badges so the change shows everywhere.
-    onSuccess: () => {
-      for (const k of ['badges', 'me', 'user-profile', 'compare', 'feed', 'competitions']) {
-        qc.invalidateQueries({ queryKey: [k] });
-      }
-    },
-  });
-
-  if (!flags?.spacing_override) return null;
-
-  return (
-    <div className="card">
-      <div className="section-label">Debug · Badges</div>
-      <div className="log-share-sub" style={{ marginBottom: 8 }}>
-        Toggle which badges you hold. Dev servers only.
-      </div>
-      <div className="debug-badge-grid">
-        {badges.map(b => (
-          <button
-            key={b.id}
-            className={`debug-badge${b.unlocked ? ' on' : ''}`}
-            onClick={() => toggle.mutate({ id: b.id, unlocked: !b.unlocked })}
-            disabled={toggle.isPending}
-            title={b.description}
-          >
-            <Icon name={b.unlocked ? b.icon : 'lock'} size={16} />
-            <span className="debug-badge-name">{b.name}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function ChangePasswordCard() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -593,8 +543,6 @@ export function Profile() {
         {user?.is_admin ? <AdminCard /> : null}
 
         <DebugCard />
-
-        <DebugBadgesCard />
 
         <div className="card account-actions-card">
           <button className="btn-secondary" onClick={() => { logout(); navigate('/auth'); }}>Sign Out</button>
