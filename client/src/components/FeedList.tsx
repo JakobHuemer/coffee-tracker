@@ -8,6 +8,7 @@ import { PhotoLightbox } from './PhotoLightbox';
 import { ResponsiveImage } from './ResponsiveImage';
 import { ConfirmDialog } from './ConfirmDialog';
 import { BadgeRow } from './Badge';
+import { MentionText } from './MentionText';
 import type { FeedPost } from '../types';
 
 const PAGE_SIZE = 20;
@@ -83,7 +84,7 @@ function PostCard({
   }
 
   return (
-    <article className="feed-post">
+    <article className={`feed-post${post.marked_me ? ' feed-post-marked' : ''}`}>
       <div className="feed-post-header feed-post-header-clickable" onClick={handleUserClick} role="button" tabIndex={0} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleUserClick(); } }}>
         {post.profile_image || post.profile_photo_url
           ? <ResponsiveImage image={post.profile_image} fallback={post.profile_photo_url} alt={post.username} className="feed-avatar-img" sizes="48px" />
@@ -128,7 +129,9 @@ function PostCard({
               {timeAgo(post.logged_at)} · {exactTime(post.logged_at)}
             </span>
           </div>
-          {post.description && <p className="gallery-lightbox-desc">{post.description}</p>}
+          {post.description && (
+            <p className="gallery-lightbox-desc"><MentionText text={post.description} marks={post.marks} /></p>
+          )}
         </PhotoLightbox>
       )}
 
@@ -146,7 +149,9 @@ function PostCard({
           <span className="feed-coffee-name">{post.coffee_id.replace(/_/g, ' ')}</span>
           <span className="feed-caffeine">{post.caffeine_mg}mg</span>
         </div>
-        {post.description && <p className="feed-description">{post.description}</p>}
+        {post.description && (
+          <p className="feed-description"><MentionText text={post.description} marks={post.marks} /></p>
+        )}
       </div>
 
       {/* Nobody can like a private post — it is visible to its owner alone — so

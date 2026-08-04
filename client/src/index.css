@@ -332,6 +332,20 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 }
 .feed-description { font-size: 0.82rem; color: var(--text-sec); line-height: 1.5; margin-top: 4px; }
 
+/* A post that @marks the viewer is highlighted for them — an accent frame plus a
+   faint accent wash so it stands out while scrolling their feed. */
+.feed-post-marked { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
+.feed-post-marked .feed-post-body { background: var(--accent-bg); }
+
+/* An @mention inside a description: a link to the comparison page. */
+.mention { color: var(--accent); font-weight: 600; text-decoration: none; }
+.mention:hover { text-decoration: underline; }
+/* The tagged viewer's own mention: their handle, accent-coloured like any
+   mention but not a link (nothing to compare against yourself), so no click
+   affordance and no hover underline. "You've been marked" is a hover tooltip. */
+.mention-you { cursor: default; }
+.mention-you:hover { text-decoration: none; }
+
 .feed-post-actions { padding: 8px 14px 12px; display: flex; align-items: center; gap: 12px; }
 .feed-like-btn {
   display: flex; align-items: center; gap: 5px;

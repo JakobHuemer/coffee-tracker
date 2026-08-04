@@ -291,6 +291,7 @@ export function LogCoffee() {
               rows={2}
               maxLength={280}
             />
+            <div className="field-hint" style={{ marginTop: 6 }}>Mention someone with @username to mark them.</div>
           </div>
 
           <div className="log-share-row">
