@@ -36,7 +36,7 @@ function handleUpload(mw) {
 
 const router = express.Router();
 
-const USER_COLS = 'id, username, avatar, profile_photo, image_id, featured_badges, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, is_admin, is_super_admin, created_at';
+const USER_COLS = 'id, username, avatar, profile_photo, image_id, timezone, caffeine_half_life_h, auto_join_daily, auto_join_weekly, is_admin, is_super_admin, created_at';
 const USERNAME_RE = /^[a-zA-Z0-9_-]{2,20}$/;
 
 // Throttle credential guessing and mass account creation. Per-IP: generous
@@ -55,7 +55,6 @@ function parseUser(u) {
   const { image_id, ...rest } = u;
   return {
     ...rest,
-    featured_badges: u.featured_badges ? u.featured_badges.split(',').filter(Boolean) : [],
     profile_photo_url: u.profile_photo ? `/uploads/${u.profile_photo}` : null,
     profile_image: images.variantsFor(image_id),
   };
@@ -118,7 +117,7 @@ router.get('/me', requireAuth, (req, res) => {
 
 router.patch('/me', requireAuth, (req, res) => {
   const {
-    username, avatar, featured_badges, password, timezone, caffeine_half_life_h,
+    username, avatar, password, timezone, caffeine_half_life_h,
     auto_join_daily, auto_join_weekly,
   } = req.body;
   if (username && !USERNAME_RE.test(username)) {
@@ -174,13 +173,6 @@ router.patch('/me', requireAuth, (req, res) => {
   // multi-codepoint emoji while rejecting arbitrary blobs.
   if (avatar && (typeof avatar !== 'string' || avatar.length > 16)) {
     return res.status(400).json({ error: 'Invalid avatar' });
-  }
-  if (featured_badges !== undefined) {
-    if (!Array.isArray(featured_badges) || featured_badges.length > 3 ||
-        !featured_badges.every(b => typeof b === 'string' && b.length > 0 && !b.includes(','))) {
-      return res.status(400).json({ error: 'featured_badges must be an array of up to 3 badge IDs' });
-    }
-    db.prepare('UPDATE users SET featured_badges = ? WHERE id = ?').run(featured_badges.join(','), req.user.id);
   }
   if (username) {
     const taken = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.user.id);

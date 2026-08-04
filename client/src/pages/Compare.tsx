@@ -4,9 +4,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
 import { ResponsiveImage } from '../components/ResponsiveImage';
-import { Icon } from '../components/Icon';
-import type { CompareUserProfile, CompareUserStats, FeaturedBadge } from '../types';
-import { rarityColor } from '../rarity';
+import { BadgeRow } from '../components/Badge';
+import type { CompareUserProfile, CompareUserStats } from '../types';
 
 interface CompareResponse {
   me: CompareUserProfile;
@@ -25,19 +24,6 @@ const STAT_DEFS: { key: keyof CompareUserStats; label: string; suffix?: string }
   { key: 'achievements_count', label: 'Achievements' },
   { key: 'badges_count', label: 'Badges' },
 ];
-
-function FeaturedBadges({ badges }: { badges: FeaturedBadge[] }) {
-  if (badges.length === 0) return null;
-  return (
-    <div className="vs-featured-badges">
-      {badges.map(b => (
-        <div key={b.id} className="vs-feat-badge" title={b.name} style={{ borderColor: rarityColor(b.rarity) }}>
-          <span className="vs-feat-icon"><Icon name={b.icon} /></span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 const fmt = (n: number, suffix = '') =>
   `${Number.isInteger(n) ? n.toLocaleString() : n.toFixed(1)}${suffix}`;
@@ -61,7 +47,7 @@ function StatBar({ label, mine, theirs, suffix }: { label: string; mine: number;
   );
 }
 
-export function CompareContent({ initialUsername = '', standalone = false }: { initialUsername?: string; standalone?: boolean }) {
+export function CompareContent({ initialUsername = '', standalone = false, hideSearch = false }: { initialUsername?: string; standalone?: boolean; hideSearch?: boolean }) {
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState(initialUsername);
   const [activeUsername, setActiveUsername] = useState(initialUsername);
@@ -105,18 +91,22 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
 
   return (
     <>
-      <div className="card">
-        <div className="section-label">Find a user</div>
-        <form onSubmit={handleSearch} className="search-row">
-          <input
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            placeholder="Enter username…"
-            className="search-input"
-          />
-          <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }}>Compare</button>
-        </form>
-      </div>
+      {/* On the public profile page the target is already fixed, so the search
+          box is hidden — the comparison runs against that one user. */}
+      {!hideSearch && (
+        <div className="card">
+          <div className="section-label">Find a user</div>
+          <form onSubmit={handleSearch} className="search-row">
+            <input
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              placeholder="Enter username…"
+              className="search-input"
+            />
+            <button type="submit" className="btn-primary" style={{ flexShrink: 0, width: 'auto' }}>Compare</button>
+          </form>
+        </div>
+      )}
 
       {isLoading && <div className="page-loading">Comparing…</div>}
       {error && <div className="card error-card">User not found or error: {(error as Error).message}</div>}
@@ -130,7 +120,7 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
                 : <div className="vs-avatar">{data.me.avatar}</div>}
               <div className="vs-name">{data.me.username}</div>
               <div className="vs-tag">You</div>
-              <FeaturedBadges badges={data.me.featured_badges ?? []} />
+              <BadgeRow badges={data.me.badges} size={24} className="vs-featured-badges" />
             </div>
             <div className="vs-badge">VS</div>
             <div className="vs-player them">
@@ -139,7 +129,7 @@ export function CompareContent({ initialUsername = '', standalone = false }: { i
                 : <div className="vs-avatar">{data.them.avatar}</div>}
               <div className="vs-name">{data.them.username}</div>
               <div className="vs-tag">Them</div>
-              <FeaturedBadges badges={data.them.featured_badges ?? []} />
+              <BadgeRow badges={data.them.badges} size={24} className="vs-featured-badges" />
             </div>
           </div>
 

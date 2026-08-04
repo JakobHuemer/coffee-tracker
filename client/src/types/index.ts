@@ -73,6 +73,9 @@ export interface FeedPost {
   likes_count: number;
   liked_by_me: boolean;
   bookmarked_by_me: boolean;
+  // The author's earned badge chips, so a post header carries the same identity
+  // a profile does (issue #80). Empty when they have none.
+  badges: ProfileBadge[];
 }
 
 export interface User {
@@ -81,7 +84,6 @@ export interface User {
   avatar: string;
   profile_photo_url?: string | null;
   profile_image?: ImageField | null;
-  featured_badges: string[];
   timezone?: string;
   // Personal caffeine half-life in hours, driving the Buzz decay curve. null
   // means unset — the server falls back to the 5 h population default.
@@ -250,11 +252,17 @@ export interface CompareUserStats {
   badges_count: number;
 }
 
-export interface FeaturedBadge {
+// A badge chip as shown on a profile surface (row/leaderboard/post/compare):
+// just enough to render the tier-coloured icon. The full Badge (description,
+// unlocked state) is only needed on the collection page.
+export interface ProfileBadge {
   id: string;
   name: string;
   icon: string;
   rarity: string;
+  // Present on server-sent profile badges; drives the info popover on the public
+  // profile page (issue #80). Optional so a chip can be built without it.
+  description?: string;
 }
 
 export interface CompareUserProfile {
@@ -263,8 +271,24 @@ export interface CompareUserProfile {
   avatar: string;
   profile_photo_url?: string | null;
   profile_image?: ImageField | null;
-  featured_badges: FeaturedBadge[];
+  badges: ProfileBadge[];
   stats: CompareUserStats;
+}
+
+// GET /api/users/:username — a user's public profile (issue #73). Same identity
+// + stats shape as a Compare side, plus `created_at` (member-since) and `self`
+// (true when it is the caller's own profile, so the page can offer Edit instead
+// of Compare).
+export interface PublicProfile {
+  id: string;
+  username: string;
+  avatar: string;
+  profile_photo_url?: string | null;
+  profile_image?: ImageField | null;
+  badges: ProfileBadge[];
+  stats: CompareUserStats;
+  created_at: number;
+  self: boolean;
 }
 
 /* ── API response envelopes ──────────────────────────────────────────────────
@@ -368,6 +392,7 @@ export interface GroupMember {
   avatar: string;
   profile_photo_url: string | null;
   profile_image?: ImageField | null;
+  badges?: ProfileBadge[];
   joined_at: number;
   rating: number;
   matches: number;
@@ -379,6 +404,7 @@ export interface MatchParticipant {
   avatar: string;
   profile_photo_url: string | null;
   profile_image?: ImageField | null;
+  badges?: ProfileBadge[];
   joined_at: number;
   // Live for a running match (window so far), frozen at settlement afterwards.
   // A linear, uncapped integer — there is no maximum to render it against, so
@@ -440,6 +466,7 @@ export interface LeaderboardEntry {
   avatar: string;
   profile_photo_url: string | null;
   profile_image?: ImageField | null;
+  badges?: ProfileBadge[];
   rating: number;
   matches: number;
   rank: number;

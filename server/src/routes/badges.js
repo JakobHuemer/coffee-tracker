@@ -18,7 +18,9 @@ router.get('/', requireAuth, (req, res) => {
       return {
         id: b.id,
         name: '???',
-        description: 'A hidden badge. Keep playing to discover it.',
+        // No explanation for a hidden badge — a locked ??? gives nothing away.
+        // Only real (unlocked) badges carry a description.
+        description: '',
         icon: 'lock',
         rarity: 'secret',
         secret: true,

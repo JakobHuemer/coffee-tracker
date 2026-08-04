@@ -7,6 +7,7 @@ import { AppHeader } from '../components/AppHeader';
 import { ResponsiveImage } from '../components/ResponsiveImage';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Icon } from '../components/Icon';
+import { BadgeRow } from '../components/Badge';
 import { TimezonePicker } from '../components/TimezonePicker';
 import { useAuthStore } from '../store/auth';
 import type {
@@ -264,11 +265,19 @@ function Avatar({ p }: { p: { avatar: string; profile_photo_url: string | null; 
 /* ── standings ─────────────────────────────────────────────────────────────── */
 
 function Standing({ p, settled, rank }: { p: MatchParticipant; settled: boolean; rank: number }) {
+  const navigate = useNavigate();
   return (
     <div className="cmp-standing">
       <span className="cmp-standing-rank">{rank}</span>
       <Avatar p={p} />
-      <span className="cmp-standing-name">{p.username}</span>
+      <span
+        className="cmp-standing-name cmp-name-link"
+        role="button" tabIndex={0}
+        onClick={() => navigate(`/u/${p.username}`)}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/u/${p.username}`); } }}
+      >{p.username}</span>
+      {/* Badges travel with the profile (issue #80). */}
+      <BadgeRow badges={p.badges} size={16} />
       <span className="cmp-standing-points">{p.points} pts</span>
       {settled
         ? <span className={deltaClass(p.delta)}>{fmtDelta(p.delta)}</span>
@@ -619,12 +628,21 @@ function MatchesSection({ scope, data }: { scope: CompeteScope; data: Competitio
 }
 
 function LeaderboardRow({ r, me }: { r: LeaderboardEntry; me: boolean }) {
+  const navigate = useNavigate();
   return (
     <div className={`lb-row${me ? ' me' : ''}`}>
       <span className="lb-rank">{r.matches === 0 ? '—' : `#${r.rank}`}</span>
       <Avatar p={r} />
       <span className="lb-user">
-        <span className="lb-username">{r.username}</span>
+        <span className="lb-user-line">
+          <span
+            className="lb-username cmp-name-link"
+            role="button" tabIndex={0}
+            onClick={() => navigate(`/u/${r.username}`)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/u/${r.username}`); } }}
+          >{r.username}</span>
+          <BadgeRow badges={r.badges} size={15} />
+        </span>
         <span className="lb-stats">
           {r.matches === 0 ? 'no matches yet' : `${r.matches} ${r.matches === 1 ? 'match' : 'matches'}`}
         </span>

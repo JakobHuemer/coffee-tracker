@@ -10,6 +10,7 @@ import {
   FaXmark, FaBookmark, FaRegBookmark, FaPlus, FaArrowRight, FaLock, FaTrash, FaRegCopy,
   FaLayerGroup, FaImages,
   FaChevronUp, FaChevronDown, FaGithub, FaGlobe, FaSpinner, FaBell,
+  FaGem, FaRankingStar, FaSyringe,
 } from 'react-icons/fa6';
 import type { IconType } from 'react-icons';
 
@@ -32,6 +33,9 @@ const ICONS: Record<string, IconType> = {
   medal: FaMedal,
   award: FaAward,
   crown: FaCrown,
+  gem: FaGem,
+  ranking: FaRankingStar,
+  syringe: FaSyringe,
   star: FaStar,
   fire: FaFire,
   bolt: FaBolt,

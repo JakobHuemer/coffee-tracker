@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
-import { rarityColor, rarityLabel, byUnlockedThenRarity } from '../rarity';
+import { BadgeMedal } from '../components/Badge';
+import { byUnlockedThenRarity } from '../rarity';
 import type { Achievement, Badge } from '../types';
 
 // Badges + achievements, lifted out of the old Stats "Badges" tab and reached
@@ -31,14 +32,7 @@ export function Badges() {
             {badges
               .slice()
               .sort(byUnlockedThenRarity)
-              .map(b => (
-                <div key={b.id} className={`badge-card${b.unlocked ? ' unlocked' : ' locked'}`} title={b.description}>
-                  <div className="badge-icon"><Icon name={b.icon} size={28} /></div>
-                  <div className="badge-name">{b.name}</div>
-                  <div className="badge-rarity" style={{ color: rarityColor(b.rarity) }}>{rarityLabel(b.rarity)}</div>
-                  {b.unlocked && b.unlocked_at && <div className="badge-date">{new Date(b.unlocked_at).toLocaleDateString()}</div>}
-                </div>
-              ))}
+              .map(b => <BadgeMedal key={b.id} badge={b} />)}
           </div>
         </div>
 

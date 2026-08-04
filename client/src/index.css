@@ -623,21 +623,43 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   border-radius: 8px; text-align: center; font-size: 0.88rem; font-weight: 600; color: var(--accent);
 }
 
-/* ── Achievements page ───────────────────────────────────────────────────── */
-.badges-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+/* ── Badges ──────────────────────────────────────────────────────────────────
+   One badge shape, used everywhere a profile shows (issue #80). BadgeChip is the
+   inline Discord-style disc; BadgeMedal is the larger collection-page medallion.
+   Both tint from --badge-color (the rarity colour), set inline by the component. */
+
+/* Inline chip (feed headers, compare, rosters, profile). Icon on a tinted disc. */
+.badge-row { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; vertical-align: middle; }
+.badge-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; border: 1.5px solid currentColor;
+  background: color-mix(in srgb, var(--badge-color) 16%, var(--surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--badge-color) 25%, transparent),
+              0 1px 4px color-mix(in srgb, var(--badge-color) 30%, transparent);
+  flex-shrink: 0;
+}
+
+/* Collection-page medallion. Replaces the old boxed .badge-card. */
+.badges-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 @media (min-width: 540px) { .badges-grid { grid-template-columns: repeat(4, 1fr); } }
 @media (min-width: 720px) { .badges-grid { grid-template-columns: repeat(6, 1fr); } }
-.badge-card {
-  display: flex; flex-direction: column; align-items: center; gap: 4px;
-  padding: 14px 8px; background: var(--surface2); border: 1.5px solid var(--border);
-  border-radius: 10px; text-align: center; transition: all 0.15s;
+.badge-medal { display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+.badge-medal-disc {
+  width: 56px; height: 56px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--badge-color); border: 2px solid var(--badge-color);
+  background: color-mix(in srgb, var(--badge-color) 18%, var(--surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--badge-color) 15%, transparent),
+              0 2px 10px color-mix(in srgb, var(--badge-color) 35%, transparent);
+  transition: transform 0.15s;
 }
-.badge-card.locked { opacity: 0.45; filter: grayscale(1); }
-.badge-card.unlocked { border-color: var(--accent); background: var(--accent-bg); }
-.badge-icon { font-size: 1.6rem; }
-.badge-name { font-size: 0.64rem; font-weight: 700; line-height: 1.2; }
-.badge-rarity { font-size: 0.58rem; font-weight: 600; letter-spacing: 0.02em; }
-.badge-date { font-size: 0.56rem; color: var(--text-muted); }
+.badge-medal.unlocked:hover .badge-medal-disc { transform: translateY(-2px); }
+.badge-medal.locked { opacity: 0.5; filter: grayscale(1); }
+.badge-medal-name { font-size: 0.66rem; font-weight: 700; line-height: 1.2; }
+.badge-medal-rarity { font-size: 0.58rem; font-weight: 600; letter-spacing: 0.02em; color: var(--text-muted); }
+.badge-medal-date { font-size: 0.56rem; color: var(--text-muted); }
+
+/* ── Achievements page ───────────────────────────────────────────────────── */
 .ach-list { display: flex; flex-direction: column; gap: 8px; }
 .ach-item { display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: var(--surface2); border-radius: 8px; }
 .ach-item.locked { opacity: 0.5; }
@@ -812,9 +834,7 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 .vs-name { font-size: 0.95rem; font-weight: 700; text-align: center; word-break: break-word; }
 .vs-tag  { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .vs-player.me .vs-tag { color: var(--accent); }
-.vs-featured-badges { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; margin-top: 2px; }
-.vs-feat-badge { width: 26px; height: 26px; border-radius: 6px; border: 1.5px solid; display: flex; align-items: center; justify-content: center; background: var(--surface); }
-.vs-feat-icon { font-size: 0.9rem; line-height: 1; }
+.vs-featured-badges { justify-content: center; margin-top: 2px; }
 .vs-badge {
   width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: 0.82rem; font-weight: 800; letter-spacing: 0.03em;
@@ -855,36 +875,79 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 
 /* ── Profile page ────────────────────────────────────────────────────────── */
 .profile-card { text-align: center; }
-.profile-avatar { font-size: 3rem; margin-bottom: 8px; }
-.profile-username { font-size: 1.2rem; font-weight: 700; }
-.profile-since { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.profile-avatar { font-size: 3rem; }
 
-/* ── Featured badges (profile view) ─────────────────────────────────────── */
-.profile-featured-badges {
-  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px;
-}
-.pfb-item {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 6px 10px; border-radius: 10px; border: 1.5px solid var(--border);
-  background: var(--surface2); min-width: 60px;
-}
-.pfb-icon { font-size: 1.4rem; line-height: 1; }
-.pfb-name { font-size: 0.6rem; color: var(--text-muted); text-align: center; white-space: nowrap; }
+/* ── Shared profile card (ProfileCard) ──────────────────────────────────────
+   The one identity block for both the public and the own profile. A centered
+   column with a single vertical rhythm, so the two pages never drift apart —
+   only their slot CONTENTS differ. Order: avatar → name → badges → meta →
+   actions. */
+.profile-card-body { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.profile-card-name { font-size: 1.4rem; font-weight: 800; line-height: 1.1; }
+.profile-card-meta { font-size: 0.8rem; color: var(--text-muted); }
+.profile-card-actions { width: 100%; display: flex; justify-content: center; }
+/* A primary action (e.g. Compare) spans the card; a secondary one sits at its
+   natural width, centered. */
+.profile-card-primary { width: 100%; }
+/* Size-34 badge row inside the card. Chip gap only — the card body owns the
+   spacing above/below. */
+.profile-head-badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
-/* ── Badge picker (edit mode) ────────────────────────────────────────────── */
+/* ── Compound <Profile> slots ───────────────────────────────────────────────── */
+.profile-slot-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--surface2); border: 1.5px solid var(--border); flex-shrink: 0;
+}
+.profile-slot-avatar-img { border-radius: 50%; object-fit: cover; width: 96px; height: 96px; }
+.profile-slot-name { font-weight: 700; }
+.profile-slot-meta { color: var(--text-muted); font-size: 0.8rem; }
+.cmp-name-link { cursor: pointer; }
+.cmp-name-link:hover { text-decoration: underline; }
+
+.pub-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 4px; }
+@media (min-width: 540px) { .pub-stat-grid { grid-template-columns: repeat(4, 1fr); } }
+.pub-stat {
+  display: flex; flex-direction: column; gap: 2px; align-items: center;
+  padding: 12px 8px; background: var(--surface2); border-radius: 10px; text-align: center;
+}
+.pub-stat-val { font-size: 1.1rem; font-weight: 800; }
+.pub-stat-label { font-size: 0.62rem; color: var(--text-muted); letter-spacing: 0.02em; }
+.pub-fav { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+.pub-fav-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.pub-fav-coffee { font-weight: 700; }
+
+/* Feed / leaderboard rows: keep the name and its badges on one line. */
+.feed-user-line, .lb-user-line { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
 .field-hint { font-size: 0.72rem; color: var(--text-muted); font-weight: 400; }
-.badge-picker-empty { font-size: 0.78rem; color: var(--text-muted); padding: 8px 0; }
-.badge-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.badge-pick-opt {
-  display: flex; align-items: center; gap: 5px;
-  padding: 5px 10px; border-radius: 8px; border: 1.5px solid var(--border);
-  background: var(--surface2); cursor: pointer; transition: all 0.15s;
-  font-size: 0.78rem; color: var(--text-primary);
+
+/* ── Badge info popover (public profile only, issue #80) ───────────────────── */
+.badge-info { position: relative; display: inline-flex; }
+.badge-info-trigger {
+  padding: 0; margin: 0; border: none; background: none; cursor: pointer;
+  display: inline-flex; line-height: 0;
 }
-.badge-pick-opt .bpo-icon { font-size: 1rem; }
-.badge-pick-opt.selected { background: var(--accent-bg); }
-.badge-pick-opt.disabled { opacity: 0.4; cursor: not-allowed; }
-.badge-pick-opt:not(.disabled):hover { border-color: var(--accent); }
+.badge-popover {
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  z-index: 20; width: max-content; max-width: 220px;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 10px 12px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.28); text-align: left;
+  animation: badge-popover-in 200ms ease-out;
+}
+@keyframes badge-popover-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+/* Little pointer under the bubble. */
+.badge-popover::after {
+  content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: var(--border);
+}
+.badge-popover-title { font-weight: 700; font-size: 0.82rem; }
+.badge-popover-rarity { font-size: 0.64rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.badge-popover-desc { font-size: 0.74rem; color: var(--text-muted); line-height: 1.35; }
 
 .avatar-picker { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .avatar-opt { font-size: 1.6rem; padding: 8px; border-radius: 8px; border: 2px solid var(--border); background: var(--surface2); cursor: pointer; transition: all 0.15s; }
@@ -1219,7 +1282,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
 }
 .profile-avatar-wrap {
   position: relative;
