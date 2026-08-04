@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
@@ -317,6 +317,27 @@ export function FeedList({
 
   const posts = data?.pages.flat() ?? [];
 
+  // Infinite scroll: an empty sentinel sits just past the last card. The
+  // observer's 600px rootMargin means it counts as "visible" while still ~1-2
+  // cards below the fold, so the next page is fetched before the reader hits
+  // the end. Watching the sentinel's position (not a fixed height) keeps this
+  // correct whatever the card heights are — posts with and without photos mix
+  // freely — and across every screen size. React Query's isFetchingNextPage
+  // already dedupes overlapping fetches; the guard just avoids queuing more.
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) fetchNextPage();
+      },
+      { rootMargin: '600px 0px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   return (
     <main className="feed-main">
       {isLoading && <div className="page-loading">Loading…</div>}
@@ -349,15 +370,11 @@ export function FeedList({
         ))}
       </div>
 
-      {hasNextPage && (
-        <button
-          className="feed-load-more"
-          onClick={() => fetchNextPage()}
-          disabled={isFetchingNextPage}
-        >
-          {isFetchingNextPage ? 'Loading…' : 'Load more'}
-        </button>
-      )}
+      {/* Sits below the last card; when it nears the viewport the observer
+          above pulls the next page in. Rendered only while more pages exist. */}
+      {hasNextPage && <div ref={sentinelRef} className="feed-scroll-sentinel" aria-hidden="true" />}
+
+      {isFetchingNextPage && <div className="feed-load-more">Loading…</div>}
     </main>
   );
 }
