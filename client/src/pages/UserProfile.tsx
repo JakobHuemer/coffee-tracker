@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { Profile } from '../components/Profile';
+import { ProfileCard } from '../components/ProfileCard';
 import { CompareContent } from './Compare';
 import type { PublicProfile, CompareUserStats } from '../types';
 
@@ -61,28 +62,28 @@ export function UserProfile() {
 
         {data && (
           <>
-            {/* The compound <Profile> in action: the pieces are composed here,
-                not fixed inside the component. See components/Profile.tsx. */}
-            <div className="card profile-card">
-              <Profile user={data} className="pub-profile-head">
-                <Profile.Avatar size={96} />
-                <Profile.Name handle className="pub-profile-name" />
-                <Profile.Badges size={34} className="profile-head-badges" withInfo />
-                <Profile.Meta className="pub-profile-since">
-                  Member since {new Date(data.created_at).toLocaleDateString()}
-                </Profile.Meta>
-              </Profile>
-
-              {data.self ? (
-                <button className="btn-secondary" style={{ marginTop: 12 }} onClick={() => navigate('/profile')}>
-                  <Icon name="chart" size={14} /> This is you — edit profile
-                </button>
-              ) : (
-                <button className="btn-primary" style={{ marginTop: 12 }} onClick={() => setComparing(v => !v)}>
-                  {comparing ? 'Hide comparison' : 'Compare with me'}
-                </button>
-              )}
-            </div>
+            {/* Same ProfileCard shell as your own profile, filled with the
+                public slots: a plain avatar, an @handle, a Compare button.
+                Wrapped in <Profile> so the badge/avatar/name slots read the
+                user from context. */}
+            <Profile user={data}>
+              <ProfileCard
+                avatar={<Profile.Avatar size={96} />}
+                name={<Profile.Name handle className="profile-card-name" />}
+                badges={<Profile.Badges size={34} className="profile-head-badges" withInfo />}
+                meta={<>Member since {new Date(data.created_at).toLocaleDateString()}</>}
+                actions={data.self
+                  ? (
+                    <button className="btn-secondary" onClick={() => navigate('/profile')}>
+                      <Icon name="chart" size={14} /> This is you — edit profile
+                    </button>
+                  ) : (
+                    <button className="btn-primary profile-card-primary" onClick={() => setComparing(v => !v)}>
+                      {comparing ? 'Hide comparison' : 'Compare with me'}
+                    </button>
+                  )}
+              />
+            </Profile>
 
             <div className="card">
               <div className="section-label">Stats</div>

@@ -6,6 +6,7 @@ import { useAuthStore } from '../store/auth';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { BadgeRow } from '../components/Badge';
+import { ProfileCard } from '../components/ProfileCard';
 import { BuzzWidget } from '../components/BuzzWidget';
 import { PhotoLightbox } from '../components/PhotoLightbox';
 import { ResponsiveImage } from '../components/ResponsiveImage';
@@ -438,71 +439,79 @@ export function Profile() {
     setEditMode(true);
   }
 
+  // Own-profile avatar slot: the photo with its change/remove controls. Shared
+  // by the view card and the edit form.
+  const photoArea = (
+    <div className="profile-photo-area">
+      <div className="profile-avatar-wrap">
+        {user?.profile_image || user?.profile_photo_url
+          ? <ResponsiveImage image={user.profile_image} fallback={user.profile_photo_url} alt="Profile" className="profile-avatar-img" sizes="96px" />
+          : <div className="profile-avatar">{user?.avatar}</div>}
+        <button
+          className="profile-avatar-upload-btn"
+          onClick={() => fileInputRef.current?.click()}
+          title="Change photo"
+          disabled={photoMutation.isPending}
+          aria-label="Change photo"
+        ><Icon name="camera" /></button>
+        <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
+      </div>
+      {(user?.profile_image || user?.profile_photo_url) && (
+        <button
+          className="profile-remove-photo"
+          onClick={() => removePhotoMutation.mutate()}
+          disabled={removePhotoMutation.isPending}
+        >{removePhotoMutation.isPending ? 'Removing…' : 'Remove photo'}</button>
+      )}
+      {photoError && <div className="auth-error" style={{ fontSize: '0.75rem', marginTop: 2 }}>{photoError}</div>}
+    </div>
+  );
+
   return (
     <div className="page">
       <AppHeader />
       {/* No "Profile / Your account" title — the card is obviously your profile,
           same call as the public profile page. */}
       <main>
-        <div className="card profile-card">
-          <div className="profile-photo-area">
-            <div className="profile-avatar-wrap">
-              {user?.profile_image || user?.profile_photo_url
-                ? <ResponsiveImage image={user.profile_image} fallback={user.profile_photo_url} alt="Profile" className="profile-avatar-img" sizes="96px" />
-                : <div className="profile-avatar">{user?.avatar}</div>}
-              <button
-                className="profile-avatar-upload-btn"
-                onClick={() => fileInputRef.current?.click()}
-                title="Change photo"
-                disabled={photoMutation.isPending}
-                aria-label="Change photo"
-              ><Icon name="camera" /></button>
-              <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handlePhotoChange} />
+        {/* The avatar-with-upload is the own-profile's custom avatar slot, reused
+            in both the view card and the edit form. */}
+        {editMode ? (
+          <div className="card profile-card">
+            <div className="profile-card-body">
+              {photoArea}
+              <div className="edit-section">
+                <div className="avatar-picker">
+                  {AVATARS.map(a => (
+                    <button key={a} className={`avatar-opt${selectedAvatar === a ? ' selected' : ''}`} onClick={() => setSelectedAvatar(a)}>
+                      {a}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="field" style={{ marginTop: 12 }}>
+                  <label>Username</label>
+                  <input value={newUsername} onChange={e => setNewUsername(e.target.value)} />
+                </div>
+
+                {error && <div className="auth-error">{error}</div>}
+                <div className="edit-actions">
+                  <button className="btn-primary" onClick={handleSave} disabled={updateMutation.isPending}>Save</button>
+                  <button className="btn-secondary" onClick={() => setEditMode(false)}>Cancel</button>
+                </div>
+              </div>
             </div>
-            {(user?.profile_image || user?.profile_photo_url) && (
-              <button
-                className="profile-remove-photo"
-                onClick={() => removePhotoMutation.mutate()}
-                disabled={removePhotoMutation.isPending}
-              >{removePhotoMutation.isPending ? 'Removing…' : 'Remove photo'}</button>
-            )}
-            {photoError && <div className="auth-error" style={{ fontSize: '0.75rem', marginTop: 2 }}>{photoError}</div>}
           </div>
-
-          {editMode ? (
-            <div className="edit-section">
-              <div className="avatar-picker">
-                {AVATARS.map(a => (
-                  <button key={a} className={`avatar-opt${selectedAvatar === a ? ' selected' : ''}`} onClick={() => setSelectedAvatar(a)}>
-                    {a}
-                  </button>
-                ))}
-              </div>
-
-              <div className="field" style={{ marginTop: 12 }}>
-                <label>Username</label>
-                <input value={newUsername} onChange={e => setNewUsername(e.target.value)} />
-              </div>
-
-              {error && <div className="auth-error">{error}</div>}
-              <div className="edit-actions">
-                <button className="btn-primary" onClick={handleSave} disabled={updateMutation.isPending}>Save</button>
-                <button className="btn-secondary" onClick={() => setEditMode(false)}>Cancel</button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="profile-username">{user?.username}</div>
-              <div className="profile-since">Member since {user ? new Date(user.created_at).toLocaleDateString() : '—'}</div>
-              {earnedBadges.length > 0 && (
-                <BadgeRow badges={earnedBadges} size={34} className="profile-head-badges" withInfo />
-              )}
-              <button className="btn-secondary" style={{ marginTop: 12 }} onClick={startEdit}>
-                Edit Profile
-              </button>
-            </>
-          )}
-        </div>
+        ) : (
+          <ProfileCard
+            avatar={photoArea}
+            name={user?.username}
+            badges={earnedBadges.length > 0
+              ? <BadgeRow badges={earnedBadges} size={34} className="profile-head-badges" withInfo />
+              : undefined}
+            meta={<>Member since {user ? new Date(user.created_at).toLocaleDateString() : '—'}</>}
+            actions={<button className="btn-secondary" onClick={startEdit}>Edit Profile</button>}
+          />
+        )}
 
         <BuzzWidget />
 

@@ -37,6 +37,11 @@ topics: [profile-view-73, badges-80, badge-popover, featured-badges-removal, sec
   owner's *un*earned secret to `???` (badges route sends `description: ''`).
 - Neither profile page has a "Profile" page-header title (redundant); the public
   one puts `@handle` on the name via `<Profile.Name handle>`.
+- **`ProfileCard`** (`components/ProfileCard.tsx`) is the shared identity-card
+  shell for BOTH profiles — slot props (`avatar`/`name`/`badges`/`meta`/
+  `actions`), fixed order, no boolean config. Public fills it with a plain
+  avatar + `@handle` + Compare; own fills it with the photo-upload avatar +
+  Edit, and renders its own card for edit mode. Keeps the two visually in sync.
 - `byUnlockedThenRarity` (rarity.ts): unlocked group **rarest-first**, locked
   group **ascending** — intentional, asymmetric. Used by Badges + Achievements.
 - **This worktree ships without node_modules** — `server/` and `client/` both

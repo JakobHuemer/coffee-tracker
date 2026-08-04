@@ -875,36 +875,34 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
 
 /* ── Profile page ────────────────────────────────────────────────────────── */
 .profile-card { text-align: center; }
-.profile-avatar { font-size: 3rem; margin-bottom: 8px; }
-.profile-username { font-size: 1.2rem; font-weight: 700; }
-.profile-since { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.profile-avatar { font-size: 3rem; }
 
-/* ── Profile-head badges ────────────────────────────────────────────────────
-   One rule for the size-34 badge row under both the own profile card and the
-   public profile head, so the two never drift apart: same chip gap, same space
-   above. (They used to be two classes with different gap/margin.) */
-.profile-head-badges {
-  display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px;
-}
+/* ── Shared profile card (ProfileCard) ──────────────────────────────────────
+   The one identity block for both the public and the own profile. A centered
+   column with a single vertical rhythm, so the two pages never drift apart —
+   only their slot CONTENTS differ. Order: avatar → name → badges → meta →
+   actions. */
+.profile-card-body { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.profile-card-name { font-size: 1.4rem; font-weight: 800; line-height: 1.1; }
+.profile-card-meta { font-size: 0.8rem; color: var(--text-muted); }
+.profile-card-actions { width: 100%; display: flex; justify-content: center; }
+/* A primary action (e.g. Compare) spans the card; a secondary one sits at its
+   natural width, centered. */
+.profile-card-primary { width: 100%; }
+/* Size-34 badge row inside the card. Chip gap only — the card body owns the
+   spacing above/below. */
+.profile-head-badges { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 
-/* ── Compound <Profile> slots + public profile page (issue #73) ─────────────── */
+/* ── Compound <Profile> slots ───────────────────────────────────────────────── */
 .profile-slot-avatar {
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: 50%; background: var(--surface2); border: 1.5px solid var(--border); flex-shrink: 0;
 }
-.profile-slot-avatar-img { border-radius: 50%; object-fit: cover; }
+.profile-slot-avatar-img { border-radius: 50%; object-fit: cover; width: 96px; height: 96px; }
 .profile-slot-name { font-weight: 700; }
 .profile-slot-meta { color: var(--text-muted); font-size: 0.8rem; }
 .cmp-name-link { cursor: pointer; }
 .cmp-name-link:hover { text-decoration: underline; }
-
-.pub-profile-head { display: flex; flex-direction: column; align-items: center; gap: 8px; }
-.pub-profile-head .profile-slot-avatar-img { width: 96px; height: 96px; }
-.pub-profile-name { font-size: 1.4rem; font-weight: 800; }
-/* The public head is a flex column that already spaces its children by 8px, so
-   the badge row drops its own top margin here to avoid doubling it. */
-.pub-profile-head .profile-head-badges { margin-top: 0; }
-.pub-profile-since { color: var(--text-muted); font-size: 0.8rem; }
 
 .pub-stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 4px; }
 @media (min-width: 540px) { .pub-stat-grid { grid-template-columns: repeat(4, 1fr); } }
@@ -1284,7 +1282,6 @@ main { max-width: var(--content-max); margin: 0 auto; padding: 24px 0 40px; disp
   flex-direction: column;
   align-items: center;
   gap: 6px;
-  margin-bottom: 4px;
 }
 .profile-avatar-wrap {
   position: relative;
