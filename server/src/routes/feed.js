@@ -3,6 +3,7 @@ const { randomUUID } = require('crypto');
 const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
+const { badgesForMany } = require('../profile');
 
 const router = express.Router();
 
@@ -12,7 +13,11 @@ const router = express.Router();
 // stay for legacy single-file photos and as a fallback. `variants` is a prebuilt
 // Map<imageId, field> (images.variantsForMany) so a page of posts resolves its
 // images in two queries total, not two per post.
-function mapPost(p, variants) {
+// `badges` is a prebuilt Map<userId, chips> (profile.badgesForMany) so a page of
+// posts resolves every author's earned badges in one lookup, not one per post.
+// Badges ride along so a post header shows them wherever a profile appears
+// (issue #80).
+function mapPost(p, variants, badges) {
   const { image_id, profile_image_id, ...rest } = p;
   return {
     ...rest,
@@ -20,17 +25,20 @@ function mapPost(p, variants) {
     profile_photo_url: p.profile_photo ? `/uploads/${p.profile_photo}` : null,
     image: variants.get(image_id) ?? null,
     profile_image: variants.get(profile_image_id) ?? null,
+    badges: badges.get(p.user_id) ?? [],
     liked_by_me: p.liked_by_me === 1,
     bookmarked_by_me: p.bookmarked_by_me === 1,
   };
 }
 
-// Resolve every post's image + profile image in one batched lookup, then shape.
-function mapPosts(posts) {
+// Resolve every post's image + profile image + author badges in batched lookups,
+// then shape. `viewerId` masks secret badges the viewer hasn't earned.
+function mapPosts(posts, viewerId) {
   const variants = images.variantsForMany(
     posts.flatMap((p) => [p.image_id, p.profile_image_id]),
   );
-  return posts.map((p) => mapPost(p, variants));
+  const badges = badgesForMany(posts.map((p) => p.user_id), viewerId);
+  return posts.map((p) => mapPost(p, variants, badges));
 }
 
 const POST_COLUMNS = `
@@ -57,7 +65,7 @@ router.get('/', requireAuth, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(req.user.id, req.user.id, limit, offset);
 
-  res.json(mapPosts(posts));
+  res.json(mapPosts(posts, req.user.id));
 });
 
 // The current user's saved posts, newest-saved first. Someone else's post has to
@@ -80,7 +88,7 @@ router.get('/saved', requireAuth, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(req.user.id, req.user.id, req.user.id, req.user.id, limit, offset);
 
-  res.json(mapPosts(posts));
+  res.json(mapPosts(posts, req.user.id));
 });
 
 // Everything the current user has posted, newest coffee first — public and
@@ -101,7 +109,7 @@ router.get('/mine', requireAuth, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(req.user.id, req.user.id, req.user.id, limit, offset);
 
-  res.json(mapPosts(posts));
+  res.json(mapPosts(posts, req.user.id));
 });
 
 router.post('/:entryId/like', requireAuth, (req, res) => {

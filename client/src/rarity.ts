@@ -30,11 +30,15 @@ export function rarityColor(r: string) {
   return RARITY_COLORS[r] || '#999';
 }
 
-// Unlocked first, then rarest first. Shared so every badge grid agrees.
+// Unlocked first. Within the unlocked group, rarest first (show off the best).
+// Within the locked group, ascending rarity — common → legendary — so the list
+// reads as the ladder still to climb. Shared so every badge grid agrees.
 export function byUnlockedThenRarity(
   a: { unlocked: boolean; rarity: string },
   b: { unlocked: boolean; rarity: string },
 ) {
-  return (b.unlocked ? 1 : 0) - (a.unlocked ? 1 : 0)
-    || RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity);
+  const byUnlocked = (b.unlocked ? 1 : 0) - (a.unlocked ? 1 : 0);
+  if (byUnlocked) return byUnlocked;
+  const ra = RARITY_ORDER.indexOf(a.rarity), rb = RARITY_ORDER.indexOf(b.rarity);
+  return a.unlocked ? rb - ra : ra - rb;
 }

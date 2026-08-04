@@ -7,6 +7,7 @@ import { Icon } from './Icon';
 import { PhotoLightbox } from './PhotoLightbox';
 import { ResponsiveImage } from './ResponsiveImage';
 import { ConfirmDialog } from './ConfirmDialog';
+import { BadgeRow } from './Badge';
 import type { FeedPost } from '../types';
 
 const PAGE_SIZE = 20;
@@ -72,10 +73,12 @@ function PostCard({
   const isOwn = post.user_id === currentUserId;
 
   function handleUserClick() {
+    // Your own name goes to your editable profile; anyone else's to their public
+    // profile (issue #73), where Compare now lives.
     if (post.user_id === currentUserId) {
       navigate('/profile');
     } else {
-      navigate(`/compare/${post.username}`);
+      navigate(`/u/${post.username}`);
     }
   }
 
@@ -86,7 +89,13 @@ function PostCard({
           ? <ResponsiveImage image={post.profile_image} fallback={post.profile_photo_url} alt={post.username} className="feed-avatar-img" sizes="48px" />
           : <span className="feed-avatar">{post.avatar}</span>}
         <div className="feed-post-meta">
-          <span className="feed-username">{post.username}</span>
+          <span className="feed-user-line">
+            <span className="feed-username">{post.username}</span>
+            {/* Badges travel with the profile (issue #80): a post header is a
+                profile surface, so the author's earned badges show here too
+                (display-only — the info popover is the profile page's alone). */}
+            <BadgeRow badges={post.badges} size={18} />
+          </span>
           <span className="feed-time" title={new Date(post.logged_at).toLocaleString()}>
             {timeAgo(post.logged_at)} · {exactTime(post.logged_at)}
           </span>

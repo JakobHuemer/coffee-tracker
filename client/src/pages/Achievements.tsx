@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { Icon } from '../components/Icon';
+import { BadgeMedal } from '../components/Badge';
 import type { Achievement, Badge } from '../types';
-import { rarityColor, rarityLabel, byUnlockedThenRarity } from '../rarity';
+import { byUnlockedThenRarity } from '../rarity';
 
 export function Achievements() {
   const { data: achievements = [] } = useQuery<Achievement[]>({
@@ -30,18 +31,7 @@ export function Achievements() {
             {badges
               .slice()
               .sort(byUnlockedThenRarity)
-              .map(b => (
-                <div key={b.id} className={`badge-card ${b.unlocked ? 'unlocked' : 'locked'}`} title={b.description}>
-                  <div className="badge-icon"><Icon name={b.icon} size={28} /></div>
-                  <div className="badge-name">{b.name}</div>
-                  <div className="badge-rarity" style={{ color: rarityColor(b.rarity) }}>
-                    {rarityLabel(b.rarity)}
-                  </div>
-                  {b.unlocked && b.unlocked_at && (
-                    <div className="badge-date">{new Date(b.unlocked_at).toLocaleDateString()}</div>
-                  )}
-                </div>
-              ))}
+              .map(b => <BadgeMedal key={b.id} badge={b} />)}
           </div>
         </div>
 

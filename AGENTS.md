@@ -115,13 +115,6 @@ bun run check         # all of the above, mirroring .github/workflows/pr-checks.
 cd server && bun run test
 ```
 
-## Concept (planned)
-
-The product concept is still developing and will be written up in a `CONCEPT.md`
-later. **If `CONCEPT.md` does not exist yet, add a one-line nudge at the start of
-a new session** asking whether we can start `CONCEPT.md` soon via some
-back-and-forth while working in the code. Keep it to one line; don't block work.
-
 ## Session log
 
 Every session **must** maintain one file in `sessions/` — one file per session,
@@ -171,6 +164,57 @@ schema, do not be sloppy:
 
 A silent omission here is a data-loss bug: the fact is gone from a row that can
 never be recomputed. See [docs/notifications.md](./docs/notifications.md).
+
+## Badges travel with the profile (issues #73, #80)
+
+A user's identity is one thing shown in many places — a feed post header, the
+Compare view, a competition roster, the leaderboard, and their public profile
+page. **Wherever that identity appears, their badges appear with it.** Badges
+are not a profile-page-only decoration; they are part of the profile.
+
+**A profile shows every badge its owner has earned** — there is no "featured"
+subset and no picker. Unlock a badge and it shows, ordered rarest first. (The
+old feature let users pick up to 3 to feature; that selection, its
+`users.featured_badges` column, and its edit UI were all removed. Do not
+reintroduce a "featured"/pick-N concept.)
+
+Concretely, when you add or touch any surface that renders a user's
+name/avatar:
+
+- **Client:** render it through the compound `<Profile>` component
+  (`client/src/components/Profile.tsx`) and include the `<Profile.Badges>` slot,
+  or drop a `<BadgeRow badges={…} />` (`client/src/components/Badge.tsx`) beside
+  the name. Both draw the one badge glyph (`BadgeChip`) so the look never drifts.
+  `<Profile>` is a *compound* component: it only supplies the user via context;
+  you compose the visible slots (`Profile.Avatar`, `Profile.Name`,
+  `Profile.Badges`, `Profile.Meta`) in whatever layout you want.
+- **Server:** the row you send that surface must carry `badges`. Build it with
+  `badgesForMany` (batched — never an N+1 per row) or `publicProfileFor` from
+  `server/src/profile.js`, the single source for stats + badges (all resolved
+  live from `user_badges`). `routes/feed.js`, `routes/competitions.js`,
+  `routes/groups.js` and `routes/compare.js` already do this — match them.
+- **Clicking a user** (name or avatar) anywhere goes to their public profile at
+  `/u/:username`; Compare lives *inside* that page now, not as the entry point.
+
+Badges render as tier-coloured Discord-style discs (colour = rarity, via
+`client/src/rarity.ts`); every badge has its own unique icon. A boxed
+"badge card" is the old look — do not reintroduce it.
+
+**Info popover is the profile pages' alone.** Both profile pages (public
+`/u/:username` and your own) pass `withInfo` to `<Profile.Badges>`/`<BadgeRow>`,
+which makes each chip pop a name/rarity/description tooltip on hover (mouse,
+300ms) or tap. Inline surfaces (posts, match rosters, leaderboard) render chips
+display-only — do not turn `withInfo` on there.
+
+**Secret badges leak nothing about how to get them.** A secret badge shows its
+name + icon wherever its owner's profile appears (so you can see they earned it),
+but its **description is withheld** from any viewer who hasn't earned it too.
+`profile.js` (`badgesFor`/`badgesForMany`) does this by `viewerId` — every route
+that builds badges passes the caller's id (see the threading in feed /
+competitions / groups / compare / users). Only your own secrets, or ones you have
+also unlocked, reveal their how-to. (On the badge *collection* page an
+undiscovered secret is still a masked `???` with no description — that is the
+owner's view of a badge they don't have yet.)
 
 ### Consult the user before adding any new notification
 

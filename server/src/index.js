@@ -117,6 +117,7 @@ app.use('/api/groups',      require('./routes/groups'));
 app.use('/api/competitions',require('./routes/competitions'));
 app.use('/api/notifications',require('./routes/notifications'));
 app.use('/api/compare',     require('./routes/compare'));
+app.use('/api/users',       require('./routes/users'));
 app.use('/api/casualties',  require('./routes/casualties'));
 
 // Unknown /api/* paths must always be a JSON 404 — never fall through to the

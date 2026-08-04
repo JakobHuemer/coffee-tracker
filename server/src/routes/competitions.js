@@ -5,6 +5,7 @@ const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { BASE_RATING, K_BY_MODE } = require('../competition-core');
 const { groupOf, scoresForMany, ratingsForMany, joinDeadline } = require('../competitions');
+const { badgesForMany } = require('../profile');
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ function matchOr404(res, id) {
 // The live path scores and rates the whole roster in two queries rather than
 // two per player: a match list is dozens of matches deep, so the per-user form
 // made one page load hundreds of round trips.
-function participantsOf(match) {
+function participantsOf(match, viewerId) {
   const rows = db.prepare(`
     SELECT p.*, u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id
     FROM match_participants p
@@ -54,6 +55,7 @@ function participantsOf(match) {
     : scoresForMany(userIds, match.scope_start, Math.min(Date.now(), match.scope_end));
   const liveRatings = settled ? new Map() : ratingsForMany(userIds);
   const variants = images.variantsForMany(rows.map((r) => r.profile_image_id));
+  const badges = badgesForMany(userIds, viewerId);
 
   const enriched = rows.map((r) => ({
     user_id: r.user_id,
@@ -61,6 +63,7 @@ function participantsOf(match) {
     avatar: r.avatar,
     profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
     profile_image: variants.get(r.profile_image_id) ?? null,
+    badges: badges.get(r.user_id) ?? [],
     joined_at: r.joined_at,
     // The stored `score` column IS the points a settled window was worth. A
     // match settled under v1 holds a 0..1000 number from the old curve instead —
@@ -78,8 +81,8 @@ function participantsOf(match) {
   return enriched.sort((a, b) => b.points - a.points);
 }
 
-function matchPayload(match, { withParticipants = true } = {}) {
-  const participants = withParticipants ? participantsOf(match) : null;
+function matchPayload(match, { withParticipants = true, viewerId } = {}) {
+  const participants = withParticipants ? participantsOf(match, viewerId) : null;
   const base = {
     id: match.id,
     group_id: match.group_id,
@@ -112,9 +115,9 @@ router.get('/', requireAuth, (req, res) => {
     const rows = db.prepare('SELECT * FROM matches WHERE group_id = ? ORDER BY scope_start DESC LIMIT 60')
       .all(group.id);
     groupBuckets.group = { id: group.id, name: group.name, timezone: group.timezone };
-    groupBuckets.open = rows.filter((m) => m.state === 'open').map((m) => matchPayload(m));
-    groupBuckets.live = rows.filter((m) => m.state === 'pending').map((m) => matchPayload(m));
-    groupBuckets.settled = rows.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m));
+    groupBuckets.open = rows.filter((m) => m.state === 'open').map((m) => matchPayload(m, { viewerId: req.user.id }));
+    groupBuckets.live = rows.filter((m) => m.state === 'pending').map((m) => matchPayload(m, { viewerId: req.user.id }));
+    groupBuckets.settled = rows.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m, { viewerId: req.user.id }));
   }
 
   // Open global lobbies are browsable by anyone; a caller's running/finished
@@ -131,9 +134,9 @@ router.get('/', requireAuth, (req, res) => {
   res.json({
     ...groupBuckets,
     global: {
-      open: globalOpen.map((m) => matchPayload(m)),
-      live: globalMine.filter((m) => m.state === 'pending').map((m) => matchPayload(m)),
-      settled: globalMine.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m)),
+      open: globalOpen.map((m) => matchPayload(m, { viewerId: req.user.id })),
+      live: globalMine.filter((m) => m.state === 'pending').map((m) => matchPayload(m, { viewerId: req.user.id })),
+      settled: globalMine.filter((m) => m.state === 'settled' || m.state === 'cancelled').map((m) => matchPayload(m, { viewerId: req.user.id })),
     },
     my_rating: rating ? rating.rating : BASE_RATING,
     my_matches: rating ? rating.matches : 0,
@@ -145,7 +148,7 @@ router.get('/', requireAuth, (req, res) => {
 // rating — the default 1000 would otherwise place someone who has done nothing
 // above an active player sitting just below it. Username breaks ties so the
 // order, and therefore the rank, is the same on every request.
-function globalStandings() {
+function globalStandings(viewerId) {
   // The ORDER BY repeats the COALESCEs rather than reusing the aliases: inside
   // a larger expression SQLite resolves a bare name against the SOURCE columns,
   // so `(matches = 0)` would read the raw NULL of a user with no rating row and
@@ -160,12 +163,14 @@ function globalStandings() {
   `).all(BASE_RATING, BASE_RATING);
 
   const variants = images.variantsForMany(rows.map((r) => r.profile_image_id));
+  const badges = badgesForMany(rows.map((r) => r.id), viewerId);
   return rows.map((r, i) => ({
     id: r.id,
     username: r.username,
     avatar: r.avatar,
     profile_photo_url: r.profile_photo ? `/uploads/${r.profile_photo}` : null,
     profile_image: variants.get(r.profile_image_id) ?? null,
+    badges: badges.get(r.id) ?? [],
     rating: r.rating,
     matches: r.matches,
     rank: i + 1,
@@ -185,7 +190,7 @@ const LEADERBOARD_LIMIT = 50;
 // rather than a private 1-2-3 that means something different per group.
 router.get('/leaderboard', requireAuth, (req, res) => {
   const scope = req.query.scope === 'group' ? 'group' : 'global';
-  const standings = globalStandings();
+  const standings = globalStandings(req.user.id);
   const me = standings.find((r) => r.id === req.user.id) ?? null;
 
   if (scope === 'global') {
@@ -242,7 +247,7 @@ router.get('/history', requireAuth, (req, res) => {
       WHERE group_id = ? AND state = 'settled'
       ORDER BY settled_at DESC LIMIT 40
     `).all(group.id);
-    groupHistory = rows.map((m) => matchPayload(m));
+    groupHistory = rows.map((m) => matchPayload(m, { viewerId: req.user.id }));
   }
 
   res.json({
@@ -299,7 +304,7 @@ router.post('/', requireAuth, (req, res) => {
       .run(randomUUID(), id, req.user.id, now);
   })();
 
-  res.status(201).json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(id)) });
+  res.status(201).json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(id), { viewerId: req.user.id }) });
 });
 
 // POST /api/competitions/:id/join — take a slot in an open lobby.
@@ -332,7 +337,7 @@ router.post('/:id/join', requireAuth, (req, res) => {
   db.prepare('INSERT INTO match_participants (id, match_id, user_id, side, joined_at) VALUES (?, ?, ?, NULL, ?)')
     .run(randomUUID(), match.id, req.user.id, Date.now());
 
-  res.json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id)) });
+  res.json({ match: matchPayload(db.prepare('SELECT * FROM matches WHERE id = ?').get(match.id), { viewerId: req.user.id }) });
 });
 
 // POST /api/competitions/:id/leave — give up a slot before the match starts.
@@ -384,7 +389,7 @@ router.get('/:id', requireAuth, (req, res) => {
     }
   }
 
-  res.json({ match: matchPayload(match) });
+  res.json({ match: matchPayload(match, { viewerId: req.user.id }) });
 });
 
 module.exports = router;

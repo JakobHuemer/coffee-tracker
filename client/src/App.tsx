@@ -17,6 +17,7 @@ import { Milestones } from './pages/Milestones';
 import { Compete } from './pages/Compete';
 import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
+import { UserProfile } from './pages/UserProfile';
 import { AdminCoffees } from './pages/AdminCoffees';
 import { Notifications } from './pages/Notifications';
 import { NotificationToaster } from './components/NotificationToaster';
@@ -92,6 +93,11 @@ export function App() {
           <Route path="/compare" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/compare/:username" element={<RequireAuth><Compare /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+          {/* Public profile of any user (issue #73), reached from their name /
+              avatar anywhere. Compare folds in inline here. */}
+          <Route path="/u/:username" element={<RequireAuth><UserProfile /></RequireAuth>} />
+          {/* /compare/:username still resolves for old links, but every in-app
+              path to another user now lands on their profile first. */}
           {/* Admin coffee catalog (issue #77). AdminCoffees redirects non-admins;
               the API enforces admin on every catalog write regardless. */}
           <Route path="/admin/coffees" element={<RequireAuth><AdminCoffees /></RequireAuth>} />

@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 const { isValidTz, getUserTz } = require('../time');
 const { BASE_RATING } = require('../competition-core');
 const { ensureRecurringMatches, groupOf } = require('../competitions');
+const { badgesForMany } = require('../profile');
 
 const router = express.Router();
 
@@ -61,7 +62,7 @@ function publicGroup(group, { includeCode = false } = {}) {
   };
 }
 
-function membersOf(groupId) {
+function membersOf(groupId, viewerId) {
   const rows = db.prepare(`
     SELECT u.id, u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id, m.joined_at,
            COALESCE(r.rating, ?) AS rating,
@@ -73,12 +74,14 @@ function membersOf(groupId) {
     ORDER BY rating DESC, u.username ASC
   `).all(BASE_RATING, groupId);
   const variants = images.variantsForMany(rows.map((m) => m.profile_image_id));
+  const badges = badgesForMany(rows.map((m) => m.id), viewerId);
   return rows.map((m) => ({
     id: m.id,
     username: m.username,
     avatar: m.avatar,
     profile_photo_url: m.profile_photo ? `/uploads/${m.profile_photo}` : null,
     profile_image: variants.get(m.profile_image_id) ?? null,
+    badges: badges.get(m.id) ?? [],
     joined_at: m.joined_at,
     rating: m.rating,
     matches: m.matches,
@@ -145,7 +148,7 @@ router.get('/', requireAuth, (req, res) => {
 router.get('/mine', requireAuth, (req, res) => {
   const group = groupOf(req.user.id);
   if (!group) return res.json({ group: null, members: [] });
-  res.json({ group: publicGroup(group, { includeCode: true }), members: membersOf(group.id) });
+  res.json({ group: publicGroup(group, { includeCode: true }), members: membersOf(group.id, req.user.id) });
 });
 
 // POST /api/groups — create a group and join it (leaving any current one).
@@ -192,7 +195,7 @@ router.post('/', requireAuth, (req, res) => {
   ensureRecurringMatches(now);
 
   const group = db.prepare('SELECT * FROM competition_groups WHERE id = ?').get(id);
-  res.status(201).json({ group: publicGroup(group, { includeCode: true }), members: membersOf(id) });
+  res.status(201).json({ group: publicGroup(group, { includeCode: true }), members: membersOf(id, req.user.id) });
 });
 
 // POST /api/groups/join — by id (public groups) or by join code (any group).
@@ -234,7 +237,7 @@ router.post('/join', requireAuth, joinLimiter, (req, res) => {
 
   res.json({
     group: publicGroup(group, { includeCode: true }),
-    members: membersOf(group.id),
+    members: membersOf(group.id, req.user.id),
     left_group: previous ? { id: previous.id, name: previous.name } : null,
   });
 });
@@ -296,7 +299,7 @@ router.patch('/:id', requireAuth, (req, res) => {
   // they were created with (their scores are already being measured against
   // it); the new zone applies from the next period.
   const updated = db.prepare('SELECT * FROM competition_groups WHERE id = ?').get(group.id);
-  res.json({ group: publicGroup(updated, { includeCode: true }), members: membersOf(group.id) });
+  res.json({ group: publicGroup(updated, { includeCode: true }), members: membersOf(group.id, req.user.id) });
 });
 
 // GET /api/groups/:id — detail. Private groups are visible to members only.
@@ -310,7 +313,7 @@ router.get('/:id', requireAuth, (req, res) => {
 
   res.json({
     group: publicGroup(group, { includeCode: isMember }),
-    members: membersOf(group.id),
+    members: membersOf(group.id, req.user.id),
     is_member: isMember,
   });
 });

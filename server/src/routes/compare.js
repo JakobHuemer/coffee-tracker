@@ -3,64 +3,9 @@ const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { checkAfterCompare } = require('../achievements');
-const { getCoffee } = require('../coffees');
-const { BADGES } = require('../data/badges');
-const { getUserTz, localTodayStr, localDateStr } = require('../time');
+const { buildUserStats, badgesFor } = require('../profile');
 
 const router = express.Router();
-
-function buildUserStats(userId) {
-  const allEntries = db.prepare(
-    'SELECT coffee_id, caffeine_mg, logged_at FROM coffee_entries WHERE user_id = ? ORDER BY logged_at'
-  ).all(userId);
-
-  // Each user's "today" is evaluated in that user's own timezone.
-  const tz = getUserTz(db, userId);
-  const today = localTodayStr(tz);
-  const todayEntries = allEntries.filter(e => localDateStr(e.logged_at, tz) === today);
-  const sevenDayTotal = allEntries.filter(e => Date.now() - e.logged_at <= 7 * 86400000).length;
-
-  const byType = {};
-  for (const e of allEntries) byType[e.coffee_id] = (byType[e.coffee_id] || 0) + 1;
-  const favouriteId = Object.entries(byType).sort(([,a],[,b]) => b - a)[0]?.[0];
-  // A favourite that was later removed from the catalog resolves to null; the
-  // entries themselves are self-contained and unaffected.
-  const favourite = (favouriteId && getCoffee(favouriteId)) || null;
-
-  const streak = db.prepare('SELECT * FROM user_streaks WHERE user_id = ?').get(userId);
-  const achievements = db.prepare('SELECT COUNT(*) as cnt FROM user_achievements WHERE user_id = ?').get(userId);
-  const badges = db.prepare('SELECT COUNT(*) as cnt FROM user_badges WHERE user_id = ?').get(userId);
-
-  return {
-    total_cups: allEntries.length,
-    total_caffeine: allEntries.reduce((s, e) => s + e.caffeine_mg, 0),
-    today_cups: todayEntries.length,
-    today_caffeine: todayEntries.reduce((s, e) => s + e.caffeine_mg, 0),
-    seven_day_avg: +(sevenDayTotal / 7).toFixed(1),
-    favourite_coffee: favourite,
-    unique_types: Object.keys(byType).length,
-    current_streak: streak?.current_streak || 0,
-    longest_streak: streak?.longest_streak || 0,
-    achievements_count: achievements.cnt,
-    badges_count: badges.cnt,
-  };
-}
-
-function resolvedFeaturedBadges(userId) {
-  const row = db.prepare('SELECT featured_badges FROM users WHERE id = ?').get(userId);
-  const ids = row?.featured_badges ? row.featured_badges.split(',').filter(Boolean) : [];
-  if (ids.length === 0) return [];
-  const unlockedSet = new Set(
-    db.prepare(`SELECT badge_id FROM user_badges WHERE user_id = ? AND badge_id IN (${ids.map(() => '?').join(',')})`).all(userId, ...ids).map(r => r.badge_id)
-  );
-  return ids
-    .filter(id => unlockedSet.has(id))
-    .map(id => {
-      const b = BADGES.find(b => b.id === id);
-      return b ? { id: b.id, name: b.name, icon: b.icon, rarity: b.rarity } : null;
-    })
-    .filter(Boolean);
-}
 
 router.get('/:username', requireAuth, (req, res) => {
   const target = db.prepare(
@@ -87,8 +32,8 @@ router.get('/:username', requireAuth, (req, res) => {
   }
 
   res.json({
-    me: { ...withPhotoUrl(me), featured_badges: resolvedFeaturedBadges(req.user.id), stats: myStats },
-    them: { ...withPhotoUrl(target), featured_badges: resolvedFeaturedBadges(target.id), stats: theirStats },
+    me: { ...withPhotoUrl(me), badges: badgesFor(req.user.id, req.user.id), stats: myStats },
+    them: { ...withPhotoUrl(target), badges: badgesFor(target.id, req.user.id), stats: theirStats },
   });
 });
 
