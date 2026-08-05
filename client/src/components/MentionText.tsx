@@ -8,9 +8,9 @@ import { useAuthStore } from '../store/auth';
 const MENTION_RE = /(?<![A-Za-z0-9_-])@([A-Za-z0-9_-]{2,20})/g;
 
 // Render a post description, turning each @mention of a really-marked user into a
-// control: a link to the comparison page against them, or — when the viewer is
-// the one tagged — their own handle with a "You've been marked" hover tooltip and
-// no link (there's nothing to compare against yourself). `marks` is the post's
+// control: a link to that user's profile page, or — when the viewer is the one
+// tagged — their own handle with a "You've been marked" hover tooltip and no link
+// (there's nothing to visit for yourself here). `marks` is the post's
 // resolved mention list from the server — only those tokens are treated as
 // mentions, so an @word that isn't a real mark (or a mention the server didn't
 // resolve) stays plain text and everything else is rendered verbatim.
@@ -38,7 +38,7 @@ export function MentionText({ text, marks }: { text: string; marks: string[] }) 
       // stopPropagation keeps a mention tap from bubbling to any clickable
       // ancestor (e.g. a card that navigates to the author).
       nodes.push(
-        <Link key={key++} to={`/compare/${name}`} className="mention" onClick={e => e.stopPropagation()}>
+        <Link key={key++} to={`/u/${name}`} className="mention" onClick={e => e.stopPropagation()}>
           @{name}
         </Link>,
       );
