@@ -189,8 +189,9 @@ export function Stats() {
   const pct = todayCaf / 400;
   const safeColor = !todayCaf ? 'var(--text-muted)' : pct < 0.75 ? '#4CAF50' : pct < 1 ? '#FF9800' : '#E53935';
 
-  // Badges and Challenges left this row (issue #51): Badges + Milestones are
-  // their own pages off Profile now, and community challenges moved to Compete.
+  // Badges and Challenges left this row (issue #51). Badges, Milestones and —
+  // after a detour through Compete — community Challenges are each their own
+  // page off Profile now (issue #63).
   const TABS: { id: Tab; label: string; icon: string }[] = [
     { id: 'goals',      label: 'Goals',      icon: 'target' },
     { id: 'rankings',   label: 'Rankings',   icon: 'trophy' },
