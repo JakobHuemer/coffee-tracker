@@ -1,0 +1,13 @@
+{
+  "name": "Coffee Tracker",
+  "short_name": "Coffee",
+  "description": "Track your coffee, caffeine, streaks and competitions.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#EDF4F9",
+  "theme_color": "#2A8FAB",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

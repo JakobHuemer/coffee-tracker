@@ -19,6 +19,10 @@ Out of phase 1: OS/web push (no service worker, no PWA), `streak_break` (a
 broken streak fires no synchronous server event — it needs a time sweep, its
 own issue), replay animations.
 
+> OS/web push landed later as **issue #87** — a delivery channel bolted onto
+> this system at the single `createNotification` choke point, not a second
+> model. See [notifications-push.md](./notifications-push.md).
+
 ## Core principle — immutable, self-contained events
 
 **A notification is an immutable event with all its data embedded.** A row is

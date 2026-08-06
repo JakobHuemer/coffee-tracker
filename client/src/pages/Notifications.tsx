@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../components/Icon';
 import { useNotifications, useMarkNotificationsRead } from '../hooks/useNotifications';
+import { usePush } from '../hooks/usePush';
 import { renderNotification, ordinal, type RenderedNotification } from '../notifications/catalog';
 import { useReveals } from '../notifications/RevealProvider';
 import type { AppNotification } from '../types';
@@ -229,6 +230,43 @@ function NotificationRow(
   );
 }
 
+// Per-device Web Push opt-in (issue #87). Hidden entirely when the browser
+// can't do push (e.g. iOS Safari without an installed PWA) or the deployment
+// has no VAPID keys — there's nothing actionable to show in those cases.
+function PushToggle() {
+  const push = usePush();
+  if (!push.supported || !push.configured) return null;
+
+  if (push.permission === 'denied') {
+    return (
+      <div className="push-toggle" data-state="blocked">
+        <Icon name="bell" size={16} />
+        <span>Push notifications are blocked in your browser settings for this site.</span>
+      </div>
+    );
+  }
+
+  if (push.subscribed) {
+    return (
+      <div className="push-toggle" data-state="on">
+        <Icon name="bell" size={16} />
+        <span>Push notifications are on for this device.</span>
+        <button className="push-btn" disabled={push.busy} onClick={push.unsubscribe}>Turn off</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="push-toggle">
+      <Icon name="bell" size={16} />
+      <span>Get notified on this device, even when the app is closed.</span>
+      <button className="push-btn" data-variant="primary" disabled={push.busy} onClick={push.subscribe}>
+        {push.busy ? 'Enabling…' : 'Enable'}
+      </button>
+    </div>
+  );
+}
+
 export function Notifications() {
   const { data, isLoading } = useNotifications();
   const markRead = useMarkNotificationsRead();
@@ -246,6 +284,7 @@ export function Notifications() {
             <Icon name="check" size={14} /> Mark all read
           </button>
         </div>
+        <PushToggle />
       </div>
 
       <ul className="notif-list">

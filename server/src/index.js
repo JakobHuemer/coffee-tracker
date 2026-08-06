@@ -16,6 +16,17 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
 const db = require('./db');
 require('./migrate')(db);
 
+// Web Push is optional (issue #87). With no VAPID keys the feature is simply off
+// so the single container still boots with zero config; with a partial/invalid
+// key pair we fail fast (VALUES.md #7) rather than serving a push path that can
+// only ever silently fail to deliver.
+try {
+  if (require('./push').init()) console.log('Web Push enabled.');
+} catch (err) {
+  console.error(`FATAL: ${err.message} Refusing to start.`);
+  process.exit(1);
+}
+
 // Ensure the bootstrap admin (ADMIN_USERNAME) is promoted, if that user exists.
 // Runs after migrations so the is_admin column is guaranteed present, and before
 // routes mount so admin access is correct from the first request. Non-fatal.
@@ -116,6 +127,7 @@ app.use('/api/rankings',    require('./routes/rankings'));
 app.use('/api/groups',      require('./routes/groups'));
 app.use('/api/competitions',require('./routes/competitions'));
 app.use('/api/notifications',require('./routes/notifications'));
+app.use('/api/push',        require('./routes/push'));
 app.use('/api/compare',     require('./routes/compare'));
 app.use('/api/users',       require('./routes/users'));
 app.use('/api/casualties',  require('./routes/casualties'));
