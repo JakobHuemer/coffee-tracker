@@ -1,0 +1,4 @@
+# Normalize line endings: git stores text files as LF, and checks them out as
+# LF on every platform. Prevents CRLF flips on Windows from showing whole files
+# as changed in a diff.
+* text=auto eol=lf
