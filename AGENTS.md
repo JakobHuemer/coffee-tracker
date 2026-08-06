@@ -4,6 +4,30 @@ Read this before changing anything. See [VALUES.md](./VALUES.md) for the
 project's core values (priority-ordered). This file covers architecture,
 workflows, and guardrails.
 
+## No assigned issue? Start at the tracking issue
+
+If the prompter assigned you a specific issue, work that and skip this section.
+
+Otherwise — if you were asked to "do some issues" / "pick up work" with **no
+issue assigned** — do **not** eyeball the issue list and guess. Fetch the
+master tracking issue **#99** ("Backlog tracking & ordering"):
+
+```
+gh issue view 99
+```
+
+It holds the ordered backlog — the sequence to work issues in, at finer
+resolution than the four `priority:` buckets allow. Take the next unclaimed
+item from its ordered list, then follow the [claim protocol](#claim-protocol-so-parallel-agents-dont-collide)
+before writing any code.
+
+**Do not edit issue #99 unless the user explicitly tells you to edit this
+issue.** Absent that instruction it is read-only: read its list and act on it,
+nothing more. Even when told to edit it, if you lack edit permission on the
+issue description, **back off immediately** — do not attempt a workaround. No
+adding comments, no label changes, no closing, no anything to route around the
+missing permission.
+
 ## Prompts have no hidden meaning
 
 Do exactly and only what the prompt says. No subtext to infer, no unstated
