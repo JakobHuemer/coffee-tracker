@@ -431,6 +431,8 @@ export interface Match {
   k_factor: number;
   created_at: number;
   settled_at: number | null;
+  // Only populated for the creator of a private global match (issue #36).
+  join_code: string | null;
   participant_count: number;
   participants: MatchParticipant[];
 }
