@@ -8,6 +8,7 @@ const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { listCoffees, getCoffee, listClasses } = require('../coffees');
 const { checkAfterCoffeeLog } = require('../achievements');
+const { syncPostMentions } = require('../mentions');
 const { DATE_RE } = require('./_helpers');
 const { getUserTz, localTodayStr, localDateStr, localDayBounds } = require('../time');
 
@@ -203,6 +204,12 @@ router.post('/entries', requireAuth, handleUpload(upload.single('photo')), async
     console.error(err);
     return res.status(500).json({ error: 'Internal server error' });
   }
+
+  // Record @mentions of real users in the description as marks on this post, so
+  // the feed can highlight the post to a tagged user and link each mention to a
+  // comparison. Author self-mentions are ignored; a mention that doesn't resolve
+  // to a real user simply isn't a mark.
+  syncPostMentions(id, desc, req.user.id);
 
   // Runs the unlock checks for their side effect only: any unlock is persisted
   // as a notification inside these functions now and reaches the client through

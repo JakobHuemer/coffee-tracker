@@ -4,6 +4,7 @@ const db = require('../db');
 const images = require('../images');
 const { requireAuth } = require('../middleware/auth');
 const { badgesForMany } = require('../profile');
+const { marksForMany } = require('../mentions');
 
 const router = express.Router();
 
@@ -17,7 +18,12 @@ const router = express.Router();
 // posts resolves every author's earned badges in one lookup, not one per post.
 // Badges ride along so a post header shows them wherever a profile appears
 // (issue #80).
-function mapPost(p, variants, badges) {
+// `marks` is a prebuilt Map<entryId, usernames> (mentions.marksForMany) — the
+// users @-mentioned in the description — resolved once per page for the same
+// reason. `marked_me` (a per-row flag from the query) says the viewer is among
+// them, so the client can highlight the post and render their own mention as
+// "You've been marked".
+function mapPost(p, variants, badges, marks) {
   const { image_id, profile_image_id, ...rest } = p;
   return {
     ...rest,
@@ -26,19 +32,23 @@ function mapPost(p, variants, badges) {
     image: variants.get(image_id) ?? null,
     profile_image: variants.get(profile_image_id) ?? null,
     badges: badges.get(p.user_id) ?? [],
+    marks: marks.get(p.id) ?? [],
     liked_by_me: p.liked_by_me === 1,
     bookmarked_by_me: p.bookmarked_by_me === 1,
+    marked_me: p.marked_me === 1,
   };
 }
 
-// Resolve every post's image + profile image + author badges in batched lookups,
-// then shape. `viewerId` masks secret badges the viewer hasn't earned.
+// Resolve every post's image + profile image + author badges + @mention marks in
+// batched lookups, then shape. `viewerId` masks secret badges the viewer hasn't
+// earned.
 function mapPosts(posts, viewerId) {
   const variants = images.variantsForMany(
     posts.flatMap((p) => [p.image_id, p.profile_image_id]),
   );
   const badges = badgesForMany(posts.map((p) => p.user_id), viewerId);
-  return posts.map((p) => mapPost(p, variants, badges));
+  const marks = marksForMany(posts.map((p) => p.id));
+  return posts.map((p) => mapPost(p, variants, badges, marks));
 }
 
 const POST_COLUMNS = `
@@ -47,7 +57,8 @@ const POST_COLUMNS = `
   u.username, u.avatar, u.profile_photo, u.image_id AS profile_image_id,
   COUNT(pl.id) AS likes_count,
   MAX(CASE WHEN pl.user_id = ? THEN 1 ELSE 0 END) AS liked_by_me,
-  EXISTS(SELECT 1 FROM post_bookmarks pb WHERE pb.entry_id = e.id AND pb.user_id = ?) AS bookmarked_by_me
+  EXISTS(SELECT 1 FROM post_bookmarks pb WHERE pb.entry_id = e.id AND pb.user_id = ?) AS bookmarked_by_me,
+  EXISTS(SELECT 1 FROM post_marks pm WHERE pm.entry_id = e.id AND pm.user_id = ?) AS marked_me
 `;
 
 router.get('/', requireAuth, (req, res) => {
@@ -63,7 +74,7 @@ router.get('/', requireAuth, (req, res) => {
     GROUP BY e.id
     ORDER BY e.logged_at DESC
     LIMIT ? OFFSET ?
-  `).all(req.user.id, req.user.id, limit, offset);
+  `).all(req.user.id, req.user.id, req.user.id, limit, offset);
 
   res.json(mapPosts(posts, req.user.id));
 });
@@ -86,7 +97,7 @@ router.get('/saved', requireAuth, (req, res) => {
     GROUP BY e.id
     ORDER BY mine.created_at DESC
     LIMIT ? OFFSET ?
-  `).all(req.user.id, req.user.id, req.user.id, req.user.id, limit, offset);
+  `).all(req.user.id, req.user.id, req.user.id, req.user.id, req.user.id, limit, offset);
 
   res.json(mapPosts(posts, req.user.id));
 });
@@ -107,7 +118,7 @@ router.get('/mine', requireAuth, (req, res) => {
     GROUP BY e.id
     ORDER BY e.logged_at DESC
     LIMIT ? OFFSET ?
-  `).all(req.user.id, req.user.id, req.user.id, limit, offset);
+  `).all(req.user.id, req.user.id, req.user.id, req.user.id, limit, offset);
 
   res.json(mapPosts(posts, req.user.id));
 });

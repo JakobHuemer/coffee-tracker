@@ -76,6 +76,13 @@ export interface FeedPost {
   // The author's earned badge chips, so a post header carries the same identity
   // a profile does (issue #80). Empty when they have none.
   badges: ProfileBadge[];
+  // Usernames @-mentioned in the description that resolved to real users. The
+  // client linkifies exactly these tokens to the comparison page; an @word that
+  // isn't in this list is plain text. Empty when the post marks no one.
+  marks: string[];
+  // True when the viewer is one of the marked users — the card is highlighted to
+  // them and their own @mention renders as "You've been marked".
+  marked_me: boolean;
 }
 
 export interface User {
