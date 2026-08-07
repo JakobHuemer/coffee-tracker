@@ -19,6 +19,7 @@ import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
 import { UserProfile } from './pages/UserProfile';
 import { AdminCoffees } from './pages/AdminCoffees';
+import { AdminPanel } from './pages/AdminPanel';
 import { Notifications } from './pages/Notifications';
 import { NotificationToaster } from './components/NotificationToaster';
 import { RevealProvider } from './notifications/RevealProvider';
@@ -98,8 +99,9 @@ export function App() {
           <Route path="/u/:username" element={<RequireAuth><UserProfile /></RequireAuth>} />
           {/* /compare/:username still resolves for old links, but every in-app
               path to another user now lands on their profile first. */}
-          {/* Admin coffee catalog (issue #77). AdminCoffees redirects non-admins;
-              the API enforces admin on every catalog write regardless. */}
+          {/* Admin panel (issue #68). AdminPanel and AdminCoffees both redirect
+              non-admins; the API enforces admin on every write regardless. */}
+          <Route path="/admin" element={<RequireAuth><AdminPanel /></RequireAuth>} />
           <Route path="/admin/coffees" element={<RequireAuth><AdminCoffees /></RequireAuth>} />
           <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
