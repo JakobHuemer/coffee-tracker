@@ -19,6 +19,7 @@ import { Compare } from './pages/Compare';
 import { Profile } from './pages/Profile';
 import { UserProfile } from './pages/UserProfile';
 import { AdminCoffees } from './pages/AdminCoffees';
+import { Challenges } from './pages/Challenges';
 import { Notifications } from './pages/Notifications';
 import { NotificationToaster } from './components/NotificationToaster';
 import { RevealProvider } from './notifications/RevealProvider';
@@ -101,12 +102,13 @@ export function App() {
           {/* Admin coffee catalog (issue #77). AdminCoffees redirects non-admins;
               the API enforces admin on every catalog write regardless. */}
           <Route path="/admin/coffees" element={<RequireAuth><AdminCoffees /></RequireAuth>} />
+          <Route path="/challenges" element={<RequireAuth><Challenges /></RequireAuth>} />
           <Route path="/notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
           <Route path="/goals" element={<Navigate to="/stats" replace />} />
           <Route path="/achievements" element={<Navigate to="/badges" replace />} />
           <Route path="/rankings" element={<Navigate to="/stats" replace />} />
-          {/* Community challenges moved to Compete (issue #51). */}
-          <Route path="/challenges" element={<Navigate to="/compete/global/challenges" replace />} />
+          {/* Old deep-link to challenges inside Compete — redirect to standalone page (issue #63). */}
+          <Route path="/compete/global/challenges" element={<Navigate to="/challenges" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         {token && !isAuth && <BottomNav />}
