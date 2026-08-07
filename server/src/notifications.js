@@ -30,6 +30,20 @@ function createNotification(userId, type, payload) {
   db.prepare(
     'INSERT INTO notifications (id, user_id, type, payload, read_at, created_at) VALUES (?, ?, ?, ?, NULL, ?)'
   ).run(id, userId, type, JSON.stringify(payload), Date.now());
+
+  // Deliver the same event as a Web Push (issue #87) so it reaches the user's
+  // phone even with the app closed. Deferred to setImmediate on purpose:
+  // createNotification runs inside settlement transactions (competitions.js), and
+  // deferring guarantees the push reflects a COMMITTED row and can never run
+  // inside — or roll back — that transaction. Fire-and-forget: push is a no-op
+  // when VAPID is unconfigured, and any send failure is swallowed downstream, so
+  // this can never disturb the write path. Lazy require keeps the web-push
+  // dependency off notifications.js's own load path.
+  setImmediate(() => {
+    try { require('./push').sendToUser(userId, { id, type, payload }); }
+    catch (err) { console.error('push dispatch failed:', err && err.message); }
+  });
+
   return id;
 }
 

@@ -235,6 +235,14 @@ export interface NotificationsResponse {
   unread_count: number;
 }
 
+// Web Push (issue #87). GET /api/push/vapid-public-key: `enabled` is whether the
+// deployment has VAPID configured at all (the UI hides the toggle when false);
+// `key` is the applicationServerKey the browser subscribes with.
+export interface VapidKeyResponse {
+  enabled: boolean;
+  key: string | null;
+}
+
 export interface Stats {
   total_cups: number;
   today_cups: number;

@@ -20,6 +20,13 @@ services:
       # Optional bootstrap admin. Empty by default — absence must not block boot,
       # so no :? gate here (unlike JWT_SECRET).
       ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      # Web Push (issue #87). Optional: absent = push disabled and the app boots
+      # normally; a partial/invalid pair fails fast inside the container. Passed
+      # through explicitly — compose only forwards vars it names here, so keys
+      # left only in .env would never reach the process and push would stay off.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
     volumes:
       # Persist the SQLite database (DB_DIR defaults to /app/data) across
       # container restarts, rebuilds, and `compose down` (without -v).
