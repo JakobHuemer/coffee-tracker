@@ -537,6 +537,13 @@ export function Profile() {
           <Icon name="arrow-right" size={14} />
         </button>
 
+        {/* Challenges moved out of Compete to their own page (issue #63). */}
+        <button className="card profile-link-card" onClick={() => navigate('/challenges')}>
+          <span className="profile-link-icon"><Icon name="bolt" size={18} /></span>
+          <span className="profile-link-label">Challenges</span>
+          <Icon name="arrow-right" size={14} />
+        </button>
+
         {/* Saved gave up its bottom-nav slot to "Yours"; this is now the only
             way in. */}
         <button className="card profile-link-card" onClick={() => navigate('/saved')}>
