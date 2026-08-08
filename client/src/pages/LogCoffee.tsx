@@ -9,7 +9,7 @@ import {
 import { getSkipSpacing } from '../devFlags';
 import { api } from '../api/client';
 import { prepareImageUpload } from '../lib/image';
-import type { Coffee, CoffeeClass } from '../types';
+import type { Coffee, CoffeeClass, Stats } from '../types';
 
 export function LogCoffee() {
   const navigate = useNavigate();
@@ -32,6 +32,17 @@ export function LogCoffee() {
     queryFn: () => api.get<CoffeeClass[]>('/coffees/classes'),
     staleTime: Infinity,
   });
+
+  // Which types this user has already logged, so the menu can mark them. The
+  // keys of `by_type` are exactly the tried coffee ids — the same source the
+  // Milestones page reads for the `unique_types` variety achievements, so the
+  // "tried" count here can't drift from the progress shown there.
+  const { data: stats } = useQuery<Stats>({
+    queryKey: ['stats'],
+    queryFn: () => api.get<Stats>('/coffees/stats'),
+  });
+  const triedIds = new Set(Object.keys(stats?.by_type ?? {}));
+  const triedCount = coffees.filter(c => triedIds.has(c.id)).length;
 
   const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
@@ -222,7 +233,15 @@ export function LogCoffee() {
         )}
 
         <div className="log-form">
-          <div className="section-label">Drink</div>
+          {/* The pill turns the variety achievements ("Explorer", "Full Menu")
+              into something visible while logging: how many of the menu you've
+              collected. Checked types below are the ones already counted. */}
+          <div className="log-drink-head">
+            <span className="section-label">Drink</span>
+            {coffees.length > 0 && (
+              <span className="log-count-pill">{triedCount} / {coffees.length} tried</span>
+            )}
+          </div>
           {/* The menu is the server's now, so it can be missing. An empty grid
               under "Pick a coffee type to continue" is a dead end that blames
               the user for a failed fetch — say what happened and offer a retry. */}
@@ -251,9 +270,14 @@ export function LogCoffee() {
                     {coffees.filter(c => c.class === cls).map(c => (
                       <button
                         key={c.id}
-                        className={`coffee-btn${selectedId === c.id ? ' selected' : ''}`}
+                        className={`coffee-btn${selectedId === c.id ? ' selected' : ''}${triedIds.has(c.id) ? ' tried' : ''}`}
                         onClick={() => setSelectedId(c.id)}
                       >
+                        {triedIds.has(c.id) && (
+                          <span className="cb-tried">
+                            <Icon name="check" size={9} title="Already tried" />
+                          </span>
+                        )}
                         <span className="cb-icon"><Icon name={c.icon} size={24} /></span>
                         <span className="cb-name">{c.name}</span>
                         <span className="cb-mg">{c.caffeine}mg</span>
